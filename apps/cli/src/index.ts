@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { stdin, stdout } from "node:process";
-import { createInterface } from "node:readline";
+import { emitKeypressEvents } from "node:readline";
 import {
   type AgentMiddleware,
   type ModelAdapter,
@@ -9,7 +9,7 @@ import {
 } from "@xeq/agent-core";
 import { type ModelProvider, type ModelResponse, OpenRouterProvider } from "@xeq/model-providers";
 import { AgentRequestSchema } from "@xeq/shared";
-import { ConsoleTui, OpenTui, type Tui } from "@xeq/tui";
+import { OpenTui, type Tui } from "@xeq/tui";
 import type { ModelMessage } from "ai";
 
 class StubProvider implements ModelProvider {
@@ -24,27 +24,9 @@ class StubProvider implements ModelProvider {
   }
 }
 
-type CliMode = "interactive" | "run";
-
-interface CliArgs {
-  mode: CliMode;
-  task?: string;
-}
-
-function parseArgs(argv: string[]): CliArgs {
-  if (argv.length === 0) {
-    return { mode: "interactive" };
-  }
-
-  if (argv[0] === "run") {
-    const task = argv.slice(1).join(" ").trim();
-    return {
-      mode: "run",
-      task: task.length > 0 ? task : "Scaffold authentication module and tests",
-    };
-  }
-
-  return { mode: "interactive" };
+function parseInitialTask(argv: string[]): string | null {
+  const task = argv.join(" ").trim();
+  return task.length > 0 ? task : null;
 }
 
 function createModelAdapter(provider: ModelProvider): ModelAdapter {
@@ -96,10 +78,7 @@ async function runTask(
     maxDurationMs: 120000,
   });
 
-  tui.renderApprovalPrompt({
-    message: `Mode=${request.approvalMode} | Task=${request.task}`,
-    options: ["approve", "deny"],
-  });
+  tui.renderApprovalPrompt({ message: `> ${request.task}`, options: ["running"] });
 
   const middlewares: AgentMiddleware[] = [
     {
@@ -122,6 +101,17 @@ async function runTask(
   ];
 
   const started = performance.now();
+  const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+  let frameIndex = 0;
+  const spinner = setInterval(() => {
+    const frame = spinnerFrames[frameIndex % spinnerFrames.length];
+    frameIndex += 1;
+    tui.renderApprovalPrompt({
+      message: `${frame} Processing task...`,
+      options: ["enter=queue next", "exit=quit"],
+    });
+  }, 120);
+
   const result = await runHarness(
     {
       model: modelAdapter,
@@ -134,7 +124,9 @@ async function runTask(
       maxSteps: request.maxSteps,
       timeoutMs: request.maxDurationMs,
     },
-  );
+  ).finally(() => {
+    clearInterval(spinner);
+  });
 
   tui.renderSummary({
     success: result.status === "completed",
@@ -144,6 +136,10 @@ async function runTask(
     completionTokens: 0,
     estimatedCostUsd: 0,
   });
+  tui.renderApprovalPrompt({
+    message: "> Type next task",
+    options: ["enter=send", "exit=quit"],
+  });
 }
 
 async function runInteractive(
@@ -151,14 +147,58 @@ async function runInteractive(
   modelAdapter: ModelAdapter,
   toolAdapter: ToolAdapter,
 ): Promise<void> {
-  const rl = createInterface({ input: stdin, output: stdout });
-  const question = (prompt: string) =>
-    new Promise<string>((resolve) => {
-      rl.question(prompt, resolve);
+  emitKeypressEvents(stdin);
+  const canUseRawMode = stdin.isTTY && typeof stdin.setRawMode === "function";
+  if (canUseRawMode) {
+    stdin.setRawMode(true);
+  }
+  stdin.resume();
+
+  const readInputLine = () =>
+    new Promise<string>((resolve, reject) => {
+      let buffer = "";
+      tui.renderApprovalPrompt({
+        message: `> ${buffer}`,
+        options: ["enter=send", "exit=quit"],
+      });
+
+      const onKeypress = (char: string, key: { name?: string; ctrl?: boolean }) => {
+        if (key.ctrl && key.name === "c") {
+          stdin.off("keypress", onKeypress);
+          reject(new Error("cancelled"));
+          return;
+        }
+
+        if (key.name === "return" || key.name === "enter") {
+          stdin.off("keypress", onKeypress);
+          resolve(buffer.trim());
+          return;
+        }
+
+        if (key.name === "backspace") {
+          buffer = buffer.slice(0, -1);
+          tui.renderApprovalPrompt({
+            message: `> ${buffer}`,
+            options: ["enter=send", "exit=quit"],
+          });
+          return;
+        }
+
+        if (char && !key.ctrl) {
+          buffer += char;
+          tui.renderApprovalPrompt({
+            message: `> ${buffer}`,
+            options: ["enter=send", "exit=quit"],
+          });
+        }
+      };
+
+      stdin.on("keypress", onKeypress);
     });
+
   try {
     while (true) {
-      const line = (await question("xeq> ")).trim();
+      const line = await readInputLine();
       if (line.length === 0) continue;
       if (line === "exit" || line === "quit") break;
 
@@ -172,12 +212,14 @@ async function runInteractive(
       }
     }
   } finally {
-    rl.close();
+    if (canUseRawMode) {
+      stdin.setRawMode(false);
+    }
   }
 }
 
 async function main(): Promise<void> {
-  const { mode, task } = parseArgs(process.argv.slice(2));
+  const initialTask = parseInitialTask(process.argv.slice(2));
   const model = process.env.AGENT_MODEL ?? "openai/gpt-4o-mini";
   const apiKey = process.env.OPENROUTER_API_KEY;
 
@@ -187,24 +229,19 @@ async function main(): Promise<void> {
   const modelAdapter = createModelAdapter(provider);
   const toolAdapter = createToolAdapter();
 
-  const tui: Tui = mode === "interactive" ? new ConsoleTui() : new OpenTui();
+  const tui: Tui = new OpenTui();
   await tui.start();
 
   try {
-    if (mode === "run") {
-      await runTask(
-        task ?? "Scaffold authentication module and tests",
-        tui,
-        modelAdapter,
-        toolAdapter,
-      );
-      return;
-    }
-
     tui.renderApprovalPrompt({
       message: "Interactive mode. Type a task. Use 'exit' to quit.",
       options: ["exit"],
     });
+
+    if (initialTask) {
+      await runTask(initialTask, tui, modelAdapter, toolAdapter);
+    }
+
     await runInteractive(tui, modelAdapter, toolAdapter);
   } finally {
     tui.stop();

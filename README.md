@@ -1,5 +1,9 @@
 # XEQ
 
+Pronunciation: `eks-ee-kyoo` (`X-E-Q`).
+
+`XEQ` is derived from “execute,” condensed through “exeqt” into its final form.
+
 Terminal-first AI coding agent monorepo (Bun + Turborepo).
 
 ## Status

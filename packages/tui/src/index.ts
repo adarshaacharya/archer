@@ -1,5 +1,7 @@
 import { BoxRenderable, type CliRenderer, TextRenderable, createCliRenderer } from "@opentui/core";
 import type { AgentStep, RunSummary } from "@xeq/shared";
+import { defaultTuiLayout } from "./layout.js";
+import { xeqBranding, xeqTheme } from "./theme.js";
 
 export interface ApprovalPromptState {
   message: string;
@@ -17,10 +19,10 @@ export interface Tui {
 export class OpenTui implements Tui {
   private renderer: CliRenderer | null = null;
   private steps: string[] = [];
-  private headerText: TextRenderable | null = null;
+  private welcomeText: TextRenderable | null = null;
+  private statusText: TextRenderable | null = null;
   private stepsText: TextRenderable | null = null;
-  private approvalText: TextRenderable | null = null;
-  private summaryText: TextRenderable | null = null;
+  private promptText: TextRenderable | null = null;
 
   async start(): Promise<void> {
     this.renderer = await createCliRenderer({
@@ -37,76 +39,99 @@ export class OpenTui implements Tui {
       flexDirection: "column",
       border: true,
       borderStyle: "single",
-      title: "XEQ",
-      padding: 1,
-      rowGap: 1,
+      title: xeqBranding.frameTitle,
+      padding: defaultTuiLayout.framePadding,
+      rowGap: defaultTuiLayout.frameRowGap,
+      borderColor: xeqTheme.accentStrong,
     });
 
-    const header = new BoxRenderable(this.renderer, {
-      id: "header-box",
+    const topRow = new BoxRenderable(this.renderer, {
+      id: "top-row",
+      width: "100%",
+      height: 9,
+      flexDirection: "column",
+    });
+
+    const welcomeBox = new BoxRenderable(this.renderer, {
+      id: "welcome-box",
       width: "100%",
       border: true,
-      title: "Session",
+      title: "Welcome",
       padding: 1,
-      minHeight: 3,
+      borderColor: xeqTheme.border,
     });
-    this.headerText = new TextRenderable(this.renderer, {
-      id: "header-text",
-      content: "XEQ session started",
+    this.welcomeText = new TextRenderable(this.renderer, {
+      id: "welcome-text",
+      content:
+        "██╗  ██╗███████╗ ██████╗\n" +
+        "╚██╗██╔╝██╔════╝██╔═══██╗\n" +
+        " ╚███╔╝ █████╗  ██║   ██║\n" +
+        " ██╔██╗ ██╔══╝  ██║▄▄ ██║\n" +
+        "██╔╝ ██╗███████╗╚██████╔╝\n" +
+        "╚═╝  ╚═╝╚══════╝ ╚══▀▀═╝\n" +
+        "Terminal coding agent",
       width: "100%",
+      fg: xeqTheme.accentStrong,
     });
-    header.add(this.headerText);
+    topRow.add(welcomeBox);
+    welcomeBox.add(this.welcomeText);
+
+    const statusRow = new BoxRenderable(this.renderer, {
+      id: "status-row",
+      width: "100%",
+      border: true,
+      title: "Status",
+      padding: 1,
+      minHeight: defaultTuiLayout.headerMinHeight,
+      borderColor: xeqTheme.border,
+    });
+    this.statusText = new TextRenderable(this.renderer, {
+      id: "status-text",
+      content: "ready | model=unknown | sandbox=local | tools=stub",
+      width: "100%",
+      fg: xeqTheme.muted,
+    });
+    statusRow.add(this.statusText);
 
     const stepsBox = new BoxRenderable(this.renderer, {
       id: "steps-box",
       width: "100%",
       flexGrow: 1,
       border: true,
-      title: "Step Stream",
+      title: xeqBranding.streamTitle,
       padding: 1,
+      borderColor: xeqTheme.border,
     });
     this.stepsText = new TextRenderable(this.renderer, {
       id: "steps-text",
       content: "Waiting for first step...",
       width: "100%",
       height: "100%",
+      fg: xeqTheme.text,
     });
     stepsBox.add(this.stepsText);
 
-    const approvalBox = new BoxRenderable(this.renderer, {
-      id: "approval-box",
+    const promptBox = new BoxRenderable(this.renderer, {
+      id: "prompt-box",
       width: "100%",
       border: true,
-      title: "Approval",
+      title: "Prompt",
       padding: 1,
-      minHeight: 3,
+      minHeight: defaultTuiLayout.approvalMinHeight,
+      borderColor: xeqTheme.accent,
     });
-    this.approvalText = new TextRenderable(this.renderer, {
-      id: "approval-text",
-      content: "No approval pending",
+    this.promptText = new TextRenderable(this.renderer, {
+      id: "prompt-text",
+      content: `> Type your task (${xeqBranding.promptHint})`,
       width: "100%",
+      fg: xeqTheme.muted,
     });
-    approvalBox.add(this.approvalText);
+    promptBox.add(this.promptText);
 
-    const summaryBox = new BoxRenderable(this.renderer, {
-      id: "summary-box",
-      width: "100%",
-      border: true,
-      title: "Summary",
-      padding: 1,
-      minHeight: 3,
-    });
-    this.summaryText = new TextRenderable(this.renderer, {
-      id: "summary-text",
-      content: "No run summary yet",
-      width: "100%",
-    });
-    summaryBox.add(this.summaryText);
-
-    frame.add(header);
+    frame.add(topRow);
+    frame.add(statusRow);
     frame.add(stepsBox);
-    frame.add(approvalBox);
-    frame.add(summaryBox);
+    frame.add(promptBox);
 
     this.renderer.root.add(frame);
     this.renderer.start();
@@ -120,37 +145,34 @@ export class OpenTui implements Tui {
     if (step.observation) parts.push(`Observation: ${step.observation}`);
 
     this.steps.push(parts.join("\n"));
-    if (this.steps.length > 50) this.steps.shift();
+    if (this.steps.length > defaultTuiLayout.maxStepsVisible) this.steps.shift();
 
     if (this.stepsText) this.stepsText.content = this.steps.join("\n\n");
     this.requestRender();
   }
 
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
-    if (!this.approvalText) return;
+    if (!this.promptText) return;
 
     if (!prompt) {
-      this.approvalText.content = "No approval pending";
+      this.promptText.content = `> Type your task (${xeqBranding.promptHint})`;
       this.requestRender();
       return;
     }
 
     const optionsText =
       prompt.options && prompt.options.length > 0 ? `\nOptions: ${prompt.options.join(" / ")}` : "";
-    this.approvalText.content = `${prompt.message}${optionsText}`;
+    this.promptText.content = `${prompt.message}${optionsText}`;
     this.requestRender();
   }
 
   renderSummary(summary: RunSummary): void {
-    if (this.summaryText) {
-      this.summaryText.content =
-        `success=${summary.success}\n` +
-        `steps=${summary.steps}\n` +
-        `durationMs=${summary.durationMs}\n` +
-        `costUsd=${summary.estimatedCostUsd.toFixed(6)}`;
+    if (this.statusText) {
+      this.statusText.content = `result=${summary.success ? "ok" : "failed"} | steps=${summary.steps} | durationMs=${summary.durationMs} | at=${new Date().toLocaleTimeString()}`;
     }
-    if (this.headerText) {
-      this.headerText.content = `Run complete at ${new Date().toLocaleTimeString()}`;
+    if (this.welcomeText) {
+      this.welcomeText.content = "XEQ ready for next task";
+      this.welcomeText.fg = xeqTheme.text;
     }
     this.requestRender();
   }
@@ -163,38 +185,5 @@ export class OpenTui implements Tui {
 
   private requestRender(): void {
     this.renderer?.requestRender();
-  }
-}
-
-export class ConsoleTui implements Tui {
-  async start(): Promise<void> {
-    process.stdout.write("XEQ session started\n");
-  }
-
-  renderStep(step: AgentStep): void {
-    const thought = step.thought ? `\nThought: ${step.thought}` : "";
-    const observation = step.observation ? `\nObservation: ${step.observation}` : "";
-
-    process.stdout.write(`\n[Step ${step.step}]\nAction: ${step.action}${thought}${observation}\n`);
-  }
-
-  renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
-    if (!prompt) {
-      process.stdout.write("\n[Approval] none\n");
-      return;
-    }
-    const options =
-      prompt.options && prompt.options.length > 0 ? ` (${prompt.options.join("/")})` : "";
-    process.stdout.write(`\n[Approval] ${prompt.message}${options}\n`);
-  }
-
-  renderSummary(summary: RunSummary): void {
-    process.stdout.write(
-      `\nDone: ${summary.success ? "yes" : "no"} | steps=${summary.steps} | durationMs=${summary.durationMs} | cost=$${summary.estimatedCostUsd.toFixed(6)}\n`,
-    );
-  }
-
-  stop(): void {
-    process.stdout.write("XEQ session ended\n");
   }
 }
