@@ -1,9 +1,4 @@
-import {
-  BoxRenderable,
-  createCliRenderer,
-  TextRenderable,
-  type CliRenderer,
-} from "@opentui/core";
+import { BoxRenderable, type CliRenderer, TextRenderable, createCliRenderer } from "@opentui/core";
 import type { AgentStep, RunSummary } from "@xeq/shared";
 
 export interface ApprovalPromptState {
@@ -141,9 +136,7 @@ export class OpenTui implements Tui {
     }
 
     const optionsText =
-      prompt.options && prompt.options.length > 0
-        ? `\nOptions: ${prompt.options.join(" / ")}`
-        : "";
+      prompt.options && prompt.options.length > 0 ? `\nOptions: ${prompt.options.join(" / ")}` : "";
     this.approvalText.content = `${prompt.message}${optionsText}`;
     this.requestRender();
   }
@@ -180,13 +173,9 @@ export class ConsoleTui implements Tui {
 
   renderStep(step: AgentStep): void {
     const thought = step.thought ? `\nThought: ${step.thought}` : "";
-    const observation = step.observation
-      ? `\nObservation: ${step.observation}`
-      : "";
+    const observation = step.observation ? `\nObservation: ${step.observation}` : "";
 
-    process.stdout.write(
-      `\n[Step ${step.step}]\nAction: ${step.action}${thought}${observation}\n`,
-    );
+    process.stdout.write(`\n[Step ${step.step}]\nAction: ${step.action}${thought}${observation}\n`);
   }
 
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
@@ -195,9 +184,7 @@ export class ConsoleTui implements Tui {
       return;
     }
     const options =
-      prompt.options && prompt.options.length > 0
-        ? ` (${prompt.options.join("/")})`
-        : "";
+      prompt.options && prompt.options.length > 0 ? ` (${prompt.options.join("/")})` : "";
     process.stdout.write(`\n[Approval] ${prompt.message}${options}\n`);
   }
 

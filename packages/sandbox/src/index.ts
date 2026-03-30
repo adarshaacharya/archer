@@ -17,8 +17,7 @@ export class DefaultSandboxPolicy implements SandboxPolicy {
   decideCommand(command: string): PolicyDecision {
     const dangerous = ["rm -rf /", "sudo", "mkfs", "dd if="];
     if (dangerous.some((token) => command.includes(token))) return "deny";
-    if (command.includes("git push") || command.includes("npm publish"))
-      return "ask";
+    if (command.includes("git push") || command.includes("npm publish")) return "ask";
     return "allow";
   }
 }

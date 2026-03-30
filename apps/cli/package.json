@@ -1,18 +1,18 @@
 {
-  "name": "@xeq/tools",
-  "version": "0.0.1",
+  "name": "@xeq/cli",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
   "scripts": {
+    "dev": "bun run src/index.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "biome check .",
     "format": "biome check . --write",
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@xeq/sandbox": "workspace:*",
-    "@xeq/shared": "workspace:*"
+    "@xeq/agent-core": "workspace:*",
+    "@xeq/model-providers": "workspace:*",
+    "@xeq/shared": "workspace:*",
+    "@xeq/tui": "workspace:*"
   }
 }
