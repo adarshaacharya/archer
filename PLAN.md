@@ -90,13 +90,19 @@ Build a high-quality, terminal-first AI coding agent with:
   - Mastra can be added later if we want workflow/runtime conveniences
 
 ### CLI / UX
-- Start minimal CLI first for fast iteration
-- Add richer TUI after core agent correctness is stable
+- Decision: **OpenTUI-first terminal UX from V1**
+- `packages/tui` owns terminal rendering/input concerns.
+- `apps/cli` only wires startup/session lifecycle to agent and tui packages.
 
 ### Validation / Quality
 - Zod schemas for all tool contracts
 - Vitest for unit/integration tests
 - Eval package for repeatable benchmark tasks
+
+### Terminal UI Stack
+- Primary: `@opentui/core`
+- Adapter: `@opentui/solid` (preferred) or `@opentui/react` (choose one, no mixing)
+- Keep all UI vendor code inside `packages/tui` only
 
 ### Auth / Credentials
 - V1 decision: **no backend DB for API keys**.
@@ -119,10 +125,10 @@ packages/
   tools/               # fs/shell/git/web/search tools
   model-providers/     # OpenAI/Anthropic/OpenRouter/Gemini adapters
   sandbox/             # path + command permission controls
+  tui/                 # OpenTUI rendering/input package
   shared/              # types, schemas, config utils
   evals/               # regression/eval harness
-legacy/
-  pre-monorepo/        # old implementation snapshot
+
 ```
 
 ## 7. Build Phases

@@ -10,6 +10,7 @@ Deliver V1 of a terminal-first coding agent (`xeq`) with:
 - patch-based edit flow
 - usage/cost logging
 - baseline eval + speed metrics
+- OpenTUI-based terminal interface
 
 ## 1. Bootstrap Monorepo
 
@@ -50,7 +51,8 @@ Then configure workspaces in root `package.json`:
 4. `packages/model-providers`
 5. `packages/tools`
 6. `packages/agent-core`
-7. `packages/evals`
+7. `packages/tui`
+8. `packages/evals`
 
 ## 3. Define Shared Contracts First
 
@@ -147,6 +149,18 @@ Then configure workspaces in root `package.json`:
    - stream updates
    - display diff/check results
 4. Exit and save run artifacts.
+
+## 9.1 Build TUI Package (OpenTUI)
+
+1. Add dependencies:
+   - `@opentui/core`
+   - `@opentui/solid` or `@opentui/react` (pick one)
+2. Implement TUI boundaries:
+   - session frame
+   - step stream view
+   - diff/output panel
+   - approval prompt component
+3. Keep TUI isolated in `packages/tui`; no business logic in UI layer.
 
 ## 10. Add Approval UX
 
