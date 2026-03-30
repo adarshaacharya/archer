@@ -1,12 +1,13 @@
-import { type RunHooks, runAgent } from "@xeq/agent-core";
 import {
-  type ModelMessage,
-  type ModelProvider,
-  type ModelResponse,
-  OpenRouterProvider,
-} from "@xeq/model-providers";
+  type AgentMiddleware,
+  type ModelAdapter,
+  type ToolAdapter,
+  runHarness,
+} from "@xeq/agent-core";
+import { type ModelProvider, type ModelResponse, OpenRouterProvider } from "@xeq/model-providers";
 import { type AgentRequest, AgentRequestSchema } from "@xeq/shared";
 import { OpenTui } from "@xeq/tui";
+import type { ModelMessage } from "ai";
 
 class StubProvider implements ModelProvider {
   private calls = 0;
@@ -45,6 +46,37 @@ async function main(): Promise<void> {
     ? new OpenRouterProvider(model, apiKey)
     : new StubProvider();
 
+  const modelAdapter: ModelAdapter = {
+    async decide({ state, signal }) {
+      const response = await provider.complete(state.messages as ModelMessage[]);
+      if (signal.aborted) {
+        throw new Error("run aborted");
+      }
+
+      const text = response.content.trim();
+      if (text.startsWith("DONE:")) {
+        return {
+          type: "final",
+          text: text.replace(/^DONE:\s*/, ""),
+        };
+      }
+
+      return { type: "final", text };
+    },
+  };
+
+  const toolAdapter: ToolAdapter = {
+    async execute(call) {
+      return {
+        ok: false,
+        error: {
+          code: "TOOL_NOT_IMPLEMENTED",
+          message: `Tool ${call.name} not implemented yet`,
+        },
+      };
+    },
+  };
+
   const tui = new OpenTui();
   await tui.start();
   tui.renderApprovalPrompt({
@@ -52,17 +84,49 @@ async function main(): Promise<void> {
     options: ["approve", "deny"],
   });
 
-  const hooks: RunHooks = {
-    onStep(step) {
-      tui.renderStep(step);
+  const middlewares: AgentMiddleware[] = [
+    {
+      postModel({ run, decision }) {
+        tui.renderStep({
+          step: run.step + 1,
+          action: "model.decide",
+          thought: decision.type,
+          observation: decision.type === "final" ? decision.text : decision.call.name,
+        });
+      },
+      postTool({ run, call, result }) {
+        tui.renderStep({
+          step: run.step + 1,
+          action: `tool.${call.name}`,
+          observation: result.ok ? "ok" : (result.error?.message ?? "failed"),
+        });
+      },
     },
-    onSummary(summary) {
-      tui.renderSummary(summary);
-    },
-  };
+  ];
 
   try {
-    await runAgent(request, provider, hooks);
+    const result = await runHarness(
+      {
+        model: modelAdapter,
+        tools: toolAdapter,
+        middlewares,
+      },
+      request.task,
+      {
+        cwd: request.repoRoot,
+        maxSteps: request.maxSteps,
+        timeoutMs: request.maxDurationMs,
+      },
+    );
+
+    tui.renderSummary({
+      success: result.status === "completed",
+      steps: result.steps,
+      durationMs: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      estimatedCostUsd: 0,
+    });
   } catch (error) {
     tui.renderApprovalPrompt({
       message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,

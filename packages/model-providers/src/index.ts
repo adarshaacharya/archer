@@ -1,7 +1,7 @@
-import { ProviderError } from "@xeq/shared";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { ProviderError } from "@xeq/shared";
 import { generateText } from "ai";
-import type { ModelMessage as AiModelMessage } from "ai";
+import type { ModelMessage } from "ai";
 
 export interface ModelResponse {
   content: string;
@@ -10,7 +10,7 @@ export interface ModelResponse {
 }
 
 export interface ModelProvider {
-  complete(messages: AiModelMessage[]): Promise<ModelResponse>;
+  complete(messages: ModelMessage[]): Promise<ModelResponse>;
 }
 
 export class OpenRouterProvider implements ModelProvider {
@@ -19,7 +19,7 @@ export class OpenRouterProvider implements ModelProvider {
     private readonly apiKey: string,
   ) {}
 
-  async complete(messages: AiModelMessage[]): Promise<ModelResponse> {
+  async complete(messages: ModelMessage[]): Promise<ModelResponse> {
     if (!this.apiKey) throw new ProviderError("OPENROUTER_API_KEY is missing");
 
     const openRouter = createOpenRouter({

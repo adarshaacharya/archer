@@ -40,6 +40,7 @@ Build a high-quality, terminal-first AI coding agent with:
 ### V3 (later)
 - Optional server mode / remote sessions
 - Team workflows and richer observability
+- Optional multi-agent orchestration layer (Mayor/worker-style coordination inspired by tools like Gastown)
 
 ## 4. V1 Required vs V2 Optional
 
@@ -217,15 +218,22 @@ packages/
 - Full IDE plugin before core CLI stabilizes
 - Over-optimizing UI while core agent quality is not proven
 - Framework-heavy abstractions that hide tool/sandbox behavior
+- Distributed multi-agent fleet orchestration in V1/V2 (deferred to V3+)
 
-## 12. Next Step
+## 12. Future Orchestration Note
+
+- Reference: https://github.com/steveyegge/gastown
+- Relevance: useful as inspiration for V3+ when introducing many concurrent agents, persistent handoffs, and queue-based supervision.
+- Decision: do not integrate this style of orchestration in V1; keep XEQ focused on a single robust coding-agent harness first.
+
+## 13. Next Step
 
 Before coding:
 1. Confirm this architecture and stack choices.
 2. Freeze V1 scope and acceptance criteria.
 3. Start Phase 0 with workspace scaffolding and package contracts.
 
-## 13. User Interaction Flow (V1)
+## 14. User Interaction Flow (V1)
 
 1. User runs `xeq` inside a project directory.
 2. CLI starts interactive session and loads:
