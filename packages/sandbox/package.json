@@ -1,0 +1,14 @@
+{
+  "name": "@xeq/sandbox",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "check-types": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@xeq/shared": "workspace:*"
+  }
+}

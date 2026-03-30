@@ -47,6 +47,15 @@
         "typescript": "5.9.2",
       },
     },
+    "packages/agent-core": {
+      "name": "@xeq/agent-core",
+      "version": "0.0.1",
+      "dependencies": {
+        "@xeq/model-providers": "workspace:*",
+        "@xeq/shared": "workspace:*",
+        "@xeq/tools": "workspace:*",
+      },
+    },
     "packages/eslint-config": {
       "name": "@repo/eslint-config",
       "version": "0.0.0",
@@ -62,6 +71,35 @@
         "globals": "^16.5.0",
         "typescript": "^5.9.2",
         "typescript-eslint": "^8.50.0",
+      },
+    },
+    "packages/model-providers": {
+      "name": "@xeq/model-providers",
+      "version": "0.0.1",
+      "dependencies": {
+        "@xeq/shared": "workspace:*",
+      },
+    },
+    "packages/sandbox": {
+      "name": "@xeq/sandbox",
+      "version": "0.0.1",
+      "dependencies": {
+        "@xeq/shared": "workspace:*",
+      },
+    },
+    "packages/shared": {
+      "name": "@xeq/shared",
+      "version": "0.0.1",
+      "dependencies": {
+        "zod": "^3.24.1",
+      },
+    },
+    "packages/tools": {
+      "name": "@xeq/tools",
+      "version": "0.0.1",
+      "dependencies": {
+        "@xeq/sandbox": "workspace:*",
+        "@xeq/shared": "workspace:*",
       },
     },
     "packages/typescript-config": {
@@ -240,6 +278,16 @@
     "@typescript-eslint/utils": ["@typescript-eslint/utils@8.57.2", "", { "dependencies": { "@eslint-community/eslint-utils": "^4.9.1", "@typescript-eslint/scope-manager": "8.57.2", "@typescript-eslint/types": "8.57.2", "@typescript-eslint/typescript-estree": "8.57.2" }, "peerDependencies": { "eslint": "^8.57.0 || ^9.0.0 || ^10.0.0", "typescript": ">=4.8.4 <6.0.0" } }, "sha512-krRIbvPK1ju1WBKIefiX+bngPs+odIQUtR7kymzPfo1POVw3jlF+nLkmexdSSd4UCbDcQn+wMBATOOmpBbqgKg=="],
 
     "@typescript-eslint/visitor-keys": ["@typescript-eslint/visitor-keys@8.57.2", "", { "dependencies": { "@typescript-eslint/types": "8.57.2", "eslint-visitor-keys": "^5.0.0" } }, "sha512-zhahknjobV2FiD6Ee9iLbS7OV9zi10rG26odsQdfBO/hjSzUQbkIYgda+iNKK1zNiW2ey+Lf8MU5btN17V3dUw=="],
+
+    "@xeq/agent-core": ["@xeq/agent-core@workspace:packages/agent-core"],
+
+    "@xeq/model-providers": ["@xeq/model-providers@workspace:packages/model-providers"],
+
+    "@xeq/sandbox": ["@xeq/sandbox@workspace:packages/sandbox"],
+
+    "@xeq/shared": ["@xeq/shared@workspace:packages/shared"],
+
+    "@xeq/tools": ["@xeq/tools@workspace:packages/tools"],
 
     "acorn": ["acorn@8.16.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw=="],
 
@@ -696,6 +744,8 @@
     "word-wrap": ["word-wrap@1.2.5", "", {}, "sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA=="],
 
     "yocto-queue": ["yocto-queue@0.1.0", "", {}, "sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q=="],
+
+    "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "@eslint-community/eslint-utils/eslint-visitor-keys": ["eslint-visitor-keys@3.4.3", "", {}, "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag=="],
 

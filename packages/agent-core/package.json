@@ -1,0 +1,16 @@
+{
+  "name": "@xeq/agent-core",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "check-types": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@xeq/model-providers": "workspace:*",
+    "@xeq/shared": "workspace:*",
+    "@xeq/tools": "workspace:*"
+  }
+}
