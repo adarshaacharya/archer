@@ -1,9 +1,7 @@
 import { ProviderError } from "@xeq/shared";
-
-export interface ModelMessage {
-  role: "system" | "user" | "assistant" | "tool";
-  content: string;
-}
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { generateText } from "ai";
+import type { ModelMessage as AiModelMessage } from "ai";
 
 export interface ModelResponse {
   content: string;
@@ -12,7 +10,7 @@ export interface ModelResponse {
 }
 
 export interface ModelProvider {
-  complete(messages: ModelMessage[]): Promise<ModelResponse>;
+  complete(messages: AiModelMessage[]): Promise<ModelResponse>;
 }
 
 export class OpenRouterProvider implements ModelProvider {
@@ -21,14 +19,27 @@ export class OpenRouterProvider implements ModelProvider {
     private readonly apiKey: string,
   ) {}
 
-  async complete(_messages: ModelMessage[]): Promise<ModelResponse> {
+  async complete(messages: AiModelMessage[]): Promise<ModelResponse> {
     if (!this.apiKey) throw new ProviderError("OPENROUTER_API_KEY is missing");
 
-    // Placeholder for AI SDK integration in next step.
-    return {
-      content: `[stub:${this.model}] Provider wiring pending`,
-      promptTokens: 0,
-      completionTokens: 0,
-    };
+    const openRouter = createOpenRouter({
+      apiKey: this.apiKey,
+    });
+
+    try {
+      const response = await generateText({
+        model: openRouter.chat(this.model),
+        messages,
+      });
+
+      return {
+        content: response.text,
+        promptTokens: response.usage?.inputTokens ?? 0,
+        completionTokens: response.usage?.outputTokens ?? 0,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ProviderError(`OpenRouter request failed: ${message}`);
+    }
   }
 }

@@ -25,6 +25,7 @@ Primary goal for V1:
 - Architecture and decisions: `PLAN.md`
 - V1 execution order: `STEPS.md`
 - Turborepo guidance: `.agents/skills/turborepo/SKILL.md`
+- AI SDK guidance : `.agents/skills/ai-sdk/SKILL.md`
 
 If there is a conflict:
 1. Latest user instruction

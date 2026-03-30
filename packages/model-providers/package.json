@@ -12,6 +12,8 @@
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@xeq/shared": "workspace:*"
+    "@openrouter/ai-sdk-provider": "^2.3.3",
+    "@xeq/shared": "workspace:*",
+    "ai": "^6.0.141"
   }
 }
