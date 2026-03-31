@@ -1,3 +1,5 @@
+import type { ModelMessage } from "ai";
+
 export type RunStatus = "running" | "completed" | "failed" | "cancelled" | "timed_out";
 
 export interface RunContext {
@@ -9,11 +11,12 @@ export interface RunContext {
 }
 
 export interface AgentState {
-  messages: Array<{ role: "system" | "user" | "assistant" | "tool"; content: string }>;
+  messages: ModelMessage[];
   lastToolResult?: ToolResult;
 }
 
 export interface ToolCall {
+  id?: string;
   name: string;
   input: unknown;
 }

@@ -4,6 +4,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "cli": "bun run dev --filter @xeq/cli",
     "lint": "turbo run lint",
     "format": "turbo run format",
     "check-types": "turbo run check-types"

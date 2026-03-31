@@ -7,10 +7,17 @@ import {
   type ToolAdapter,
   runHarness,
 } from "@xeq/agent-core";
-import { type ModelProvider, type ModelResponse, OpenRouterProvider } from "@xeq/model-providers";
+import {
+  type ModelDecisionResponse,
+  type ModelProvider,
+  type ModelResponse,
+  OpenRouterProvider,
+} from "@xeq/model-providers";
 import { AgentRequestSchema } from "@xeq/shared";
+import { createBashToolsExecutor } from "@xeq/tools";
 import { OpenTui, type Tui } from "@xeq/tui";
 import type { ModelMessage } from "ai";
+import { z } from "zod";
 
 class StubProvider implements ModelProvider {
   private calls = 0;
@@ -22,6 +29,18 @@ class StubProvider implements ModelProvider {
     }
     return { content: `Stub response step ${this.calls}` };
   }
+
+  async decide(_messages: ModelMessage[]): Promise<ModelDecisionResponse> {
+    this.calls += 1;
+    if (this.calls >= 3) {
+      return { content: "stub run complete", toolCalls: [] };
+    }
+
+    return {
+      content: "",
+      toolCalls: [{ name: "bash", input: { command: "ls -la" } }],
+    };
+  }
 }
 
 function parseInitialTask(argv: string[]): string | null {
@@ -30,35 +49,60 @@ function parseInitialTask(argv: string[]): string | null {
 }
 
 function createModelAdapter(provider: ModelProvider): ModelAdapter {
+  const bashCallInputSchema = z.object({
+    command: z.string().min(1),
+  });
+
   return {
     async decide({ state, signal }) {
-      const response = await provider.complete(state.messages as ModelMessage[]);
+      const response = await provider.decide(state.messages as ModelMessage[]);
       if (signal.aborted) {
         throw new Error("run aborted");
       }
 
-      const text = response.content.trim();
-      if (text.startsWith("DONE:")) {
-        return {
-          type: "final",
-          text: text.replace(/^DONE:\s*/, ""),
-        };
+      const firstToolCall = response.toolCalls[0];
+      if (firstToolCall && firstToolCall.name === "bash") {
+        const parsedInput = bashCallInputSchema.safeParse(firstToolCall.input);
+        if (parsedInput.success) {
+          return {
+            type: "tool_call",
+            call: { id: firstToolCall.id, name: "bash", input: parsedInput.data },
+          };
+        }
       }
 
-      return { type: "final", text };
+      return { type: "final", text: response.content.trim() || "Task complete" };
     },
   };
 }
 
-function createToolAdapter(): ToolAdapter {
+async function createToolAdapter(repoRoot: string): Promise<ToolAdapter> {
+  const executor = await createBashToolsExecutor({
+    uploadDirectory: { source: repoRoot },
+  });
+
   return {
     async execute(call) {
+      if (call.name !== "bash") {
+        return {
+          ok: false,
+          error: {
+            code: "TOOL_NOT_ALLOWED",
+            message: `Only bash tool is allowed. Received: ${call.name}`,
+          },
+        };
+      }
+
+      const result = await executor.executeTool("bash", call.input);
       return {
-        ok: false,
-        error: {
-          code: "TOOL_NOT_IMPLEMENTED",
-          message: `Tool ${call.name} not implemented yet`,
-        },
+        ok: result.ok,
+        output: result.output ?? "",
+        error: result.ok
+          ? undefined
+          : {
+              code: "BASH_TOOL_ERROR",
+              message: result.error ?? "bash execution failed",
+            },
       };
     },
   };
@@ -227,7 +271,7 @@ async function main(): Promise<void> {
     ? new OpenRouterProvider(model, apiKey)
     : new StubProvider();
   const modelAdapter = createModelAdapter(provider);
-  const toolAdapter = createToolAdapter();
+  const toolAdapter = await createToolAdapter(process.cwd());
 
   const tui: Tui = new OpenTui();
   await tui.start();
