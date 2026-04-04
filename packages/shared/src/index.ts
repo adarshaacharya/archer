@@ -50,6 +50,20 @@ export const RunSummarySchema = z.object({
 });
 export type RunSummary = z.infer<typeof RunSummarySchema>;
 
+export const TuiKeybindsSchema = z.object({
+  leader: z.string().trim().min(1).optional(),
+  app_exit: z.string().trim().min(1).optional(),
+  input_submit: z.string().trim().min(1).optional(),
+  input_backspace: z.string().trim().min(1).optional(),
+  input_clear: z.string().trim().min(1).optional(),
+});
+export type TuiKeybinds = z.infer<typeof TuiKeybindsSchema>;
+
+export const TuiConfigSchema = z.object({
+  keybinds: TuiKeybindsSchema.optional(),
+});
+export type TuiConfig = z.infer<typeof TuiConfigSchema>;
+
 export class PolicyError extends Error {
   readonly kind = "PolicyError";
 }

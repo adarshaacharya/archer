@@ -15,9 +15,11 @@ import {
 } from "@xeq/model-providers";
 import { AgentRequestSchema } from "@xeq/shared";
 import { createBashToolsExecutor } from "@xeq/tools";
-import { OpenTui, type Tui } from "@xeq/tui";
+import { InkTui, type Tui } from "@xeq/tui";
 import type { ModelMessage } from "ai";
 import { z } from "zod";
+import { KeybindManager } from "./keybinds.js";
+import { loadTuiConfig } from "./tui-config.js";
 
 class StubProvider implements ModelProvider {
   private calls = 0;
@@ -46,6 +48,35 @@ class StubProvider implements ModelProvider {
 function parseInitialTask(argv: string[]): string | null {
   const task = argv.join(" ").trim();
   return task.length > 0 ? task : null;
+}
+
+type SlashCommandResult =
+  | { type: "continue"; message: string }
+  | { type: "exit" }
+  | { type: "none" };
+
+function handleSlashCommand(input: string): SlashCommandResult {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith("/")) return { type: "none" };
+
+  const [name] = trimmed.slice(1).split(/\s+/, 1);
+  const command = (name ?? "").toLowerCase();
+
+  if (command === "exit" || command === "quit") {
+    return { type: "exit" };
+  }
+
+  if (command === "help") {
+    return {
+      type: "continue",
+      message: "Commands: /help, /exit, /quit (also: exit, quit)",
+    };
+  }
+
+  return {
+    type: "continue",
+    message: `Unknown command: ${trimmed}. Try /help`,
+  };
 }
 
 function createModelAdapter(provider: ModelProvider): ModelAdapter {
@@ -113,6 +144,7 @@ async function runTask(
   tui: Tui,
   modelAdapter: ModelAdapter,
   toolAdapter: ToolAdapter,
+  promptOptions: string[],
 ): Promise<void> {
   const request = AgentRequestSchema.parse({
     task,
@@ -152,7 +184,7 @@ async function runTask(
     frameIndex += 1;
     tui.renderApprovalPrompt({
       message: `${frame} Processing task...`,
-      options: ["enter=queue next", "exit=quit"],
+      options: ["ctrl+c=cancel"],
     });
   }, 120);
 
@@ -182,7 +214,7 @@ async function runTask(
   });
   tui.renderApprovalPrompt({
     message: "> Type next task",
-    options: ["enter=send", "exit=quit"],
+    options: promptOptions,
   });
 }
 
@@ -190,7 +222,16 @@ async function runInteractive(
   tui: Tui,
   modelAdapter: ModelAdapter,
   toolAdapter: ToolAdapter,
+  keybinds: KeybindManager,
 ): Promise<void> {
+  const promptOptions = [
+    `${keybinds.print("input_submit")}=run`,
+    `${keybinds.print("input_clear")}=clear`,
+    `${keybinds.print("app_exit")}=quit`,
+    "/help",
+    "/exit",
+  ];
+
   emitKeypressEvents(stdin);
   const canUseRawMode = stdin.isTTY && typeof stdin.setRawMode === "function";
   if (canUseRawMode) {
@@ -203,36 +244,63 @@ async function runInteractive(
       let buffer = "";
       tui.renderApprovalPrompt({
         message: `> ${buffer}`,
-        options: ["enter=send", "exit=quit"],
+        options: promptOptions,
       });
 
-      const onKeypress = (char: string, key: { name?: string; ctrl?: boolean }) => {
-        if (key.ctrl && key.name === "c") {
-          stdin.off("keypress", onKeypress);
-          reject(new Error("cancelled"));
+      const onKeypress = (
+        char: string,
+        key: { name?: string; ctrl?: boolean; shift?: boolean; meta?: boolean },
+      ) => {
+        if (keybinds.consumeLeaderIfMatched(key)) {
           return;
         }
 
-        if (key.name === "return" || key.name === "enter") {
+        if (keybinds.match("input_submit", key)) {
+          keybinds.resetLeader();
           stdin.off("keypress", onKeypress);
           resolve(buffer.trim());
           return;
         }
 
-        if (key.name === "backspace") {
+        if (keybinds.match("input_backspace", key)) {
+          keybinds.resetLeader();
           buffer = buffer.slice(0, -1);
           tui.renderApprovalPrompt({
             message: `> ${buffer}`,
-            options: ["enter=send", "exit=quit"],
+            options: promptOptions,
           });
           return;
         }
 
+        if (keybinds.match("input_clear", key)) {
+          keybinds.resetLeader();
+          if (buffer.length > 0) {
+            buffer = "";
+            tui.renderApprovalPrompt({
+              message: `> ${buffer}`,
+              options: promptOptions,
+            });
+            return;
+          }
+
+          stdin.off("keypress", onKeypress);
+          reject(new Error("cancelled"));
+          return;
+        }
+
+        if (keybinds.match("app_exit", key)) {
+          keybinds.resetLeader();
+          stdin.off("keypress", onKeypress);
+          reject(new Error("cancelled"));
+          return;
+        }
+
         if (char && !key.ctrl) {
+          keybinds.resetLeader();
           buffer += char;
           tui.renderApprovalPrompt({
             message: `> ${buffer}`,
-            options: ["enter=send", "exit=quit"],
+            options: promptOptions,
           });
         }
       };
@@ -244,10 +312,21 @@ async function runInteractive(
     while (true) {
       const line = await readInputLine();
       if (line.length === 0) continue;
+
+      const slash = handleSlashCommand(line);
+      if (slash.type === "exit") break;
+      if (slash.type === "continue") {
+        tui.renderApprovalPrompt({
+          message: slash.message,
+          options: promptOptions,
+        });
+        continue;
+      }
+
       if (line === "exit" || line === "quit") break;
 
       try {
-        await runTask(line, tui, modelAdapter, toolAdapter);
+        await runTask(line, tui, modelAdapter, toolAdapter, promptOptions);
       } catch (error) {
         tui.renderApprovalPrompt({
           message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -272,21 +351,30 @@ async function main(): Promise<void> {
     : new StubProvider();
   const modelAdapter = createModelAdapter(provider);
   const toolAdapter = await createToolAdapter(process.cwd());
+  const tuiConfig = await loadTuiConfig(process.cwd());
+  const keybinds = new KeybindManager(tuiConfig.keybinds);
+  const promptOptions = [
+    `${keybinds.print("input_submit")}=run`,
+    `${keybinds.print("input_clear")}=clear`,
+    `${keybinds.print("app_exit")}=quit`,
+    "/help",
+    "/exit",
+  ];
 
-  const tui: Tui = new OpenTui();
+  const tui: Tui = new InkTui();
   await tui.start();
 
   try {
     tui.renderApprovalPrompt({
-      message: "Interactive mode. Type a task. Use 'exit' to quit.",
-      options: ["exit"],
+      message: "Interactive mode. Type a task. Use /exit to quit.",
+      options: promptOptions,
     });
 
     if (initialTask) {
-      await runTask(initialTask, tui, modelAdapter, toolAdapter);
+      await runTask(initialTask, tui, modelAdapter, toolAdapter, promptOptions);
     }
 
-    await runInteractive(tui, modelAdapter, toolAdapter);
+    await runInteractive(tui, modelAdapter, toolAdapter, keybinds);
   } finally {
     tui.stop();
   }

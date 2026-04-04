@@ -11,7 +11,7 @@ Terminal-first AI coding agent monorepo (Bun + Turborepo).
 Early V1 scaffolding is in progress:
 - core package boundaries created
 - shared contracts and sandbox interfaces created
-- OpenTUI-based `packages/tui` started
+- Ink-based `packages/tui` started
 
 See:
 - `PLAN.md` for architecture decisions
@@ -25,7 +25,7 @@ See:
 - `packages/sandbox`: policy decisions (`allow/ask/deny`)
 - `packages/shared`: zod contracts and shared types/errors
 - `packages/tools`: tool runtime (currently includes `readFileTool`)
-- `packages/tui`: terminal UI layer (OpenTUI + console fallback)
+- `packages/tui`: terminal UI layer (Ink + React)
 
 ## Commands
 

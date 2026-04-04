@@ -1,4 +1,5 @@
-import { BoxRenderable, type CliRenderer, TextRenderable, createCliRenderer } from "@opentui/core";
+import React from "react";
+import { Box, Text, render, type Instance } from "ink";
 import type { AgentStep, RunSummary } from "@xeq/shared";
 import { defaultTuiLayout } from "./layout.js";
 import { xeqBranding, xeqTheme } from "./theme.js";
@@ -16,174 +17,137 @@ export interface Tui {
   stop(): void;
 }
 
-export class OpenTui implements Tui {
-  private renderer: CliRenderer | null = null;
+type TuiViewProps = {
+  headerText: string;
+  statusText: string;
+  stepsText: string;
+  promptLine: string;
+  footerHints: string;
+};
+
+const XEQ_LOGO = [
+  "██╗  ██╗███████╗ ██████╗ ",
+  "╚██╗██╔╝██╔════╝██╔═══██╗",
+  " ╚███╔╝ █████╗  ██║   ██║",
+  " ██╔██╗ ██╔══╝  ██║▄▄ ██║",
+  "██╔╝ ██╗███████╗╚██████╔╝",
+  "╚═╝  ╚═╝╚══════╝ ╚══▀▀═╝ ",
+].join("\n");
+
+function TuiView({
+  headerText,
+  statusText,
+  stepsText,
+  promptLine,
+  footerHints,
+}: TuiViewProps): React.ReactElement {
+  return React.createElement(
+    Box,
+    { flexDirection: "column", paddingX: defaultTuiLayout.framePadding, paddingY: 0, height: "100%" },
+    React.createElement(Box, { flexDirection: "column", marginBottom: 1 }, 
+      React.createElement(Text, { color: xeqTheme.accentStrong }, XEQ_LOGO),
+      React.createElement(Text, { color: xeqTheme.text }, headerText),
+      React.createElement(Text, { color: xeqTheme.muted }, statusText),
+    ),
+    React.createElement(Text, {}, ""),
+    React.createElement(Text, { color: xeqTheme.accent }, "Transcript"),
+    React.createElement(Box, { flexGrow: 1 }, React.createElement(Text, { color: xeqTheme.text }, stepsText)),
+    React.createElement(Text, {}, ""),
+    React.createElement(
+      Box,
+      {
+        borderStyle: "round",
+        borderColor: xeqTheme.accent,
+        flexDirection: "column",
+        paddingX: 1,
+      },
+      React.createElement(Text, { color: xeqTheme.surface }, " ".repeat(120)),
+      React.createElement(Text, { color: xeqTheme.text }, promptLine),
+      React.createElement(Text, { color: xeqTheme.surface }, " ".repeat(120)),
+    ),
+    React.createElement(Text, { color: xeqTheme.muted }, footerHints),
+  );
+}
+
+export class InkTui implements Tui {
+  private ink: Instance | null = null;
   private steps: string[] = [];
-  private welcomeText: TextRenderable | null = null;
-  private statusText: TextRenderable | null = null;
-  private stepsText: TextRenderable | null = null;
-  private promptText: TextRenderable | null = null;
+  private headerText = "XEQ  creative terminal coding agent";
+  private statusText = "ready  model=unknown  sandbox=local  tools=stub";
+  private stepsText = "Waiting for first step...";
+  private promptLine = ">";
+  private footerHints = `[${xeqBranding.promptHint}]`;
 
   async start(): Promise<void> {
-    this.renderer = await createCliRenderer({
-      useAlternateScreen: true,
-      useMouse: true,
+    this.enterAlternateScreen();
+    this.ink = render(this.createView(), {
       exitOnCtrlC: false,
-      targetFps: 30,
+      patchConsole: false,
     });
-
-    const frame = new BoxRenderable(this.renderer, {
-      id: "xeq-frame",
-      width: "100%",
-      height: "100%",
-      flexDirection: "column",
-      border: true,
-      borderStyle: "single",
-      title: xeqBranding.frameTitle,
-      padding: defaultTuiLayout.framePadding,
-      rowGap: defaultTuiLayout.frameRowGap,
-      borderColor: xeqTheme.accentStrong,
-    });
-
-    const topRow = new BoxRenderable(this.renderer, {
-      id: "top-row",
-      width: "100%",
-      height: 9,
-      flexDirection: "column",
-    });
-
-    const welcomeBox = new BoxRenderable(this.renderer, {
-      id: "welcome-box",
-      width: "100%",
-      border: true,
-      title: "Welcome",
-      padding: 1,
-      borderColor: xeqTheme.border,
-    });
-    this.welcomeText = new TextRenderable(this.renderer, {
-      id: "welcome-text",
-      content:
-        "██╗  ██╗███████╗ ██████╗\n" +
-        "╚██╗██╔╝██╔════╝██╔═══██╗\n" +
-        " ╚███╔╝ █████╗  ██║   ██║\n" +
-        " ██╔██╗ ██╔══╝  ██║▄▄ ██║\n" +
-        "██╔╝ ██╗███████╗╚██████╔╝\n" +
-        "╚═╝  ╚═╝╚══════╝ ╚══▀▀═╝\n" +
-        "Terminal coding agent",
-      width: "100%",
-      fg: xeqTheme.accentStrong,
-    });
-    topRow.add(welcomeBox);
-    welcomeBox.add(this.welcomeText);
-
-    const statusRow = new BoxRenderable(this.renderer, {
-      id: "status-row",
-      width: "100%",
-      border: true,
-      title: "Status",
-      padding: 1,
-      minHeight: defaultTuiLayout.headerMinHeight,
-      borderColor: xeqTheme.border,
-    });
-    this.statusText = new TextRenderable(this.renderer, {
-      id: "status-text",
-      content: "ready | model=unknown | sandbox=local | tools=stub",
-      width: "100%",
-      fg: xeqTheme.muted,
-    });
-    statusRow.add(this.statusText);
-
-    const stepsBox = new BoxRenderable(this.renderer, {
-      id: "steps-box",
-      width: "100%",
-      flexGrow: 1,
-      border: true,
-      title: xeqBranding.streamTitle,
-      padding: 1,
-      borderColor: xeqTheme.border,
-    });
-    this.stepsText = new TextRenderable(this.renderer, {
-      id: "steps-text",
-      content: "Waiting for first step...",
-      width: "100%",
-      height: "100%",
-      fg: xeqTheme.text,
-    });
-    stepsBox.add(this.stepsText);
-
-    const promptBox = new BoxRenderable(this.renderer, {
-      id: "prompt-box",
-      width: "100%",
-      border: true,
-      title: "Prompt",
-      padding: 1,
-      minHeight: defaultTuiLayout.approvalMinHeight,
-      borderColor: xeqTheme.accent,
-    });
-    this.promptText = new TextRenderable(this.renderer, {
-      id: "prompt-text",
-      content: `> Type your task (${xeqBranding.promptHint})`,
-      width: "100%",
-      fg: xeqTheme.muted,
-    });
-    promptBox.add(this.promptText);
-
-    frame.add(topRow);
-    frame.add(statusRow);
-    frame.add(stepsBox);
-    frame.add(promptBox);
-
-    this.renderer.root.add(frame);
-    this.renderer.start();
-    this.renderer.requestRender();
   }
 
   renderStep(step: AgentStep): void {
-    const parts: string[] = [];
-    parts.push(`[${step.step}] Action: ${step.action}`);
-    if (step.thought) parts.push(`Thought: ${step.thought}`);
-    if (step.observation) parts.push(`Observation: ${step.observation}`);
-
-    this.steps.push(parts.join("\n"));
+    const parts = [`[${step.step}] ${step.action}`];
+    if (step.thought) parts.push(step.thought);
+    if (step.observation) parts.push(step.observation);
+    this.steps.push(parts.join(" | "));
     if (this.steps.length > defaultTuiLayout.maxStepsVisible) this.steps.shift();
 
-    if (this.stepsText) this.stepsText.content = this.steps.join("\n\n");
+    this.stepsText = this.steps.join("\n\n");
     this.requestRender();
   }
 
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
-    if (!this.promptText) return;
-
     if (!prompt) {
-      this.promptText.content = `> Type your task (${xeqBranding.promptHint})`;
+      this.promptLine = ">";
+      this.footerHints = `[${xeqBranding.promptHint}]`;
       this.requestRender();
       return;
     }
 
-    const optionsText =
-      prompt.options && prompt.options.length > 0 ? `\nOptions: ${prompt.options.join(" / ")}` : "";
-    this.promptText.content = `${prompt.message}${optionsText}`;
+    this.promptLine = prompt.message;
+    this.footerHints =
+      prompt.options && prompt.options.length > 0 ? `[${prompt.options.join(" · ")}]` : "";
     this.requestRender();
   }
 
   renderSummary(summary: RunSummary): void {
-    if (this.statusText) {
-      this.statusText.content = `result=${summary.success ? "ok" : "failed"} | steps=${summary.steps} | durationMs=${summary.durationMs} | at=${new Date().toLocaleTimeString()}`;
-    }
-    if (this.welcomeText) {
-      this.welcomeText.content = "XEQ ready for next task";
-      this.welcomeText.fg = xeqTheme.text;
-    }
+    this.statusText = `last_run=${summary.success ? "ok" : "failed"}  steps=${summary.steps}  duration_ms=${summary.durationMs}`;
+    this.headerText = "XEQ ready";
     this.requestRender();
   }
 
   stop(): void {
-    if (!this.renderer) return;
-    this.renderer.destroy();
-    this.renderer = null;
+    if (!this.ink) return;
+    this.ink.unmount();
+    this.ink = null;
+    this.exitAlternateScreen();
   }
 
   private requestRender(): void {
-    this.renderer?.requestRender();
+    if (!this.ink) return;
+    this.ink.rerender(this.createView());
+  }
+
+  private createView(): React.ReactElement {
+    return React.createElement(TuiView, {
+      headerText: this.headerText,
+      statusText: this.statusText,
+      stepsText: this.stepsText,
+      promptLine: this.promptLine,
+      footerHints: this.footerHints,
+    });
+  }
+
+  private enterAlternateScreen(): void {
+    if (!process.stdout.isTTY) return;
+    // DECSET 1049: switch to alternate screen buffer, then clear + home.
+    process.stdout.write("\x1b[?1049h\x1b[2J\x1b[H");
+  }
+
+  private exitAlternateScreen(): void {
+    if (!process.stdout.isTTY) return;
+    // DECRST 1049: restore normal screen buffer.
+    process.stdout.write("\x1b[?1049l");
   }
 }
