@@ -1,6 +1,6 @@
 # @xeq/tui
 
-Terminal UI package (Ink + React).
+Terminal UI package (pi-tui).
 
 ## Responsibility
 
@@ -16,5 +16,5 @@ Terminal UI package (Ink + React).
 ## Depends On
 
 - `@xeq/shared`
-- `ink`
+- `@mariozechner/pi-tui`
 - `react`

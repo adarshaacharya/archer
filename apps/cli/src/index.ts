@@ -1,6 +1,5 @@
 import { performance } from "node:perf_hooks";
-import { stdin, stdout } from "node:process";
-import { emitKeypressEvents } from "node:readline";
+import { stdout } from "node:process";
 import {
   type AgentMiddleware,
   type ModelAdapter,
@@ -15,7 +14,7 @@ import {
 } from "@xeq/model-providers";
 import { AgentRequestSchema } from "@xeq/shared";
 import { createBashToolsExecutor } from "@xeq/tools";
-import { InkTui, type Tui } from "@xeq/tui";
+import { PiTui, type Tui } from "@xeq/tui";
 import type { ModelMessage } from "ai";
 import { z } from "zod";
 import { KeybindManager } from "./keybinds.js";
@@ -48,6 +47,13 @@ class StubProvider implements ModelProvider {
 function parseInitialTask(argv: string[]): string | null {
   const task = argv.join(" ").trim();
   return task.length > 0 ? task : null;
+}
+
+function isPlainPrintableInput(char: string): boolean {
+  if (char.length !== 1) return false;
+  const code = char.charCodeAt(0);
+  // Visible ASCII range only; filters protocol fragments like "0u".
+  return code >= 32 && code <= 126;
 }
 
 type SlashCommandResult =
@@ -232,85 +238,8 @@ async function runInteractive(
     "/exit",
   ];
 
-  emitKeypressEvents(stdin);
-  const canUseRawMode = stdin.isTTY && typeof stdin.setRawMode === "function";
-  if (canUseRawMode) {
-    stdin.setRawMode(true);
-  }
-  stdin.resume();
-
-  const readInputLine = () =>
-    new Promise<string>((resolve, reject) => {
-      let buffer = "";
-      tui.renderApprovalPrompt({
-        message: `> ${buffer}`,
-        options: promptOptions,
-      });
-
-      const onKeypress = (
-        char: string,
-        key: { name?: string; ctrl?: boolean; shift?: boolean; meta?: boolean },
-      ) => {
-        if (keybinds.consumeLeaderIfMatched(key)) {
-          return;
-        }
-
-        if (keybinds.match("input_submit", key)) {
-          keybinds.resetLeader();
-          stdin.off("keypress", onKeypress);
-          resolve(buffer.trim());
-          return;
-        }
-
-        if (keybinds.match("input_backspace", key)) {
-          keybinds.resetLeader();
-          buffer = buffer.slice(0, -1);
-          tui.renderApprovalPrompt({
-            message: `> ${buffer}`,
-            options: promptOptions,
-          });
-          return;
-        }
-
-        if (keybinds.match("input_clear", key)) {
-          keybinds.resetLeader();
-          if (buffer.length > 0) {
-            buffer = "";
-            tui.renderApprovalPrompt({
-              message: `> ${buffer}`,
-              options: promptOptions,
-            });
-            return;
-          }
-
-          stdin.off("keypress", onKeypress);
-          reject(new Error("cancelled"));
-          return;
-        }
-
-        if (keybinds.match("app_exit", key)) {
-          keybinds.resetLeader();
-          stdin.off("keypress", onKeypress);
-          reject(new Error("cancelled"));
-          return;
-        }
-
-        if (char && !key.ctrl) {
-          keybinds.resetLeader();
-          buffer += char;
-          tui.renderApprovalPrompt({
-            message: `> ${buffer}`,
-            options: promptOptions,
-          });
-        }
-      };
-
-      stdin.on("keypress", onKeypress);
-    });
-
-  try {
-    while (true) {
-      const line = await readInputLine();
+  while (true) {
+      const line = await tui.readInputLine();
       if (line.length === 0) continue;
 
       const slash = handleSlashCommand(line);
@@ -333,11 +262,6 @@ async function runInteractive(
           options: ["continue", "exit"],
         });
       }
-    }
-  } finally {
-    if (canUseRawMode) {
-      stdin.setRawMode(false);
-    }
   }
 }
 
@@ -361,12 +285,12 @@ async function main(): Promise<void> {
     "/exit",
   ];
 
-  const tui: Tui = new InkTui();
+  const tui: Tui = new PiTui();
   await tui.start();
 
   try {
     tui.renderApprovalPrompt({
-      message: "Interactive mode. Type a task. Use /exit to quit.",
+      message: "Interactive mode (pi). Type a task. Use /exit to quit.",
       options: promptOptions,
     });
 

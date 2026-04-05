@@ -91,7 +91,7 @@ Build a high-quality, terminal-first AI coding agent with:
   - Mastra can be added later if we want workflow/runtime conveniences
 
 ### CLI / UX
-- Decision: **Ink-first terminal UX from V1**
+- Decision: **pi-tui-first terminal UX from V1**
 - `packages/tui` owns terminal rendering/input concerns.
 - `apps/cli` only wires startup/session lifecycle to agent and tui packages.
 
@@ -101,8 +101,7 @@ Build a high-quality, terminal-first AI coding agent with:
 - Eval package for repeatable benchmark tasks
 
 ### Terminal UI Stack
-- Primary: `ink`
-- Component layer: `react`
+- Primary: `@mariozechner/pi-tui`
 - Keep all UI vendor code inside `packages/tui` only
 
 ### Auth / Credentials
@@ -126,7 +125,7 @@ packages/
   tools/               # fs/shell/git/web/search tools
   model-providers/     # OpenAI/Anthropic/OpenRouter/Gemini adapters
   sandbox/             # path + command permission controls
-  tui/                 # Ink rendering/input package
+  tui/                 # pi-tui rendering/input package
   shared/              # types, schemas, config utils
   evals/               # regression/eval harness
 

@@ -10,7 +10,7 @@ Deliver V1 of a terminal-first coding agent (`xeq`) with:
 - patch-based edit flow
 - usage/cost logging
 - baseline eval + speed metrics
-- Ink-based terminal interface
+- pi-tui-based terminal interface
 
 ## 1. Bootstrap Monorepo
 
@@ -150,11 +150,10 @@ Then configure workspaces in root `package.json`:
    - display diff/check results
 4. Exit and save run artifacts.
 
-## 9.1 Build TUI Package (Ink)
+## 9.1 Build TUI Package (pi-tui)
 
 1. Add dependencies:
-   - `ink`
-   - `react`
+   - `@mariozechner/pi-tui`
 2. Implement TUI boundaries:
    - session frame
    - step stream view
