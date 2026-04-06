@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import { runMastraRuntime } from "@xeq/agent-core";
+import { runOpenHarnessRuntime } from "@xeq/agent-core";
 import { AgentRequestSchema } from "@xeq/shared";
 import { PiTui, type Tui } from "@xeq/tui";
 import { KeybindManager } from "./keybinds.js";
@@ -8,6 +8,10 @@ import { loadTuiConfig } from "./tui-config.js";
 function parseInitialTask(argv: string[]): string | null {
   const task = argv.join(" ").trim();
   return task.length > 0 ? task : null;
+}
+
+function newSessionId(): string {
+  return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 type SlashCommandResult =
@@ -39,6 +43,7 @@ async function runTask(
   tui: Tui,
   promptOptions: string[],
   model: string,
+  sessionId: string,
 ): Promise<void> {
   const request = AgentRequestSchema.parse({
     task,
@@ -62,9 +67,10 @@ async function runTask(
     });
   }, 120);
 
-  const result = await runMastraRuntime(
+  const result = await runOpenHarnessRuntime(
     {
       modelId: model,
+      sessionId,
       onStep: (step) => {
         tui.renderStep({
           step: step.step,
@@ -103,6 +109,7 @@ async function runInteractive(
   tui: Tui,
   keybinds: KeybindManager,
   model: string,
+  sessionId: string,
 ): Promise<void> {
   const promptOptions = [
     `${keybinds.print("input_submit")}=run`,
@@ -129,7 +136,7 @@ async function runInteractive(
     if (line === "exit" || line === "quit") break;
 
     try {
-      await runTask(line, tui, promptOptions, model);
+      await runTask(line, tui, promptOptions, model, sessionId);
     } catch (error) {
       tui.renderApprovalPrompt({
         message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -142,6 +149,7 @@ async function runInteractive(
 async function main(): Promise<void> {
   const initialTask = parseInitialTask(process.argv.slice(2));
   const model = process.env.AGENT_MODEL ?? "openai/gpt-4o-mini";
+  const sessionId = newSessionId();
 
   const tuiConfig = await loadTuiConfig(process.cwd());
   const keybinds = new KeybindManager(tuiConfig.keybinds);
@@ -158,15 +166,15 @@ async function main(): Promise<void> {
 
   try {
     tui.renderApprovalPrompt({
-      message: "Interactive mode (mastra). Type a task. Use /exit to quit.",
+      message: "Interactive mode (openharness). Type a task. Use /exit to quit.",
       options: promptOptions,
     });
 
     if (initialTask) {
-      await runTask(initialTask, tui, promptOptions, model);
+      await runTask(initialTask, tui, promptOptions, model, sessionId);
     }
 
-    await runInteractive(tui, keybinds, model);
+    await runInteractive(tui, keybinds, model, sessionId);
   } finally {
     tui.stop();
   }
