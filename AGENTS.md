@@ -73,4 +73,4 @@ Before marking work complete:
 5. Changes align with `PLAN.md` and `STEPS.md`.
 
 
-Please do checkout skills folder for turborepo, mastra or ai sdk skills.
+Please check the skills folder for turborepo, openharness, or ai-sdk skills.

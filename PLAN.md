@@ -65,7 +65,7 @@ Build a high-quality, terminal-first AI coding agent with:
 ## 5. Tech Stack Decisions
 
 ### Core Agent Runtime
-- Decision: **Mastra core-first architecture** (`Agent + Workspace + Memory`)
+- Decision: **OpenHarness core-first architecture** (`Session + Agent + Tools + Policy`)
 - Why:
   - production-grade coding-agent primitives available now
   - reduces custom harness maintenance burden
@@ -88,10 +88,10 @@ Build a high-quality, terminal-first AI coding agent with:
 - Rule: domain logic stays plain TypeScript; Effect is used at I/O and orchestration boundaries.
 
 ### Orchestration Framework
-- Decision: **Adopt Mastra core runtime, avoid deep dependency on alpha Harness APIs**
+- Decision: **Adopt OpenHarness runtime with a thin XEQ adapter layer**
 - Rationale:
-  - Mastra Memory + Workspace directly solve current gaps
-  - Mastra Harness is alpha; use carefully and only where needed
+  - OpenHarness is purpose-built for coding-agent execution loops
+  - keeps runtime concerns explicit (session, tools, policy, execution)
   - Keep an XEQ orchestration adapter layer to preserve swapability
 
 ### CLI / UX
@@ -125,7 +125,7 @@ apps/
   cli/                 # terminal client
   server/              # optional later
 packages/
-  agent-core/          # xeq orchestration adapter over mastra runtime
+  agent-core/          # xeq orchestration adapter over openharness runtime
   tools/               # fs/shell/git/web/search tools
   model-providers/     # OpenAI/Anthropic/OpenRouter/Gemini adapters
   sandbox/             # policy + sandbox config enforcement
@@ -143,7 +143,7 @@ packages/
 - Define shared contracts (`ToolRequest`, `ToolResult`, `AgentStep`, errors)
 
 ### Phase 1: Safe Single-Agent Loop
-- Wire Mastra Agent + Workspace + Memory in `agent-core`
+- Wire OpenHarness Session + Agent + Tools in `agent-core`
 - Add approval modes (`suggest`, `auto-edit`)
 - Add permission engine (`allow/ask/deny`) for path and shell commands
 - Implement safe tools:
@@ -232,7 +232,7 @@ packages/
 ## 13. Next Step
 
 Before coding:
-1. Confirm Mastra core-first architecture and boundaries.
+1. Confirm OpenHarness core-first architecture and boundaries.
 2. Freeze V1 scope and acceptance criteria.
 3. Start with harness-migration slice: replace custom loop plumbing, keep CLI/TUI unchanged.
 
