@@ -12,6 +12,8 @@
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@mastra/core": "^1.22.0",
+    "@mastra/libsql": "^1.7.4",
     "@xeq/model-providers": "workspace:*",
     "@xeq/shared": "workspace:*",
     "@xeq/tools": "workspace:*"
