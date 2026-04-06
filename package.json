@@ -5,6 +5,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev",
     "cli": "cd apps/cli && bun run src/index.ts",
+    "link": "cd apps/cli && bun link",
     "lint": "turbo run lint",
     "format": "turbo run format",
     "check-types": "turbo run check-types"

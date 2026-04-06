@@ -1,6 +1,5 @@
 import {
     NodeFsProvider,
-    NodeShellProvider,
     type FsProvider,
     type ShellProvider,
 } from "@openharness/core";
@@ -19,10 +18,8 @@ export function createSandboxEnvironment(opts: {
     const policy = new DefaultSandboxPolicy(opts.cwd);
 
     const baseFs = new NodeFsProvider({ cwd: opts.cwd });
-    const baseShell = new NodeShellProvider({ cwd: opts.cwd });
-
     const fs = new SandboxFsProvider(baseFs, policy);
-    const shell = new SandboxShellProvider(baseShell, policy);
+    const shell = new SandboxShellProvider(policy);
 
     return { fs, shell };
 }

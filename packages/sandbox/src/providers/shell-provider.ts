@@ -1,13 +1,17 @@
 import type { ShellProvider, ShellResult } from "@openharness/core";
-
 import type { SandboxPolicy } from "../policy.js";
 import { PolicyError } from "./fs-provider.js";
+import { getSandboxRunner } from "../runners/index.js";
+import type { SandboxRunner } from "../runners/types.js";
 
 export class SandboxShellProvider implements ShellProvider {
+    private readonly runner: SandboxRunner;
+
     constructor(
-        private readonly base: ShellProvider,
         private readonly policy: SandboxPolicy,
-    ) { }
+    ) {
+        this.runner = getSandboxRunner();
+    }
 
     async exec(
         command: string,
@@ -19,12 +23,12 @@ export class SandboxShellProvider implements ShellProvider {
     ): Promise<ShellResult> {
         const decision = this.policy.decideCommand(command);
 
-        if (decision === "ask") {
+        if (decision !== "allow") {
             throw new PolicyError(
                 `Sandbox blocked command: ${command} (${decision})`,
             );
         }
 
-        return this.base.exec(command, options);
+        return this.runner(command, options);
     }
 }
