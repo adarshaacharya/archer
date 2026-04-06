@@ -27,7 +27,7 @@ function createSession(cwd: string, modelId?: string, instructions?: string, ses
     maxSteps: DEFAULT_MAX_STEPS,
     tools,
     approve: (toolCall) => {
-      if (toolCall.toolName === "bash" && process.env.XEQ_REQUIRE_COMMAND_APPROVAL === "true") {
+      if (toolCall.toolName === "bash") {
         return false;
       }
       return true;

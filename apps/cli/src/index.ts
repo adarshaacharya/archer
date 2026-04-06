@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { performance } from "node:perf_hooks";
 import { runOpenHarnessRuntime } from "@xeq/agent-core";
 import { AgentRequestSchema } from "@xeq/shared";
