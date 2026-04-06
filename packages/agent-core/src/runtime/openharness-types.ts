@@ -1,3 +1,5 @@
+import type { FsProvider, ShellProvider } from "@openharness/core";
+
 export interface OpenHarnessRuntimeStepEvent {
   step: number;
   action: string;
@@ -5,9 +7,15 @@ export interface OpenHarnessRuntimeStepEvent {
   observation?: string;
 }
 
+export type RuntimeProviders = {
+  fs: FsProvider;
+  shell: ShellProvider;
+}
+
 export interface OpenHarnessRuntimeDeps {
   modelId?: string;
   instructions?: string;
   onStep?: (event: OpenHarnessRuntimeStepEvent) => void;
   sessionId?: string;
+  providers: RuntimeProviders;
 }

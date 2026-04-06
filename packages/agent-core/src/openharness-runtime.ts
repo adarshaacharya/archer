@@ -15,7 +15,7 @@ export async function runOpenHarnessRuntime(
   const maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const sessionKey = deps.sessionId ? sanitizeId(deps.sessionId) : runId;
-  const runtime = getOrCreateSession(options.cwd, deps.modelId, deps.instructions, sessionKey);
+  const runtime = getOrCreateSession({ cwd: options.cwd, providers: deps.providers, modelId: deps.modelId, instructions: deps.instructions, sessionId: sessionKey });
   let stepCounter = 0;
   let finalText = "";
 

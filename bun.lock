@@ -11,9 +11,14 @@
     },
     "apps/cli": {
       "name": "@xeq/cli",
+      "version": "0.1.0",
+      "bin": {
+        "xeq": "dist/index.js"
+      },
       "dependencies": {
         "@xeq/agent-core": "workspace:*",
         "@xeq/model-providers": "workspace:*",
+        "@xeq/sandbox": "workspace:*",
         "@xeq/shared": "workspace:*",
         "@xeq/tui": "workspace:*",
       },

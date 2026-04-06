@@ -2,6 +2,7 @@ import { Agent, NodeFsProvider, NodeShellProvider, Session, createLocalTools } f
 import { DEFAULT_MAX_STEPS } from "../types.js";
 import { sanitizeId } from "./ids.js";
 import { resolveModel } from "./model.js";
+import type { RuntimeProviders } from "./openharness-types.js";
 
 type RuntimeSession = {
   session: Session;
@@ -11,11 +12,22 @@ type RuntimeSession = {
 
 const SESSIONS = new Map<string, RuntimeSession>();
 
-function createSession(cwd: string, modelId?: string, instructions?: string, sessionId?: string): RuntimeSession {
+function createSession(
+  {
+    cwd,
+    providers,
+    modelId,
+    instructions,
+    sessionId,
+  }: {
+    cwd: string,
+    providers: RuntimeProviders,
+    modelId?: string;
+    instructions?: string;
+    sessionId?: string;
+  }): RuntimeSession {
   const model = resolveModel(modelId);
-  const fs = new NodeFsProvider({ cwd });
-  const shell = new NodeShellProvider({ cwd });
-  const tools = createLocalTools({ fs, shell });
+  const tools = createLocalTools({ fs: providers.fs, shell: providers.shell });
 
   const agent = new Agent({
     name: "xeq",
@@ -44,10 +56,19 @@ function createSession(cwd: string, modelId?: string, instructions?: string, ses
 }
 
 export function getOrCreateSession(
-  cwd: string,
-  modelId?: string,
-  instructions?: string,
-  sessionId?: string,
+  {
+    cwd,
+    providers,
+    modelId,
+    instructions,
+    sessionId,
+  }: {
+    cwd: string,
+    providers: RuntimeProviders,
+    modelId?: string,
+    instructions?: string,
+    sessionId?: string,
+  }
 ): RuntimeSession {
   const key = sanitizeId(sessionId ?? `${cwd}:${modelId ?? ""}`);
   const currentModel = modelId ?? process.env.AGENT_MODEL ?? "openai/gpt-4o-mini";
@@ -56,7 +77,7 @@ export function getOrCreateSession(
     return existing;
   }
 
-  const created = createSession(cwd, currentModel, instructions, key);
+  const created = createSession({ cwd, providers, modelId: currentModel, instructions, sessionId: key });
   SESSIONS.set(key, created);
   return created;
 }

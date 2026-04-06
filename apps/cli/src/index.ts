@@ -1,10 +1,11 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { performance } from "node:perf_hooks";
 import { runOpenHarnessRuntime } from "@xeq/agent-core";
 import { AgentRequestSchema } from "@xeq/shared";
 import { PiTui, type Tui } from "@xeq/tui";
 import { KeybindManager } from "./keybinds.js";
 import { loadTuiConfig } from "./tui-config.js";
+import { createSandboxEnvironment } from "@xeq/sandbox";
 
 function parseInitialTask(argv: string[]): string | null {
   const task = argv.join(" ").trim();
@@ -68,10 +69,13 @@ async function runTask(
     });
   }, 120);
 
+  const env = createSandboxEnvironment({ cwd: request.repoRoot });
+
   const result = await runOpenHarnessRuntime(
     {
       modelId: model,
       sessionId,
+      providers: env,
       onStep: (step) => {
         tui.renderStep({
           step: step.step,
