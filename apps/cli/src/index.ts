@@ -1,16 +1,24 @@
 import { performance } from "node:perf_hooks";
-import { stdin, stdout } from "node:process";
-import { emitKeypressEvents } from "node:readline";
+import { stdout } from "node:process";
 import {
   type AgentMiddleware,
   type ModelAdapter,
   type ToolAdapter,
   runHarness,
 } from "@xeq/agent-core";
-import { type ModelProvider, type ModelResponse, OpenRouterProvider } from "@xeq/model-providers";
+import {
+  type ModelDecisionResponse,
+  type ModelProvider,
+  type ModelResponse,
+  OpenRouterProvider,
+} from "@xeq/model-providers";
 import { AgentRequestSchema } from "@xeq/shared";
-import { OpenTui, type Tui } from "@xeq/tui";
+import { createBashToolsExecutor } from "@xeq/tools";
+import { PiTui, type Tui } from "@xeq/tui";
 import type { ModelMessage } from "ai";
+import { z } from "zod";
+import { KeybindManager } from "./keybinds.js";
+import { loadTuiConfig } from "./tui-config.js";
 
 class StubProvider implements ModelProvider {
   private calls = 0;
@@ -22,6 +30,18 @@ class StubProvider implements ModelProvider {
     }
     return { content: `Stub response step ${this.calls}` };
   }
+
+  async decide(_messages: ModelMessage[]): Promise<ModelDecisionResponse> {
+    this.calls += 1;
+    if (this.calls >= 3) {
+      return { content: "stub run complete", toolCalls: [] };
+    }
+
+    return {
+      content: "",
+      toolCalls: [{ name: "bash", input: { command: "ls -la" } }],
+    };
+  }
 }
 
 function parseInitialTask(argv: string[]): string | null {
@@ -29,36 +49,97 @@ function parseInitialTask(argv: string[]): string | null {
   return task.length > 0 ? task : null;
 }
 
+function isPlainPrintableInput(char: string): boolean {
+  if (char.length !== 1) return false;
+  const code = char.charCodeAt(0);
+  // Visible ASCII range only; filters protocol fragments like "0u".
+  return code >= 32 && code <= 126;
+}
+
+type SlashCommandResult =
+  | { type: "continue"; message: string }
+  | { type: "exit" }
+  | { type: "none" };
+
+function handleSlashCommand(input: string): SlashCommandResult {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith("/")) return { type: "none" };
+
+  const [name] = trimmed.slice(1).split(/\s+/, 1);
+  const command = (name ?? "").toLowerCase();
+
+  if (command === "exit" || command === "quit") {
+    return { type: "exit" };
+  }
+
+  if (command === "help") {
+    return {
+      type: "continue",
+      message: "Commands: /help, /exit, /quit (also: exit, quit)",
+    };
+  }
+
+  return {
+    type: "continue",
+    message: `Unknown command: ${trimmed}. Try /help`,
+  };
+}
+
 function createModelAdapter(provider: ModelProvider): ModelAdapter {
+  const bashCallInputSchema = z.object({
+    command: z.string().min(1),
+  });
+
   return {
     async decide({ state, signal }) {
-      const response = await provider.complete(state.messages as ModelMessage[]);
+      const response = await provider.decide(state.messages as ModelMessage[]);
       if (signal.aborted) {
         throw new Error("run aborted");
       }
 
-      const text = response.content.trim();
-      if (text.startsWith("DONE:")) {
-        return {
-          type: "final",
-          text: text.replace(/^DONE:\s*/, ""),
-        };
+      const firstToolCall = response.toolCalls[0];
+      if (firstToolCall && firstToolCall.name === "bash") {
+        const parsedInput = bashCallInputSchema.safeParse(firstToolCall.input);
+        if (parsedInput.success) {
+          return {
+            type: "tool_call",
+            call: { id: firstToolCall.id, name: "bash", input: parsedInput.data },
+          };
+        }
       }
 
-      return { type: "final", text };
+      return { type: "final", text: response.content.trim() || "Task complete" };
     },
   };
 }
 
-function createToolAdapter(): ToolAdapter {
+async function createToolAdapter(repoRoot: string): Promise<ToolAdapter> {
+  const executor = await createBashToolsExecutor({
+    uploadDirectory: { source: repoRoot },
+  });
+
   return {
     async execute(call) {
+      if (call.name !== "bash") {
+        return {
+          ok: false,
+          error: {
+            code: "TOOL_NOT_ALLOWED",
+            message: `Only bash tool is allowed. Received: ${call.name}`,
+          },
+        };
+      }
+
+      const result = await executor.executeTool("bash", call.input);
       return {
-        ok: false,
-        error: {
-          code: "TOOL_NOT_IMPLEMENTED",
-          message: `Tool ${call.name} not implemented yet`,
-        },
+        ok: result.ok,
+        output: result.output ?? "",
+        error: result.ok
+          ? undefined
+          : {
+              code: "BASH_TOOL_ERROR",
+              message: result.error ?? "bash execution failed",
+            },
       };
     },
   };
@@ -69,6 +150,7 @@ async function runTask(
   tui: Tui,
   modelAdapter: ModelAdapter,
   toolAdapter: ToolAdapter,
+  promptOptions: string[],
 ): Promise<void> {
   const request = AgentRequestSchema.parse({
     task,
@@ -108,7 +190,7 @@ async function runTask(
     frameIndex += 1;
     tui.renderApprovalPrompt({
       message: `${frame} Processing task...`,
-      options: ["enter=queue next", "exit=quit"],
+      options: ["ctrl+c=cancel"],
     });
   }, 120);
 
@@ -138,7 +220,7 @@ async function runTask(
   });
   tui.renderApprovalPrompt({
     message: "> Type next task",
-    options: ["enter=send", "exit=quit"],
+    options: promptOptions,
   });
 }
 
@@ -146,75 +228,40 @@ async function runInteractive(
   tui: Tui,
   modelAdapter: ModelAdapter,
   toolAdapter: ToolAdapter,
+  keybinds: KeybindManager,
 ): Promise<void> {
-  emitKeypressEvents(stdin);
-  const canUseRawMode = stdin.isTTY && typeof stdin.setRawMode === "function";
-  if (canUseRawMode) {
-    stdin.setRawMode(true);
-  }
-  stdin.resume();
+  const promptOptions = [
+    `${keybinds.print("input_submit")}=run`,
+    `${keybinds.print("input_clear")}=clear`,
+    `${keybinds.print("app_exit")}=quit`,
+    "/help",
+    "/exit",
+  ];
 
-  const readInputLine = () =>
-    new Promise<string>((resolve, reject) => {
-      let buffer = "";
-      tui.renderApprovalPrompt({
-        message: `> ${buffer}`,
-        options: ["enter=send", "exit=quit"],
-      });
-
-      const onKeypress = (char: string, key: { name?: string; ctrl?: boolean }) => {
-        if (key.ctrl && key.name === "c") {
-          stdin.off("keypress", onKeypress);
-          reject(new Error("cancelled"));
-          return;
-        }
-
-        if (key.name === "return" || key.name === "enter") {
-          stdin.off("keypress", onKeypress);
-          resolve(buffer.trim());
-          return;
-        }
-
-        if (key.name === "backspace") {
-          buffer = buffer.slice(0, -1);
-          tui.renderApprovalPrompt({
-            message: `> ${buffer}`,
-            options: ["enter=send", "exit=quit"],
-          });
-          return;
-        }
-
-        if (char && !key.ctrl) {
-          buffer += char;
-          tui.renderApprovalPrompt({
-            message: `> ${buffer}`,
-            options: ["enter=send", "exit=quit"],
-          });
-        }
-      };
-
-      stdin.on("keypress", onKeypress);
-    });
-
-  try {
-    while (true) {
-      const line = await readInputLine();
+  while (true) {
+      const line = await tui.readInputLine();
       if (line.length === 0) continue;
+
+      const slash = handleSlashCommand(line);
+      if (slash.type === "exit") break;
+      if (slash.type === "continue") {
+        tui.renderApprovalPrompt({
+          message: slash.message,
+          options: promptOptions,
+        });
+        continue;
+      }
+
       if (line === "exit" || line === "quit") break;
 
       try {
-        await runTask(line, tui, modelAdapter, toolAdapter);
+        await runTask(line, tui, modelAdapter, toolAdapter, promptOptions);
       } catch (error) {
         tui.renderApprovalPrompt({
           message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,
           options: ["continue", "exit"],
         });
       }
-    }
-  } finally {
-    if (canUseRawMode) {
-      stdin.setRawMode(false);
-    }
   }
 }
 
@@ -227,22 +274,31 @@ async function main(): Promise<void> {
     ? new OpenRouterProvider(model, apiKey)
     : new StubProvider();
   const modelAdapter = createModelAdapter(provider);
-  const toolAdapter = createToolAdapter();
+  const toolAdapter = await createToolAdapter(process.cwd());
+  const tuiConfig = await loadTuiConfig(process.cwd());
+  const keybinds = new KeybindManager(tuiConfig.keybinds);
+  const promptOptions = [
+    `${keybinds.print("input_submit")}=run`,
+    `${keybinds.print("input_clear")}=clear`,
+    `${keybinds.print("app_exit")}=quit`,
+    "/help",
+    "/exit",
+  ];
 
-  const tui: Tui = new OpenTui();
+  const tui: Tui = new PiTui();
   await tui.start();
 
   try {
     tui.renderApprovalPrompt({
-      message: "Interactive mode. Type a task. Use 'exit' to quit.",
-      options: ["exit"],
+      message: "Interactive mode (pi). Type a task. Use /exit to quit.",
+      options: promptOptions,
     });
 
     if (initialTask) {
-      await runTask(initialTask, tui, modelAdapter, toolAdapter);
+      await runTask(initialTask, tui, modelAdapter, toolAdapter, promptOptions);
     }
 
-    await runInteractive(tui, modelAdapter, toolAdapter);
+    await runInteractive(tui, modelAdapter, toolAdapter, keybinds);
   } finally {
     tui.stop();
   }

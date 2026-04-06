@@ -14,6 +14,7 @@
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^2.3.3",
     "@xeq/shared": "workspace:*",
-    "ai": "^6.0.141"
+    "ai": "^6.0.141",
+    "zod": "^4.1.5"
   }
 }

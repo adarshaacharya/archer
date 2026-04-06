@@ -8,9 +8,9 @@ export interface TuiLayout {
 }
 
 export const defaultTuiLayout: TuiLayout = {
-  framePadding: 1,
-  frameRowGap: 1,
-  headerMinHeight: 3,
+  framePadding: 0,
+  frameRowGap: 0,
+  headerMinHeight: 1,
   approvalMinHeight: 3,
   summaryMinHeight: 3,
   maxStepsVisible: 50,

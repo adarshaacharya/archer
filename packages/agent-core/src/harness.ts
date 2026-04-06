@@ -36,6 +36,10 @@ function newRunId(): string {
   return `run_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function newToolCallId(step: number): string {
+  return `tool_${step}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export async function runHarness(
   deps: HarnessDeps,
   prompt: string,
@@ -88,6 +92,19 @@ export async function runHarness(
       }
 
       const call = decision.call;
+      const toolCallId = call.id ?? newToolCallId(run.step + 1);
+      state.messages.push({
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId,
+            toolName: call.name,
+            input: call.input,
+          },
+        ],
+      });
+
       await middleware.runPreTool({ run, state, call });
 
       const result = await deps.tools.execute(call, {
@@ -101,7 +118,19 @@ export async function runHarness(
       state.lastToolResult = result;
       state.messages.push({
         role: "tool",
-        content: JSON.stringify({ call, result }),
+        content: [
+          {
+            type: "tool-result",
+            toolCallId,
+            toolName: call.name,
+            output: {
+              type: "text",
+              value: result.ok
+                ? JSON.stringify(result.output ?? "")
+                : (result.error?.message ?? "tool execution failed"),
+            },
+          },
+        ],
       });
 
       run.step += 1;

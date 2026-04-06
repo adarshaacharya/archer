@@ -65,8 +65,11 @@ Build a high-quality, terminal-first AI coding agent with:
 ## 5. Tech Stack Decisions
 
 ### Core Agent Runtime
-- Decision: **AI SDK-first architecture**
-- Why: strong typed tools, model/provider abstraction, subagent support, low framework lock-in
+- Decision: **Mastra core-first architecture** (`Agent + Workspace + Memory`)
+- Why:
+  - production-grade coding-agent primitives available now
+  - reduces custom harness maintenance burden
+  - keeps room for XEQ-specific UX/policy differentiation
 
 ### Reliability / Runtime Discipline
 - Decision: **Effect-TS in boundaries where it adds real value**
@@ -85,13 +88,14 @@ Build a high-quality, terminal-first AI coding agent with:
 - Rule: domain logic stays plain TypeScript; Effect is used at I/O and orchestration boundaries.
 
 ### Orchestration Framework
-- Decision: **Do not start with Mastra**
+- Decision: **Adopt Mastra core runtime, avoid deep dependency on alpha Harness APIs**
 - Rationale:
-  - We need custom coding-agent control first (tool policy + execution model)
-  - Mastra can be added later if we want workflow/runtime conveniences
+  - Mastra Memory + Workspace directly solve current gaps
+  - Mastra Harness is alpha; use carefully and only where needed
+  - Keep an XEQ orchestration adapter layer to preserve swapability
 
 ### CLI / UX
-- Decision: **OpenTUI-first terminal UX from V1**
+- Decision: **pi-tui-first terminal UX from V1**
 - `packages/tui` owns terminal rendering/input concerns.
 - `apps/cli` only wires startup/session lifecycle to agent and tui packages.
 
@@ -101,8 +105,7 @@ Build a high-quality, terminal-first AI coding agent with:
 - Eval package for repeatable benchmark tasks
 
 ### Terminal UI Stack
-- Primary: `@opentui/core`
-- Adapter: `@opentui/solid` (preferred) or `@opentui/react` (choose one, no mixing)
+- Primary: `@mariozechner/pi-tui`
 - Keep all UI vendor code inside `packages/tui` only
 
 ### Auth / Credentials
@@ -122,11 +125,11 @@ apps/
   cli/                 # terminal client
   server/              # optional later
 packages/
-  agent-core/          # loop, planning, policy
+  agent-core/          # xeq orchestration adapter over mastra runtime
   tools/               # fs/shell/git/web/search tools
   model-providers/     # OpenAI/Anthropic/OpenRouter/Gemini adapters
-  sandbox/             # path + command permission controls
-  tui/                 # OpenTUI rendering/input package
+  sandbox/             # policy + sandbox config enforcement
+  tui/                 # pi-tui rendering/input package
   shared/              # types, schemas, config utils
   evals/               # regression/eval harness
 
@@ -140,7 +143,7 @@ packages/
 - Define shared contracts (`ToolRequest`, `ToolResult`, `AgentStep`, errors)
 
 ### Phase 1: Safe Single-Agent Loop
-- Implement agent loop with hard step limits
+- Wire Mastra Agent + Workspace + Memory in `agent-core`
 - Add approval modes (`suggest`, `auto-edit`)
 - Add permission engine (`allow/ask/deny`) for path and shell commands
 - Implement safe tools:
@@ -217,7 +220,7 @@ packages/
 
 - Full IDE plugin before core CLI stabilizes
 - Over-optimizing UI while core agent quality is not proven
-- Framework-heavy abstractions that hide tool/sandbox behavior
+- Framework-heavy abstractions that hide tool/sandbox behavior from XEQ layer
 - Distributed multi-agent fleet orchestration in V1/V2 (deferred to V3+)
 
 ## 12. Future Orchestration Note
@@ -229,9 +232,9 @@ packages/
 ## 13. Next Step
 
 Before coding:
-1. Confirm this architecture and stack choices.
+1. Confirm Mastra core-first architecture and boundaries.
 2. Freeze V1 scope and acceptance criteria.
-3. Start Phase 0 with workspace scaffolding and package contracts.
+3. Start with harness-migration slice: replace custom loop plumbing, keep CLI/TUI unchanged.
 
 ## 14. User Interaction Flow (V1)
 

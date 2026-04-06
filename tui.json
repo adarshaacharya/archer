@@ -1,0 +1,9 @@
+{
+  "keybinds": {
+    "leader": "ctrl+space",
+    "app_exit": "ctrl+d",
+    "input_submit": "enter",
+    "input_backspace": "backspace",
+    "input_clear": "ctrl+u"
+  }
+}

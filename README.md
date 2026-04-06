@@ -11,7 +11,8 @@ Terminal-first AI coding agent monorepo (Bun + Turborepo).
 Early V1 scaffolding is in progress:
 - core package boundaries created
 - shared contracts and sandbox interfaces created
-- OpenTUI-based `packages/tui` started
+- pi-tui-based `packages/tui` started
+- migration direction set: Mastra core runtime (`Agent + Workspace + Memory`) with XEQ-specific CLI/TUI behavior preserved
 
 See:
 - `PLAN.md` for architecture decisions
@@ -20,12 +21,12 @@ See:
 
 ## Workspace Packages
 
-- `packages/agent-core`: agent loop skeleton
+- `packages/agent-core`: XEQ orchestration adapter (target: Mastra-backed runtime)
 - `packages/model-providers`: provider abstraction + OpenRouter stub
 - `packages/sandbox`: policy decisions (`allow/ask/deny`)
 - `packages/shared`: zod contracts and shared types/errors
 - `packages/tools`: tool runtime (currently includes `readFileTool`)
-- `packages/tui`: terminal UI layer (OpenTUI + console fallback)
+- `packages/tui`: terminal UI layer (pi-tui)
 
 ## Commands
 

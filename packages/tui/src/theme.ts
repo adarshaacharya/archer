@@ -12,24 +12,24 @@ export interface TuiTheme {
 }
 
 export const xeqTheme: TuiTheme = {
-  bg: "#1A1B26",
-  surface: "#24283B",
-  text: "#C0CAF5",
-  muted: "#A9B1D6",
-  border: "#414868",
-  accent: "#7AA2F7",
-  accentStrong: "#BB9AF7",
-  success: "#9ECE6A",
-  warning: "#E0AF68",
-  error: "#F7768E",
+  bg: "#101418",
+  surface: "#1A212A",
+  text: "#D6E2F0",
+  muted: "#8FA1B3",
+  border: "#2B3948",
+  accent: "#5CC8FF",
+  accentStrong: "#76E3B1",
+  success: "#76E3B1",
+  warning: "#F6C177",
+  error: "#FF7A90",
 };
 
 export const xeqBranding = {
-  appTitle: "XEQ //",
-  frameTitle: "XEQ // Terminal Agent",
+  appTitle: "XEQ",
+  frameTitle: "XEQ",
   sessionTitle: "Session",
-  streamTitle: "Step Stream",
+  streamTitle: "Session Log",
   approvalTitle: "Approval",
   summaryTitle: "Summary",
-  promptHint: "? for shortcuts",
+  promptHint: "enter=run | ctrl+c=exit",
 } as const;

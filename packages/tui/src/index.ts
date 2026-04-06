@@ -1,7 +1,7 @@
-import { BoxRenderable, type CliRenderer, TextRenderable, createCliRenderer } from "@opentui/core";
+import { Box, Container, Input, ProcessTerminal, Text, TUI } from "@mariozechner/pi-tui";
 import type { AgentStep, RunSummary } from "@xeq/shared";
 import { defaultTuiLayout } from "./layout.js";
-import { xeqBranding, xeqTheme } from "./theme.js";
+import { xeqBranding } from "./theme.js";
 
 export interface ApprovalPromptState {
   message: string;
@@ -13,177 +13,160 @@ export interface Tui {
   renderStep(step: AgentStep): void;
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void;
   renderSummary(summary: RunSummary): void;
+  readInputLine(): Promise<string>;
   stop(): void;
 }
 
-export class OpenTui implements Tui {
-  private renderer: CliRenderer | null = null;
+type TuiViewState = {
+  header: string;
+  status: string;
+  transcript: string;
+  prompt: string;
+  hints: string;
+};
+
+const XEQ_LOGO_TEXT = [
+  "██╗  ██╗███████╗ ██████╗",
+  "╚██╗██╔╝██╔════╝██╔═══██╗",
+  " ╚███╔╝ █████╗  ██║   ██║",
+  " ██╔██╗ ██╔══╝  ██║▄▄ ██║",
+  "██╔╝ ██╗███████╗╚██████╔╝",
+  "╚═╝  ╚═╝╚══════╝ ╚══▀▀═╝",
+].join("\n");
+
+export class PiTui implements Tui {
+  private terminal: ProcessTerminal | null = null;
+  private tui: TUI | null = null;
+  private rootContainer: Container | null = null;
+  private headerText: Text | null = null;
+  private statusText: Text | null = null;
+  private transcriptText: Text | null = null;
+  private promptInfoText: Text | null = null;
+  private hintsText: Text | null = null;
+  private input: Input | null = null;
+  private pendingReadResolve: ((line: string) => void) | null = null;
   private steps: string[] = [];
-  private welcomeText: TextRenderable | null = null;
-  private statusText: TextRenderable | null = null;
-  private stepsText: TextRenderable | null = null;
-  private promptText: TextRenderable | null = null;
+  private viewState: TuiViewState = {
+    header: "XEQ creative terminal coding agent",
+    status: "ready  model=unknown  sandbox=local  tools=stub",
+    transcript: "Waiting for first step...",
+    prompt: ">",
+    hints: `[${xeqBranding.promptHint}]`,
+  };
 
   async start(): Promise<void> {
-    this.renderer = await createCliRenderer({
-      useAlternateScreen: true,
-      useMouse: true,
-      exitOnCtrlC: false,
-      targetFps: 30,
-    });
+    this.terminal = new ProcessTerminal();
+    this.enterAlternateScreen();
+    this.tui = new TUI(this.terminal);
 
-    const frame = new BoxRenderable(this.renderer, {
-      id: "xeq-frame",
-      width: "100%",
-      height: "100%",
-      flexDirection: "column",
-      border: true,
-      borderStyle: "single",
-      title: xeqBranding.frameTitle,
-      padding: defaultTuiLayout.framePadding,
-      rowGap: defaultTuiLayout.frameRowGap,
-      borderColor: xeqTheme.accentStrong,
-    });
+    this.rootContainer = new Container();
+    this.headerText = new Text(`${XEQ_LOGO_TEXT}\n${this.viewState.header}\n${this.viewState.status}`, 0, 0);
+    this.transcriptText = new Text(`Transcript\n${this.viewState.transcript}`, 0, 0);
+    this.promptInfoText = new Text(this.viewState.prompt, 0, 0);
+    this.input = new Input();
+    this.hintsText = new Text(this.viewState.hints, 0, 0);
 
-    const topRow = new BoxRenderable(this.renderer, {
-      id: "top-row",
-      width: "100%",
-      height: 9,
-      flexDirection: "column",
-    });
+    const composer = new Box(0, 0);
+    composer.addChild(this.promptInfoText);
+    composer.addChild(this.input);
+    composer.addChild(this.hintsText);
 
-    const welcomeBox = new BoxRenderable(this.renderer, {
-      id: "welcome-box",
-      width: "100%",
-      border: true,
-      title: "Welcome",
-      padding: 1,
-      borderColor: xeqTheme.border,
-    });
-    this.welcomeText = new TextRenderable(this.renderer, {
-      id: "welcome-text",
-      content:
-        "██╗  ██╗███████╗ ██████╗\n" +
-        "╚██╗██╔╝██╔════╝██╔═══██╗\n" +
-        " ╚███╔╝ █████╗  ██║   ██║\n" +
-        " ██╔██╗ ██╔══╝  ██║▄▄ ██║\n" +
-        "██╔╝ ██╗███████╗╚██████╔╝\n" +
-        "╚═╝  ╚═╝╚══════╝ ╚══▀▀═╝\n" +
-        "Terminal coding agent",
-      width: "100%",
-      fg: xeqTheme.accentStrong,
-    });
-    topRow.add(welcomeBox);
-    welcomeBox.add(this.welcomeText);
+    this.rootContainer.addChild(this.headerText);
+    this.rootContainer.addChild(new Text("", 0, 0));
+    this.rootContainer.addChild(this.transcriptText);
+    this.rootContainer.addChild(new Text("", 0, 0));
+    this.rootContainer.addChild(composer);
 
-    const statusRow = new BoxRenderable(this.renderer, {
-      id: "status-row",
-      width: "100%",
-      border: true,
-      title: "Status",
-      padding: 1,
-      minHeight: defaultTuiLayout.headerMinHeight,
-      borderColor: xeqTheme.border,
-    });
-    this.statusText = new TextRenderable(this.renderer, {
-      id: "status-text",
-      content: "ready | model=unknown | sandbox=local | tools=stub",
-      width: "100%",
-      fg: xeqTheme.muted,
-    });
-    statusRow.add(this.statusText);
+    this.tui.addChild(this.rootContainer);
+    this.tui.setFocus(this.input);
 
-    const stepsBox = new BoxRenderable(this.renderer, {
-      id: "steps-box",
-      width: "100%",
-      flexGrow: 1,
-      border: true,
-      title: xeqBranding.streamTitle,
-      padding: 1,
-      borderColor: xeqTheme.border,
-    });
-    this.stepsText = new TextRenderable(this.renderer, {
-      id: "steps-text",
-      content: "Waiting for first step...",
-      width: "100%",
-      height: "100%",
-      fg: xeqTheme.text,
-    });
-    stepsBox.add(this.stepsText);
+    this.input.onSubmit = (value: string) => {
+      const submit = value.trim();
+      this.input?.setValue("");
+      if (this.pendingReadResolve) {
+        const resolve = this.pendingReadResolve;
+        this.pendingReadResolve = null;
+        resolve(submit);
+      }
+      this.requestRender();
+    };
 
-    const promptBox = new BoxRenderable(this.renderer, {
-      id: "prompt-box",
-      width: "100%",
-      border: true,
-      title: "Prompt",
-      padding: 1,
-      minHeight: defaultTuiLayout.approvalMinHeight,
-      borderColor: xeqTheme.accent,
-    });
-    this.promptText = new TextRenderable(this.renderer, {
-      id: "prompt-text",
-      content: `> Type your task (${xeqBranding.promptHint})`,
-      width: "100%",
-      fg: xeqTheme.muted,
-    });
-    promptBox.add(this.promptText);
-
-    frame.add(topRow);
-    frame.add(statusRow);
-    frame.add(stepsBox);
-    frame.add(promptBox);
-
-    this.renderer.root.add(frame);
-    this.renderer.start();
-    this.renderer.requestRender();
+    this.tui.start();
   }
 
   renderStep(step: AgentStep): void {
-    const parts: string[] = [];
-    parts.push(`[${step.step}] Action: ${step.action}`);
-    if (step.thought) parts.push(`Thought: ${step.thought}`);
-    if (step.observation) parts.push(`Observation: ${step.observation}`);
+    const parts = [`[${step.step}] ${step.action}`];
+    if (step.thought) parts.push(step.thought);
+    if (step.observation) parts.push(step.observation);
 
-    this.steps.push(parts.join("\n"));
+    this.steps.push(parts.join(" | "));
     if (this.steps.length > defaultTuiLayout.maxStepsVisible) this.steps.shift();
-
-    if (this.stepsText) this.stepsText.content = this.steps.join("\n\n");
+    this.viewState.transcript = this.steps.join("\n\n");
     this.requestRender();
   }
 
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
-    if (!this.promptText) return;
-
     if (!prompt) {
-      this.promptText.content = `> Type your task (${xeqBranding.promptHint})`;
+      this.viewState.prompt = ">";
+      this.viewState.hints = `[${xeqBranding.promptHint}]`;
       this.requestRender();
       return;
     }
 
-    const optionsText =
-      prompt.options && prompt.options.length > 0 ? `\nOptions: ${prompt.options.join(" / ")}` : "";
-    this.promptText.content = `${prompt.message}${optionsText}`;
+    this.viewState.prompt = prompt.message;
+    this.viewState.hints =
+      prompt.options && prompt.options.length > 0 ? `[${prompt.options.join(" · ")}]` : "";
     this.requestRender();
   }
 
   renderSummary(summary: RunSummary): void {
-    if (this.statusText) {
-      this.statusText.content = `result=${summary.success ? "ok" : "failed"} | steps=${summary.steps} | durationMs=${summary.durationMs} | at=${new Date().toLocaleTimeString()}`;
-    }
-    if (this.welcomeText) {
-      this.welcomeText.content = "XEQ ready for next task";
-      this.welcomeText.fg = xeqTheme.text;
-    }
+    this.viewState.status = `last_run=${summary.success ? "ok" : "failed"}  steps=${summary.steps}  duration_ms=${summary.durationMs}`;
+    this.viewState.header = "XEQ ready";
     this.requestRender();
   }
 
   stop(): void {
-    if (!this.renderer) return;
-    this.renderer.destroy();
-    this.renderer = null;
+    if (this.tui) this.tui.stop();
+    this.exitAlternateScreen();
+    this.tui = null;
+    this.terminal = null;
+    this.rootContainer = null;
+    this.headerText = null;
+    this.statusText = null;
+    this.transcriptText = null;
+    this.promptInfoText = null;
+    this.hintsText = null;
+    this.input = null;
+    this.pendingReadResolve = null;
+  }
+
+  readInputLine(): Promise<string> {
+    if (!this.tui || !this.input) return Promise.resolve("");
+    this.tui.setFocus(this.input);
+    return new Promise<string>((resolve) => {
+      this.pendingReadResolve = resolve;
+      this.requestRender();
+    });
   }
 
   private requestRender(): void {
-    this.renderer?.requestRender();
+    if (!this.tui) return;
+    if (this.headerText) this.headerText.setText(`${XEQ_LOGO_TEXT}\n${this.viewState.header}\n${this.viewState.status}`);
+    if (this.transcriptText) this.transcriptText.setText(`Transcript\n${this.viewState.transcript}`);
+    if (this.promptInfoText) this.promptInfoText.setText(this.viewState.prompt);
+    if (this.hintsText) this.hintsText.setText(this.viewState.hints);
+    this.tui.requestRender();
+  }
+
+  private enterAlternateScreen(): void {
+    if (!this.terminal) return;
+    // Enter alternate screen and clear to top-left.
+    this.terminal.write("\x1b[?1049h\x1b[2J\x1b[H");
+  }
+
+  private exitAlternateScreen(): void {
+    if (!this.terminal) return;
+    // Return to normal terminal buffer.
+    this.terminal.write("\x1b[?1049l");
   }
 }

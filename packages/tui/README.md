@@ -1,6 +1,6 @@
 # @xeq/tui
 
-Terminal UI package (OpenTUI-first).
+Terminal UI package (pi-tui).
 
 ## Responsibility
 
@@ -16,4 +16,5 @@ Terminal UI package (OpenTUI-first).
 ## Depends On
 
 - `@xeq/shared`
-- OpenTUI packages
+- `@mariozechner/pi-tui`
+- `react`
