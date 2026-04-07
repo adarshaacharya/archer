@@ -1,23 +1,6 @@
 import { spawn } from "node:child_process";
 import type { SandboxExecOptions, SandboxExecResult, SandboxRunner } from "./types.js";
 
-function withTimeout(
-    child: ReturnType<typeof spawn>,
-    timeoutMs: number,
-): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const t = setTimeout(() => {
-            child.kill("SIGKILL");
-            reject(new Error(`Sandbox command timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-
-        child.once("exit", () => {
-            clearTimeout(t);
-            resolve();
-        });
-    });
-}
-
 export const runWithLinuxBwrap: SandboxRunner = async (
     command,
     options = {},
@@ -56,11 +39,22 @@ export const runWithLinuxBwrap: SandboxRunner = async (
         stderr += d.toString("utf8");
     });
 
-    await withTimeout(child, timeout);
-
-    const exitCode = await new Promise<number>((resolve) => {
-        child.once("close", (code) => resolve(code ?? 1));
+    const completion = new Promise<{ exitCode: number; signal?: string }>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("close", (code, signal) => {
+            resolve({ exitCode: code ?? 1, signal: signal ?? undefined });
+        });
     });
 
-    return { stdout, stderr, exitCode };
+    const result = await Promise.race([
+        completion,
+        new Promise<never>((_, reject) => {
+            setTimeout(() => {
+                child.kill("SIGKILL");
+                reject(new Error(`Sandbox command timed out after ${timeout}ms`));
+            }, timeout);
+        }),
+    ]);
+
+    return { stdout, stderr, exitCode: result.exitCode, signal: result.signal };
 };

@@ -39,9 +39,9 @@ function createSession(
     maxSteps: DEFAULT_MAX_STEPS,
     tools,
     approve: (toolCall) => {
-      if (toolCall.toolName === "bash") {
-        return false;
-      }
+      // if (toolCall.toolName === "bash") {
+      //   return false;
+      // }
       return true;
     },
   });

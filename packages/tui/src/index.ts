@@ -1,4 +1,4 @@
-import { Box, Container, Input, ProcessTerminal, Text, TUI } from "@mariozechner/pi-tui";
+import { Box, Container, Input, Key, ProcessTerminal, Text, TUI, matchesKey } from "@mariozechner/pi-tui";
 import type { AgentStep, RunSummary } from "@xeq/shared";
 import { defaultTuiLayout } from "./layout.js";
 import { xeqBranding } from "./theme.js";
@@ -14,6 +14,7 @@ export interface Tui {
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void;
   renderSummary(summary: RunSummary): void;
   readInputLine(): Promise<string>;
+  onCancelRunning(handler: (() => void) | null): void;
   stop(): void;
 }
 
@@ -44,6 +45,8 @@ export class PiTui implements Tui {
   private promptInfoText: Text | null = null;
   private hintsText: Text | null = null;
   private input: Input | null = null;
+  private removeInputListener: (() => void) | null = null;
+  private cancelRunningHandler: (() => void) | null = null;
   private pendingReadResolve: ((line: string) => void) | null = null;
   private steps: string[] = [];
   private viewState: TuiViewState = {
@@ -92,6 +95,14 @@ export class PiTui implements Tui {
     };
 
     this.tui.start();
+
+    this.removeInputListener = this.tui.addInputListener((data) => {
+      if (matchesKey(data, Key.escape)) {
+        this.cancelRunningHandler?.();
+        return { consume: true };
+      }
+      return undefined;
+    });
   }
 
   renderStep(step: AgentStep): void {
@@ -126,6 +137,7 @@ export class PiTui implements Tui {
   }
 
   stop(): void {
+    if (this.removeInputListener) this.removeInputListener();
     if (this.tui) this.tui.stop();
     this.exitAlternateScreen();
     this.tui = null;
@@ -138,6 +150,8 @@ export class PiTui implements Tui {
     this.hintsText = null;
     this.input = null;
     this.pendingReadResolve = null;
+    this.removeInputListener = null;
+    this.cancelRunningHandler = null;
   }
 
   readInputLine(): Promise<string> {
@@ -147,6 +161,10 @@ export class PiTui implements Tui {
       this.pendingReadResolve = resolve;
       this.requestRender();
     });
+  }
+
+  onCancelRunning(handler: (() => void) | null): void {
+    this.cancelRunningHandler = handler;
   }
 
   private requestRender(): void {

@@ -47,6 +47,15 @@ async function runTask(
   model: string,
   sessionId: string,
 ): Promise<void> {
+  const abortController = new AbortController();
+  tui.onCancelRunning(() => {
+    abortController.abort();
+    tui.renderApprovalPrompt({
+      message: "Cancelling current run...",
+      options: ["wait"],
+    });
+  });
+
   const request = AgentRequestSchema.parse({
     task,
     repoRoot: process.cwd(),
@@ -65,7 +74,7 @@ async function runTask(
     frameIndex += 1;
     tui.renderApprovalPrompt({
       message: `${frame} Processing task...`,
-      options: ["ctrl+c=cancel"],
+      options: ["esc=abort"],
     });
   }, 120);
 
@@ -90,13 +99,15 @@ async function runTask(
       cwd: request.repoRoot,
       maxSteps: request.maxSteps,
       timeoutMs: request.maxDurationMs,
+      abortSignal: abortController.signal,
     },
   ).finally(() => {
     clearInterval(spinner);
+    tui.onCancelRunning(null);
   });
 
   tui.renderSummary({
-    success: result.status === "completed",
+    success: result.status === "completed" || result.status === "cancelled",
     steps: result.steps,
     durationMs: Math.round(performance.now() - started),
     promptTokens: 0,
@@ -105,7 +116,7 @@ async function runTask(
   });
 
   tui.renderApprovalPrompt({
-    message: "> Type next task",
+    message: result.status === "cancelled" ? "> Run cancelled. Type next task" : "> Type next task",
     options: promptOptions,
   });
 }
