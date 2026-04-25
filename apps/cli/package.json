@@ -1,7 +1,12 @@
 {
   "name": "@xeq/cli",
   "private": true,
+  "version": "0.1.0",
   "type": "module",
+  "bin": {
+    "xeq": "src/index.ts"
+  },
+  "files": ["src"],
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "tsc -p tsconfig.json",
@@ -12,7 +17,9 @@
   "dependencies": {
     "@xeq/agent-core": "workspace:*",
     "@xeq/model-providers": "workspace:*",
+    "@xeq/sandbox": "workspace:*",
     "@xeq/shared": "workspace:*",
-    "@xeq/tui": "workspace:*"
+    "@xeq/tui": "workspace:*",
+    "@xeq/web": "workspace:*"
   }
 }

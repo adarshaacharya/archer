@@ -43,6 +43,7 @@ export interface RunOptions {
   cwd: string;
   maxSteps?: number;
   timeoutMs?: number;
+  abortSignal?: AbortSignal;
 }
 
 export const DEFAULT_MAX_STEPS = 20;

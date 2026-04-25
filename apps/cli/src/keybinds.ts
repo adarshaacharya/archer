@@ -15,7 +15,12 @@ type ParsedKey = {
   meta?: boolean;
 };
 
-export type KeybindAction = "leader" | "app_exit" | "input_submit" | "input_backspace" | "input_clear";
+export type KeybindAction =
+  | "leader"
+  | "app_exit"
+  | "input_submit"
+  | "input_backspace"
+  | "input_clear";
 
 const DEFAULT_KEYBINDS: Required<TuiKeybinds> = {
   leader: "ctrl+x",

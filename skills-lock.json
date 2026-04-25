@@ -6,6 +6,16 @@
       "sourceType": "github",
       "computedHash": "58ce68f628890c3925aea2b5435a649251ac182057541045c68fc19a27aaa0ec"
     },
+    "mastra": {
+      "source": "mastra-ai/skills",
+      "sourceType": "github",
+      "computedHash": "b42f583342dfee7deb541f4d094f03e8748898257f1f884fa71de1fdba9f38a2"
+    },
+    "opentui": {
+      "source": "anomalyco/opentui",
+      "sourceType": "github",
+      "computedHash": "7b821cfbd63cb153dcdb2d03b5dcc08e6ed870f01de2414f17f63a41c3d057c2"
+    },
     "turborepo": {
       "source": "vercel/turborepo",
       "sourceType": "github",

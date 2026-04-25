@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { TuiConfigSchema, type TuiConfig } from "@xeq/shared";
+import { type TuiConfig, TuiConfigSchema } from "@xeq/shared";
 
 const DEFAULT_TUI_CONFIG_FILE = "tui.json";
 const TUI_CONFIG_ENV_VAR = "XEQ_TUI_CONFIG";
@@ -36,8 +36,12 @@ export async function loadTuiConfig(cwd: string): Promise<TuiConfig> {
   const parsedConfig = TuiConfigSchema.safeParse(parsedJson);
   if (!parsedConfig.success) {
     const firstIssue = parsedConfig.error.issues[0];
-    const message = firstIssue ? `${firstIssue.path.join(".")}: ${firstIssue.message}` : "invalid config";
-    console.warn(`[xeq] Invalid TUI config in ${path} (${message}). Falling back to default keybinds.`);
+    const message = firstIssue
+      ? `${firstIssue.path.join(".")}: ${firstIssue.message}`
+      : "invalid config";
+    console.warn(
+      `[xeq] Invalid TUI config in ${path} (${message}). Falling back to default keybinds.`,
+    );
     return {};
   }
 
@@ -46,7 +50,10 @@ export async function loadTuiConfig(cwd: string): Promise<TuiConfig> {
 
 function resolveTuiConfigPath(cwd: string): string {
   const configuredPath = process.env[TUI_CONFIG_ENV_VAR]?.trim();
-  return resolve(cwd, configuredPath && configuredPath.length > 0 ? configuredPath : DEFAULT_TUI_CONFIG_FILE);
+  return resolve(
+    cwd,
+    configuredPath && configuredPath.length > 0 ? configuredPath : DEFAULT_TUI_CONFIG_FILE,
+  );
 }
 
 function isNotFoundError(error: unknown): error is NodeJS.ErrnoException {

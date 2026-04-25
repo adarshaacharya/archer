@@ -1,8 +1,26 @@
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { ProviderError } from "@xeq/shared";
 import { generateText } from "ai";
-import type { ModelMessage } from "ai";
+import type { LanguageModel, ModelMessage } from "ai";
 import { z } from "zod";
+
+export type SupportedProvider = "openrouter" | "openai" | "anthropic" | "gemini";
+
+export interface ResolveModelOptions {
+  provider?: string;
+  modelId?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
+export interface ResolvedLanguageModel {
+  provider: SupportedProvider;
+  modelId: string;
+  apiKeyEnvVar: string;
+  model: LanguageModel;
+}
 
 export interface ModelResponse {
   content: string;
@@ -22,6 +40,137 @@ export interface ModelDecisionResponse {
 export interface ModelProvider {
   complete(messages: ModelMessage[]): Promise<ModelResponse>;
   decide(messages: ModelMessage[]): Promise<ModelDecisionResponse>;
+}
+
+const PROVIDER_ENV_VAR = "XEQ_PROVIDER";
+const DEFAULT_PROVIDER: SupportedProvider = "openrouter";
+
+function normalizeProvider(input?: string): SupportedProvider {
+  const normalized = input?.trim().toLowerCase();
+  if (!normalized) return DEFAULT_PROVIDER;
+
+  if (normalized === "openrouter") return "openrouter";
+  if (normalized === "openai" || normalized === "codex") return "openai";
+  if (normalized === "anthropic" || normalized === "claude") return "anthropic";
+  if (normalized === "gemini" || normalized === "google") return "gemini";
+
+  throw new ProviderError(
+    `Unsupported provider: ${input}. Expected one of openrouter, openai, anthropic, gemini.`,
+  );
+}
+
+function defaultModelId(provider: SupportedProvider): string {
+  switch (provider) {
+    case "openai":
+      return "gpt-4o-mini";
+    case "anthropic":
+      return "claude-3-5-sonnet-latest";
+    case "gemini":
+      return "gemini-2.0-flash";
+    default:
+      return "openai/gpt-4o-mini";
+  }
+}
+
+function normalizeModelId(provider: SupportedProvider, modelId: string): string {
+  const trimmed = modelId.trim();
+  if (!trimmed) return defaultModelId(provider);
+
+  switch (provider) {
+    case "openai":
+      return trimmed.replace(/^openai\//, "");
+    case "anthropic":
+      return trimmed.replace(/^anthropic\//, "");
+    case "gemini":
+      return trimmed.replace(/^(google|gemini)\//, "");
+    default:
+      return trimmed;
+  }
+}
+
+function resolveApiKey(
+  provider: SupportedProvider,
+  env: NodeJS.ProcessEnv,
+): { apiKey: string; envVar: string } {
+  switch (provider) {
+    case "openai": {
+      const apiKey = env.OPENAI_API_KEY;
+      if (!apiKey) throw new ProviderError("OPENAI_API_KEY is required when XEQ_PROVIDER=openai");
+      return { apiKey, envVar: "OPENAI_API_KEY" };
+    }
+    case "anthropic": {
+      const apiKey = env.ANTHROPIC_API_KEY;
+      if (!apiKey)
+        throw new ProviderError("ANTHROPIC_API_KEY is required when XEQ_PROVIDER=anthropic");
+      return { apiKey, envVar: "ANTHROPIC_API_KEY" };
+    }
+    case "gemini": {
+      const apiKey = env.GEMINI_API_KEY ?? env.GOOGLE_GENERATIVE_AI_API_KEY;
+      if (!apiKey)
+        throw new ProviderError(
+          "GEMINI_API_KEY is required when XEQ_PROVIDER=gemini (GOOGLE_GENERATIVE_AI_API_KEY also works)",
+        );
+      return {
+        apiKey,
+        envVar: env.GEMINI_API_KEY ? "GEMINI_API_KEY" : "GOOGLE_GENERATIVE_AI_API_KEY",
+      };
+    }
+    default: {
+      const apiKey = env.OPENROUTER_API_KEY;
+      if (!apiKey)
+        throw new ProviderError("OPENROUTER_API_KEY is required when XEQ_PROVIDER=openrouter");
+      return { apiKey, envVar: "OPENROUTER_API_KEY" };
+    }
+  }
+}
+
+export function resolveModelConfig(
+  options: ResolveModelOptions = {},
+): Omit<ResolvedLanguageModel, "model"> {
+  const env = options.env ?? process.env;
+  const provider = normalizeProvider(options.provider ?? env[PROVIDER_ENV_VAR]);
+  const modelId = normalizeModelId(
+    provider,
+    options.modelId ?? env.AGENT_MODEL ?? defaultModelId(provider),
+  );
+  const { envVar: apiKeyEnvVar } = resolveApiKey(provider, env);
+
+  return {
+    provider,
+    modelId,
+    apiKeyEnvVar,
+  };
+}
+
+export function resolveLanguageModel(options: ResolveModelOptions = {}): ResolvedLanguageModel {
+  const env = options.env ?? process.env;
+  const config = resolveModelConfig(options);
+  const { apiKey } = resolveApiKey(config.provider, env);
+
+  switch (config.provider) {
+    case "openai":
+      return {
+        ...config,
+        model: createOpenAI({ apiKey })(config.modelId),
+      };
+    case "anthropic":
+      return {
+        ...config,
+        model: createAnthropic({ apiKey })(config.modelId),
+      };
+    case "gemini":
+      return {
+        ...config,
+        model: createGoogleGenerativeAI({ apiKey })(config.modelId),
+      };
+    default: {
+      const openrouter = createOpenRouter({ apiKey });
+      return {
+        ...config,
+        model: openrouter.chat(config.modelId),
+      };
+    }
+  }
 }
 
 export class OpenRouterProvider implements ModelProvider {

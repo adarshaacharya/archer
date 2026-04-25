@@ -11,7 +11,7 @@ Deliver V1 of a terminal-first coding agent (`xeq`) with:
 - usage/cost logging
 - baseline eval + speed metrics
 - pi-tui-based terminal interface
-- mastra-powered runtime core (agent/workspace/memory)
+- openharness-powered runtime core (session/agent/tools/policy)
 
 ## 1. Bootstrap Monorepo
 
@@ -123,11 +123,11 @@ Then configure workspaces in root `package.json`:
    - Gemini
 4. Normalize all provider failures into typed errors.
 
-## 8. Migrate Runtime Core (Mastra)
+## 8. Migrate Runtime Core (OpenHarness)
 
-1. Replace custom harness loop with Mastra Agent runtime integration.
-2. Wire Workspace for repo-scoped tool execution and approvals.
-3. Wire Memory for session + project continuity.
+1. Replace custom harness loop with OpenHarness Session + Agent integration.
+2. Wire repo-scoped tool execution with policy/approval controls.
+3. Wire session continuity with thread/resource identifiers.
 4. Keep XEQ adapter boundary in `packages/agent-core` so CLI/TUI remain framework-agnostic.
 5. Enforce controls:
    - `maxSteps`
@@ -145,7 +145,7 @@ Then configure workspaces in root `package.json`:
    - load approval mode
 3. Interactive command loop:
    - accept user task
-   - run mastra-backed agent core through XEQ adapter
+   - run openharness-backed agent core through XEQ adapter
    - stream updates
    - display diff/check results
 4. Exit and save run artifacts.

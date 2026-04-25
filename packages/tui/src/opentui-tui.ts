@@ -1,0 +1,659 @@
+import {
+  BoxRenderable,
+  type CliRenderer,
+  InputRenderable,
+  InputRenderableEvents,
+  SelectRenderable,
+  SelectRenderableEvents,
+  TextRenderable,
+  createCliRenderer,
+} from "@opentui/core";
+import type { AgentStep, RunSummary } from "@xeq/shared";
+
+export interface ApprovalPromptState {
+  message: string;
+  options?: string[];
+  choices?: ApprovalDialogChoice[];
+  details?: string;
+  review?: PatchReviewState;
+}
+
+export interface SlashCommandItem {
+  name: string;
+  description: string;
+}
+
+export interface Tui {
+  start(): Promise<void>;
+  renderUserMessage(message: string): void;
+  renderStep(step: AgentStep): void;
+  renderAssistantDelta(delta: string): void;
+  finalizeAssistantStream(text?: string): void;
+  renderApprovalPrompt(prompt: ApprovalPromptState | null): void;
+  promptApproval(prompt: ApprovalPromptState): Promise<string>;
+  renderSummary(summary: RunSummary): void;
+  setSlashCommands(commands: SlashCommandItem[]): void;
+  readInputLine(): Promise<string>;
+  onCancelRunning(handler: (() => void) | null): void;
+  stop(): void;
+}
+
+export type ApprovalDialogChoice = {
+  value: string;
+  label: string;
+  description?: string;
+};
+
+export type PatchReviewFile = {
+  filePath: string;
+  diff: string;
+  status?: string;
+};
+
+export type PatchReviewState = {
+  summary: string;
+  changedFilesCount: number;
+  files: PatchReviewFile[];
+};
+
+// Color palette ───────────────────────────────────────────────────────────────
+
+const col = {
+  bg:        "#0D1117",
+  text:      "#E6EDF3",
+  muted:     "#6E7681",
+  border:    "#30363D",
+  accent:    "#58A6FF",
+  user:      "#3FB950",
+  step:      "#6E7681",
+  summary:   "#F0883E",
+};
+
+// Footer sizing: status(1) + border-top(1) + input(1) + border-bottom(1) = 4
+const BASE_FOOTER = 4;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+type PendingModal =
+  | {
+      type: "approval";
+      resolve: (value: string) => void;
+      select: SelectRenderable;
+      box: BoxRenderable;
+    }
+  | {
+      type: "review";
+      resolve: (value: string) => void;
+      fileSelect: SelectRenderable;
+      actionSelect: SelectRenderable;
+      preview: TextRenderable;
+      box: BoxRenderable;
+      focused: "files" | "actions";
+    };
+
+function normalizeText(value: string): string {
+  return value.trim().replace(/\r\n/g, "\n");
+}
+
+function compactDiff(diff: string, maxLines = 16): string {
+  const lines: string[] = [];
+  let inHunk = false;
+  for (const raw of diff.split("\n")) {
+    if (raw.startsWith("@@")) { inHunk = true; lines.push(raw); continue; }
+    if (raw.startsWith("--- ") || raw.startsWith("+++ ")) { lines.push(raw); continue; }
+    if (!inHunk) continue;
+    if (raw.startsWith("+") || raw.startsWith("-") || raw.startsWith(" ")) lines.push(raw);
+  }
+  if (lines.length <= maxLines) return lines.join("\n").trim() || "(no diff)";
+  return `${lines.slice(0, maxLines).join("\n")}\n... truncated ...`;
+}
+
+function defaultApprovalChoices(): ApprovalDialogChoice[] {
+  return [
+    { value: "reject",  label: "Reject",        description: "Deny this action" },
+    { value: "once",    label: "Approve once",   description: "Allow this action this time only" },
+    { value: "always",  label: "Always approve", description: "Remember this rule for next time" },
+  ];
+}
+
+function slashCommandPreview(commands: SlashCommandItem[], input: string): string {
+  const v = input.trim();
+  if (!v.startsWith("/")) return "";
+  const query = v.slice(1).toLowerCase();
+  const matches = commands.filter((c) => c.name.slice(1).toLowerCase().startsWith(query));
+  const items = (matches.length > 0 ? matches : commands).slice(0, 6);
+  return items
+    .map((cmd, i) => `${i === 0 ? "▶" : " "} ${cmd.name.padEnd(16)} ${cmd.description}`)
+    .join("\n");
+}
+
+export class PiTui implements Tui {
+  private renderer: CliRenderer | null = null;
+  private footerRoot: BoxRenderable | null = null;
+  private statusText: TextRenderable | null = null;
+  private input: InputRenderable | null = null;
+  private slashMenuBox: BoxRenderable | null = null;
+  private slashMenuText: TextRenderable | null = null;
+  private slashCommands: SlashCommandItem[] = [];
+  private slashLineCount = 0;
+  private currentInput = "";
+  private assistantStreamText = "";
+  private pendingReadResolve: ((line: string) => void) | null = null;
+  private pendingApprovalResolve: ((choice: string) => void) | null = null;
+  private pendingModal: PendingModal | null = null;
+  private cancelRunningHandler: (() => void) | null = null;
+  private approvalRows = 0;
+
+  async start(): Promise<void> {
+    this.renderer = await createCliRenderer({
+      screenMode: "split-footer",
+      footerHeight: BASE_FOOTER,
+      externalOutputMode: "capture-stdout",
+      exitOnCtrlC: false,
+      clearOnShutdown: false,
+      autoFocus: true,
+      useMouse: false,
+      targetFps: 30,
+    });
+
+    // ── Footer layout ─────────────────────────────────────────────────────────
+    this.footerRoot = new BoxRenderable(this.renderer, {
+      id: "footer",
+      width: "100%",
+      height: "100%",
+      flexDirection: "column",
+      alignItems: "stretch",
+    });
+
+    // Status line (1 row, above composer border)
+    const statusRow = new BoxRenderable(this.renderer, {
+      id: "status-row",
+      width: "100%",
+      height: 1,
+      flexShrink: 0,
+      paddingLeft: 1,
+    });
+    this.statusText = new TextRenderable(this.renderer, {
+      id: "status-text",
+      content: "",
+      width: "100%",
+      height: 1,
+      fg: col.muted,
+    });
+    statusRow.add(this.statusText);
+
+    // Slash menu — sits above the composer, outside the border, hidden until typing "/"
+    this.slashMenuBox = new BoxRenderable(this.renderer, {
+      id: "slash-menu-box",
+      width: "100%",
+      height: 0,
+      flexShrink: 0,
+      paddingLeft: 2,
+    });
+    this.slashMenuText = new TextRenderable(this.renderer, {
+      id: "slash-menu",
+      content: "",
+      width: "100%",
+      height: 0,
+      fg: col.muted,
+    });
+    this.slashMenuBox.add(this.slashMenuText);
+
+    // Composer box: just the border + input row (no slash inside)
+    const composerBox = new BoxRenderable(this.renderer, {
+      id: "composer",
+      width: "100%",
+      height: 3,
+      flexShrink: 0,
+      flexDirection: "column",
+      alignItems: "stretch",
+      border: true,
+      borderStyle: "single",
+      borderColor: col.border,
+      paddingLeft: 1,
+      paddingRight: 1,
+    });
+
+    const inputRow = new BoxRenderable(this.renderer, {
+      id: "input-row",
+      width: "100%",
+      height: 1,
+      flexDirection: "row",
+      alignItems: "center",
+    });
+
+    const promptGlyph = new TextRenderable(this.renderer, {
+      id: "prompt",
+      content: ">",
+      width: 2,
+      flexShrink: 0,
+      fg: col.accent,
+    });
+
+    this.input = new InputRenderable(this.renderer, {
+      id: "input",
+      value: "",
+      placeholder: "message xeq…",
+      flexGrow: 1,
+      flexShrink: 1,
+      textColor: col.text,
+    });
+
+    inputRow.add(promptGlyph);
+    inputRow.add(this.input);
+    composerBox.add(inputRow);
+
+    this.footerRoot.add(statusRow);
+    this.footerRoot.add(this.slashMenuBox);
+    this.footerRoot.add(composerBox);
+    this.renderer.root.add(this.footerRoot);
+    this.renderer.start();
+
+    // Welcome banner
+    this.print("xeq  type a task to get started  /help for commands  ctrl+c to quit", col.muted);
+    this.print("");
+
+    // ── Input events ──────────────────────────────────────────────────────────
+    this.input.on(InputRenderableEvents.INPUT, (value: string) => {
+      this.currentInput = value;
+      this.updateSlashMenu(value);
+    });
+
+    this.input.on(InputRenderableEvents.ENTER, (value: string) => {
+      const submit = normalizeText(value);
+      this.currentInput = "";
+      if (this.input) this.input.value = "";
+      this.updateSlashMenu("");
+
+      if (this.pendingReadResolve) {
+        const resolve = this.pendingReadResolve;
+        this.pendingReadResolve = null;
+        resolve(submit);
+      } else if (submit.startsWith("/")) {
+        const command = submit.slice(1).split(/\s+/)[0];
+        const match = this.slashCommands.find((item) => item.name === `/${command}`);
+        if (match) this.renderUserMessage(submit);
+      }
+    });
+
+    this.renderer.addInputHandler((seq) => {
+      if (seq === "\x03") {
+        this.cancelRunningHandler?.();
+        this.renderer?.destroy();
+        process.exit(130);
+        return true;
+      }
+      if (seq === "\x1b" && this.pendingModal) {
+        this.rejectPendingModal();
+        return true;
+      }
+      return false;
+    });
+
+    this.input.focus();
+  }
+
+  renderUserMessage(message: string): void {
+    const text = normalizeText(message);
+    if (!text) return;
+    this.print("You", col.user);
+    this.print(text, col.text);
+    this.print("");
+  }
+
+  renderStep(step: AgentStep): void {
+    const detail = step.observation
+      ? `\n  ${normalizeText(step.observation).split("\n").slice(0, 3).join("\n  ")}`
+      : "";
+    this.print(`● ${step.action}  step ${step.step}${detail}`, col.step);
+  }
+
+  renderAssistantDelta(delta: string): void {
+    if (!delta) return;
+    this.assistantStreamText += delta;
+    if (this.statusText) {
+      const lines = this.assistantStreamText.trimEnd().split("\n");
+      const last = (lines[lines.length - 1] ?? "").slice(0, 100);
+      this.statusText.content = last;
+      this.renderer?.requestRender();
+    }
+  }
+
+  finalizeAssistantStream(text?: string): void {
+    const final = normalizeText(text ?? this.assistantStreamText);
+    this.assistantStreamText = "";
+    if (this.statusText) {
+      this.statusText.content = "";
+      this.renderer?.requestRender();
+    }
+    if (final) {
+      this.print("XEQ", col.accent);
+      this.print(final, col.text);
+      this.print("");
+    }
+  }
+
+  renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
+    if (!prompt) {
+      this.closePendingModal();
+      if (this.statusText) this.statusText.content = "";
+      this.input?.focus();
+      this.renderer?.requestRender();
+      return;
+    }
+    if (this.pendingModal) return;
+    if (this.statusText) {
+      const hint = prompt.options ? `  ${prompt.options.join("  ")}` : "";
+      this.statusText.content = normalizeText(prompt.message) + hint;
+      this.renderer?.requestRender();
+    }
+  }
+
+  promptApproval(prompt: ApprovalPromptState): Promise<string> {
+    return new Promise<string>((resolve) => {
+      this.pendingApprovalResolve = resolve;
+      if (prompt.review) {
+        this.showReviewModal(prompt, resolve);
+      } else {
+        this.showApprovalModal(prompt, resolve);
+      }
+    });
+  }
+
+  renderSummary(summary: RunSummary): void {
+    const line = [
+      summary.success ? "done" : "failed",
+      `steps=${summary.steps}`,
+      `${Math.round(summary.durationMs / 1000)}s`,
+    ].join("  ");
+    this.print(`◆ ${line}`, col.summary);
+    this.print("");
+  }
+
+  setSlashCommands(commands: SlashCommandItem[]): void {
+    this.slashCommands = commands;
+    this.updateSlashMenu(this.currentInput);
+    this.renderer?.requestRender();
+  }
+
+  readInputLine(): Promise<string> {
+    this.input?.focus();
+    return new Promise<string>((resolve) => {
+      this.pendingReadResolve = resolve;
+    });
+  }
+
+  onCancelRunning(handler: (() => void) | null): void {
+    this.cancelRunningHandler = handler;
+  }
+
+  stop(): void {
+    this.renderer?.destroy();
+    this.renderer = null;
+  }
+
+  // ── Private helpers ────────────────────────────────────────────────────────
+
+  /** Write a styled line to the scrollback area above the footer. */
+  private print(content: string, fg: string = col.text): void {
+    if (!this.renderer) return;
+    this.renderer.writeToScrollback((ctx) => {
+      const text = new TextRenderable(ctx.renderContext, {
+        id: "sb-line",
+        content,
+        width: ctx.width,
+        wrapMode: "word",
+        truncate: false,
+        fg,
+      });
+      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
+  }
+
+  private updateSlashMenu(value: string): void {
+    if (!this.slashMenuText || !this.slashMenuBox || !this.renderer) return;
+    const preview = slashCommandPreview(this.slashCommands, value);
+    const lineCount = preview ? preview.split("\n").length : 0;
+    this.slashLineCount = lineCount;
+    this.slashMenuText.content = preview;
+    this.slashMenuText.height = lineCount;
+    this.slashMenuBox.height = lineCount;
+    this.syncFooterHeight();
+    this.renderer.requestRender();
+  }
+
+  private syncFooterHeight(): void {
+    if (!this.renderer) return;
+    this.renderer.footerHeight = BASE_FOOTER + this.slashLineCount + this.approvalRows;
+  }
+
+  private closePendingModal(): void {
+    if (this.pendingModal) {
+      this.pendingModal.box.destroyRecursively();
+      this.pendingModal = null;
+      this.approvalRows = 0;
+      this.syncFooterHeight();
+    }
+  }
+
+  private rejectPendingModal(): void {
+    const modal = this.pendingModal;
+    if (!modal) return;
+    this.closePendingModal();
+    this.pendingApprovalResolve?.("reject");
+    this.pendingApprovalResolve = null;
+    this.input?.focus();
+    this.renderer?.requestRender();
+  }
+
+  /**
+   * Create a box appended below the composer in the footer column.
+   * Caller must set this.approvalRows and call syncFooterHeight() after.
+   */
+  private approvalBox(id: string, innerRows: number, title: string): BoxRenderable {
+    if (!this.renderer) throw new Error("renderer not ready");
+    return new BoxRenderable(this.renderer, {
+      id,
+      width: "100%",
+      height: innerRows + 2,  // +2 for border-top and border-bottom
+      flexShrink: 0,
+      flexDirection: "column",
+      alignItems: "stretch",
+      border: true,
+      borderStyle: "single",
+      borderColor: col.accent,
+      paddingLeft: 1,
+      paddingRight: 1,
+      title: ` ${title} `,
+    });
+  }
+
+  private showApprovalModal(prompt: ApprovalPromptState, resolve: (value: string) => void): void {
+    if (!this.renderer || !this.footerRoot) return;
+
+    const choices = prompt.choices ?? defaultApprovalChoices();
+    // innerRows = message(1) + choices(N) + help(1)
+    const innerRows = 1 + choices.length + 1;
+    const box = this.approvalBox("approval-modal", innerRows, "approval");
+
+    box.add(new TextRenderable(this.renderer, {
+      id: "approval-msg",
+      content: normalizeText(prompt.message),
+      width: "100%",
+      height: 1,
+      fg: col.muted,
+    }));
+
+    const select = new SelectRenderable(this.renderer, {
+      id: "approval-select",
+      options: choices.map((ch) => ({
+        name: ch.label,
+        description: ch.description ?? "",
+        value: ch.value,
+      })),
+      selectedIndex: 1,
+      width: "100%",
+      height: choices.length,
+      showScrollIndicator: false,
+      showDescription: false,
+      selectedBackgroundColor: col.accent,
+      selectedTextColor: "#000000",
+    });
+
+    box.add(select);
+    box.add(new TextRenderable(this.renderer, {
+      id: "approval-help",
+      content: "↑↓ move   enter select   esc reject",
+      width: "100%",
+      height: 1,
+      fg: col.muted,
+    }));
+
+    this.footerRoot.add(box);
+    this.approvalRows = innerRows + 2;
+    this.syncFooterHeight();
+    this.pendingModal = { type: "approval", resolve, select, box };
+
+    select.focus();
+    select.on(SelectRenderableEvents.ITEM_SELECTED, (_i: number, item: { value: string }) => {
+      this.closePendingModal();
+      this.pendingApprovalResolve?.(item.value);
+      this.pendingApprovalResolve = null;
+      this.input?.focus();
+      this.renderer?.requestRender();
+    });
+  }
+
+  private showReviewModal(prompt: ApprovalPromptState, resolve: (value: string) => void): void {
+    if (!this.renderer || !this.footerRoot || !prompt.review) return;
+
+    // innerRows = header(1) + subtitle(1) + files-label(1) + fileSelect(4) + diff-label(1) + preview(5) + actions(3) + help(1) = 17
+    const box = this.approvalBox("review-modal", 17, "review changes");
+
+    box.add(new TextRenderable(this.renderer, {
+      id: "review-header",
+      content: normalizeText(prompt.message),
+      width: "100%",
+      height: 1,
+      fg: col.text,
+    }));
+    box.add(new TextRenderable(this.renderer, {
+      id: "review-subtitle",
+      content: normalizeText(prompt.details ?? prompt.review.summary),
+      width: "100%",
+      height: 1,
+      fg: col.muted,
+    }));
+    box.add(new TextRenderable(this.renderer, {
+      id: "review-files-label",
+      content: "Files",
+      width: "100%",
+      height: 1,
+      fg: col.accent,
+    }));
+
+    const fileSelect = new SelectRenderable(this.renderer, {
+      id: "review-files",
+      options: prompt.review.files.map((f) => ({
+        name: f.filePath,
+        description: f.status ?? "modified",
+        value: f.filePath,
+      })),
+      selectedIndex: 0,
+      width: "100%",
+      height: 4,
+      showDescription: true,
+    });
+
+    box.add(fileSelect);
+    box.add(new TextRenderable(this.renderer, {
+      id: "review-diff-label",
+      content: "Diff",
+      width: "100%",
+      height: 1,
+      fg: col.accent,
+    }));
+
+    const preview = new TextRenderable(this.renderer, {
+      id: "review-preview",
+      content: compactDiff(prompt.review.files[0]?.diff ?? "", 10),
+      width: "100%",
+      height: 5,
+      wrapMode: "word",
+      fg: col.muted,
+    });
+
+    const actionSelect = new SelectRenderable(this.renderer, {
+      id: "review-actions",
+      options: (prompt.choices ?? defaultApprovalChoices()).map((ch) => ({
+        name: ch.label,
+        description: ch.description ?? "",
+        value: ch.value,
+      })),
+      selectedIndex: 1,
+      width: "100%",
+      height: 4,
+      showDescription: true,
+    });
+
+    box.add(preview);
+    box.add(actionSelect);
+    box.add(new TextRenderable(this.renderer, {
+      id: "review-help",
+      content: "tab switch focus   enter choose   esc reject",
+      width: "100%",
+      height: 1,
+      fg: col.muted,
+    }));
+
+    this.footerRoot.add(box);
+    this.approvalRows = 17 + 2;
+    this.syncFooterHeight();
+
+    const modal: PendingModal = {
+      type: "review",
+      resolve,
+      fileSelect,
+      actionSelect,
+      preview,
+      box,
+      focused: "files",
+    };
+    this.pendingModal = modal;
+
+    fileSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () => {
+      const sel = fileSelect.getSelectedOption();
+      const file = prompt.review?.files.find((f) => f.filePath === sel?.value);
+      preview.content = file ? compactDiff(file.diff, 10) : "(no file selected)";
+      this.renderer?.requestRender();
+    });
+    fileSelect.on(SelectRenderableEvents.ITEM_SELECTED, () => {
+      modal.focused = "actions";
+      actionSelect.focus();
+      this.renderer?.requestRender();
+    });
+    actionSelect.on(SelectRenderableEvents.ITEM_SELECTED, (_i: number, item: { value: string }) => {
+      this.closePendingModal();
+      this.pendingApprovalResolve?.(item.value);
+      this.pendingApprovalResolve = null;
+      this.input?.focus();
+      this.renderer?.requestRender();
+    });
+
+    this.renderer.addInputHandler((seq) => {
+      if (seq !== "\t" || this.pendingModal?.type !== "review") return false;
+      const m = this.pendingModal;
+      if (m.focused === "files") {
+        m.focused = "actions";
+        m.actionSelect.focus();
+      } else {
+        m.focused = "files";
+        m.fileSelect.focus();
+      }
+      this.renderer?.requestRender();
+      return true;
+    });
+
+    fileSelect.focus();
+  }
+}

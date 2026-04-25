@@ -71,3 +71,6 @@ Before marking work complete:
 3. Tool policy enforcement is active (path + command checks).
 4. Type checks pass (`bun run check-types`).
 5. Changes align with `PLAN.md` and `STEPS.md`.
+
+
+Please check the skills folder for turborepo, openharness, or ai-sdk skills.
