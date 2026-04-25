@@ -1,17 +1,10 @@
-import {
-  Box,
-  Container,
-  Input,
-  Key,
-  ProcessTerminal,
-  TUI,
-  Text,
-  matchesKey,
-} from "@mariozechner/pi-tui";
+import { Container, Key, ProcessTerminal, TUI, Text, matchesKey } from "@mariozechner/pi-tui";
 import type { AgentStep, RunSummary } from "@xeq/shared";
 import { ApprovalDialog, type ApprovalDialogChoice } from "./approval-dialog.js";
+import { ComposerPanel } from "./composer-panel.js";
 import { defaultTuiLayout } from "./layout.js";
 import { PatchReviewDialog, type PatchReviewState } from "./review-dialog.js";
+import { buildWelcomePanel } from "./welcome-panel.js";
 
 export interface ApprovalPromptState {
   message: string;
@@ -49,14 +42,31 @@ type TuiViewState = {
   hints: string;
 };
 
-const XEQ_LOGO_TEXT = [
-  "██╗  ██╗███████╗ ██████╗",
-  "╚██╗██╔╝██╔════╝██╔═══██╗",
-  " ╚███╔╝ █████╗  ██║   ██║",
-  " ██╔██╗ ██╔══╝  ██║▄▄ ██║",
-  "██╔╝ ██╗███████╗╚██████╔╝",
-  "╚═╝  ╚═╝╚══════╝ ╚══▀▀═╝",
-].join("\n");
+const XEQ_HEADER = "\x1b[1m\x1b[36mXEQ\x1b[0m  \x1b[2mcoding agent\x1b[0m";
+
+const STEP_ICONS: Record<string, string> = {
+  write: "◆",
+  patch: "◆",
+  apply: "◆",
+  create: "◆",
+  edit: "◆",
+  run: "❯",
+  exec: "❯",
+  command: "❯",
+  bash: "❯",
+  shell: "❯",
+  web: "◎",
+  fetch: "◎",
+  search: "◎",
+};
+
+function getStepIcon(action: string): string {
+  const a = action.toLowerCase();
+  for (const [key, icon] of Object.entries(STEP_ICONS)) {
+    if (a.includes(key)) return icon;
+  }
+  return "⏺";
+}
 
 export class PiTui implements Tui {
   private terminal: ProcessTerminal | null = null;
@@ -65,10 +75,8 @@ export class PiTui implements Tui {
   private headerText: Text | null = null;
   private statusText: Text | null = null;
   private transcriptText: Text | null = null;
-  private promptInfoText: Text | null = null;
-  private slashMenuText: Text | null = null;
-  private hintsText: Text | null = null;
-  private input: Input | null = null;
+  private composerPanel: ComposerPanel | null = null;
+  private input: ComposerPanel["input"] | null = null;
   private approvalOverlay: { hide: () => void } | null = null;
   private removeInputListener: (() => void) | null = null;
   private cancelRunningHandler: (() => void) | null = null;
@@ -80,7 +88,7 @@ export class PiTui implements Tui {
   private steps: string[] = [];
   private assistantStreamText = "";
   private viewState: TuiViewState = {
-    header: "XEQ",
+    header: "",
     status: "",
     transcript: "",
     prompt: ">",
@@ -89,31 +97,23 @@ export class PiTui implements Tui {
 
   async start(): Promise<void> {
     this.terminal = new ProcessTerminal();
-    this.enterAlternateScreen();
     this.tui = new TUI(this.terminal);
 
     this.rootContainer = new Container();
-    this.headerText = new Text(XEQ_LOGO_TEXT, 0, 0);
+    this.headerText = new Text(XEQ_HEADER, 0, 0);
     this.transcriptText = new Text(this.viewState.transcript, 0, 0);
-    this.promptInfoText = new Text(this.viewState.prompt, 0, 0);
-    this.input = new Input();
-    this.slashMenuText = new Text("", 0, 0);
-    this.hintsText = new Text(this.viewState.hints, 0, 0);
 
-    const composer = new Box(0, 0);
-    composer.addChild(this.promptInfoText);
-    composer.addChild(this.input);
-    composer.addChild(this.slashMenuText);
-    composer.addChild(this.hintsText);
+    this.composerPanel = new ComposerPanel();
+    this.input = this.composerPanel.input;
 
     this.rootContainer.addChild(this.headerText);
     this.rootContainer.addChild(new Text("", 0, 0));
     this.rootContainer.addChild(this.transcriptText);
     this.rootContainer.addChild(new Text("", 0, 0));
-    this.rootContainer.addChild(composer);
+    this.rootContainer.addChild(this.composerPanel);
 
     this.tui.addChild(this.rootContainer);
-    this.tui.setFocus(this.input);
+    this.tui.setFocus(this.composerPanel);
 
     this.input.onSubmit = (value: string) => {
       const submit = value.trim();
@@ -128,6 +128,9 @@ export class PiTui implements Tui {
     };
 
     this.tui.start();
+
+    this.steps.push(buildWelcomePanel(process.stdout.columns || 80));
+    this.viewState.transcript = this.getTranscriptText();
 
     this.removeInputListener = this.tui.addInputListener((data) => {
       if (matchesKey(data, Key.escape)) {
@@ -154,18 +157,37 @@ export class PiTui implements Tui {
     const text = message.trim();
     if (!text) return;
 
-    this.steps.push(`> ${text}`);
+    this.steps.push(`\x1b[1m▶ ${text}\x1b[0m`);
     if (this.steps.length > defaultTuiLayout.maxStepsVisible) this.steps.shift();
     this.viewState.transcript = this.getTranscriptText();
     this.requestRender();
   }
 
   renderStep(step: AgentStep): void {
-    const parts = [`[${step.step}] ${step.action}`];
-    if (step.thought) parts.push(step.thought);
-    if (step.observation) parts.push(step.observation);
+    const icon = getStepIcon(step.action);
+    const lines: string[] = [];
 
-    this.steps.push(parts.join(" | "));
+    lines.push(`\x1b[36m${icon} \x1b[1m${step.action}\x1b[0m\x1b[2m  ·  ${step.step}\x1b[0m`);
+
+    if (step.thought) {
+      const thought = step.thought.length > 150 ? `${step.thought.slice(0, 150)}…` : step.thought;
+      lines.push(`\x1b[2m  ${thought}\x1b[0m`);
+    }
+
+    if (step.observation) {
+      const obs = step.observation.trim();
+      if (obs) {
+        const obsLines = obs.split("\n");
+        const maxLines = 8;
+        const visible = obsLines.slice(0, maxLines).map((l) => `  ${l}`);
+        if (obsLines.length > maxLines) {
+          visible.push(`\x1b[2m  … ${obsLines.length - maxLines} more lines\x1b[0m`);
+        }
+        lines.push(...visible);
+      }
+    }
+
+    this.steps.push(lines.join("\n"));
     if (this.steps.length > defaultTuiLayout.maxStepsVisible) this.steps.shift();
     this.viewState.transcript = this.getTranscriptText();
     this.requestRender();
@@ -237,17 +259,24 @@ export class PiTui implements Tui {
       };
 
       this.approvalOverlay = tui.showOverlay(dialog, {
-        anchor: "center",
-        width: "72%",
-        minWidth: 42,
+        anchor: "bottom-center",
+        width: "84%",
+        minWidth: 54,
         maxHeight: 18,
+        margin: { bottom: 1 },
       });
       this.requestRender();
     });
   }
 
-  renderSummary(_summary: RunSummary): void {
-    this.viewState.header = "XEQ ready";
+  renderSummary(summary: RunSummary): void {
+    const status = summary.success ? "\x1b[32m✓\x1b[0m" : "\x1b[31m✗\x1b[0m";
+    const duration = `${(summary.durationMs / 1000).toFixed(1)}s`;
+    const stepCount = `${summary.steps} step${summary.steps !== 1 ? "s" : ""}`;
+    this.steps.push(
+      `${status} \x1b[32mCompleted\x1b[0m  \x1b[2m${stepCount} · ${duration}\x1b[0m`,
+    );
+    this.viewState.transcript = this.getTranscriptText();
     this.requestRender();
   }
 
@@ -260,16 +289,13 @@ export class PiTui implements Tui {
   stop(): void {
     if (this.removeInputListener) this.removeInputListener();
     if (this.tui) this.tui.stop();
-    this.exitAlternateScreen();
     this.tui = null;
     this.terminal = null;
     this.rootContainer = null;
     this.headerText = null;
     this.statusText = null;
     this.transcriptText = null;
-    this.promptInfoText = null;
-    this.slashMenuText = null;
-    this.hintsText = null;
+    this.composerPanel = null;
     this.input = null;
     this.pendingReadResolve = null;
     this.approvalOverlay = null;
@@ -280,7 +306,11 @@ export class PiTui implements Tui {
 
   readInputLine(): Promise<string> {
     if (!this.tui || !this.input) return Promise.resolve("");
-    this.tui.setFocus(this.input);
+    if (this.composerPanel) {
+      this.tui.setFocus(this.composerPanel);
+    } else {
+      this.tui.setFocus(this.input);
+    }
     return new Promise<string>((resolve) => {
       this.pendingReadResolve = resolve;
       this.requestRender();
@@ -294,12 +324,14 @@ export class PiTui implements Tui {
   private requestRender(): void {
     if (!this.tui) return;
     this.viewState.hints = this.getPromptHints();
-    if (this.headerText) this.headerText.setText(XEQ_LOGO_TEXT);
+    if (this.headerText) this.headerText.setText(this.viewState.header || XEQ_HEADER);
     this.viewState.transcript = this.getTranscriptText();
     if (this.transcriptText) this.transcriptText.setText(this.viewState.transcript);
-    if (this.promptInfoText) this.promptInfoText.setText(this.viewState.prompt);
-    if (this.slashMenuText) this.slashMenuText.setText(this.getSlashMenuText());
-    if (this.hintsText) this.hintsText.setText(this.viewState.hints);
+    if (this.composerPanel) {
+      this.composerPanel.setStatus(this.viewState.prompt);
+      this.composerPanel.setSlashMenu(this.getSlashMenuText());
+      this.composerPanel.setHints(this.viewState.hints);
+    }
     this.tui.requestRender();
   }
 
@@ -314,9 +346,7 @@ export class PiTui implements Tui {
     if (!this.assistantStreamText.trim()) {
       return committed;
     }
-
-    const liveBlock = `[streaming]\n${this.assistantStreamText}`;
-    return committed ? `${committed}\n\n${liveBlock}` : liveBlock;
+    return committed ? `${committed}\n\n${this.assistantStreamText}` : this.assistantStreamText;
   }
 
   private getPromptHints(): string {
@@ -356,15 +386,4 @@ export class PiTui implements Tui {
     ].join("\n");
   }
 
-  private enterAlternateScreen(): void {
-    if (!this.terminal) return;
-    // Enter alternate screen and clear to top-left.
-    this.terminal.write("\x1b[?1049h\x1b[2J\x1b[H");
-  }
-
-  private exitAlternateScreen(): void {
-    if (!this.terminal) return;
-    // Return to normal terminal buffer.
-    this.terminal.write("\x1b[?1049l");
-  }
 }
