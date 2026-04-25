@@ -4,7 +4,7 @@ import { runOpenHarnessRuntime } from "@xeq/agent-core";
 import type { SupportedProvider } from "@xeq/model-providers";
 import { type ApprovalChoice, type ApprovalRequest, createSandboxEnvironment } from "@xeq/sandbox";
 import { AgentRequestSchema } from "@xeq/shared";
-import { PiTui, type Tui } from "@xeq/tui";
+import { PiTui, type SlashCommandItem, type Tui } from "@xeq/tui";
 import { type SupportedWebProvider, createWebSearchProvider } from "@xeq/web";
 import {
   clearProviderEnv,
@@ -158,7 +158,6 @@ function updateWebSessionState(
 async function runTask(
   task: string,
   tui: Tui,
-  promptOptions: string[],
   state: SessionState,
   sessionId: string,
 ): Promise<void> {
@@ -179,7 +178,7 @@ async function runTask(
     maxDurationMs: 120000,
   });
 
-  tui.renderApprovalPrompt({ message: `> ${request.task}`, options: ["running"] });
+  tui.renderApprovalPrompt({ message: request.task, options: ["running"] });
 
   const started = performance.now();
   const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -265,12 +264,20 @@ async function runTask(
         webSearch,
       },
       onStep: (step) => {
+        if (step.action === "model.final") {
+          tui.finalizeAssistantStream(step.observation);
+          return;
+        }
+
         tui.renderStep({
           step: step.step,
           action: step.action,
           thought: step.thought,
           observation: step.observation,
         });
+      },
+      onTextDelta: (delta) => {
+        tui.renderAssistantDelta(delta);
       },
     },
     request.task,
@@ -295,8 +302,7 @@ async function runTask(
   });
 
   tui.renderApprovalPrompt({
-    message: result.status === "cancelled" ? "> Run cancelled. Type next task" : "> Type next task",
-    options: promptOptions,
+    message: result.status === "cancelled" ? "Run cancelled. Type next task" : "Type next task",
   });
 }
 
@@ -562,27 +568,7 @@ async function handleSlashCommand(
   return { type: "continue", message: `Unknown command: ${trimmed}. Try /help` };
 }
 
-async function runInteractive(
-  tui: Tui,
-  keybinds: KeybindManager,
-  state: SessionState,
-  sessionId: string,
-): Promise<void> {
-  const promptOptions = [
-    `${keybinds.print("input_submit")}=run`,
-    `${keybinds.print("input_clear")}=clear`,
-    `${keybinds.print("app_exit")}=quit`,
-    "/connect",
-    "/provider",
-    "/web",
-    "/web-provider",
-    "/web-logout",
-    "/permissions",
-    "/logout",
-    "/help",
-    "/bye",
-  ];
-
+async function runInteractive(tui: Tui, state: SessionState, sessionId: string): Promise<void> {
   while (true) {
     const line = await tui.readInputLine();
     if (line.length === 0) continue;
@@ -592,7 +578,6 @@ async function runInteractive(
     if (slash.type === "continue") {
       tui.renderApprovalPrompt({
         message: slash.message,
-        options: promptOptions,
       });
       continue;
     }
@@ -600,7 +585,7 @@ async function runInteractive(
     if (line === "exit" || line === "quit") break;
 
     try {
-      await runTask(line, tui, promptOptions, state, sessionId);
+      await runTask(line, tui, state, sessionId);
     } catch (error) {
       tui.renderApprovalPrompt({
         message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -627,34 +612,34 @@ async function main(): Promise<void> {
     `${keybinds.print("input_submit")}=run`,
     `${keybinds.print("input_clear")}=clear`,
     `${keybinds.print("app_exit")}=quit`,
-    "/connect",
-    "/provider",
-    "/web",
-    "/web-provider",
-    "/web-logout",
-    "/permissions",
-    "/logout",
-    "/help",
-    "/bye",
+  ];
+  const slashCommandOptions: SlashCommandItem[] = [
+    { name: "/connect", description: "connect a model provider" },
+    { name: "/provider", description: "show the active model provider" },
+    { name: "/web", description: "connect a web search provider" },
+    { name: "/web-provider", description: "show the active web search provider" },
+    { name: "/web-logout", description: "remove the saved web provider key" },
+    { name: "/permissions", description: "show saved permission rules" },
+    { name: "/logout", description: "remove the saved model provider key" },
+    { name: "/help", description: "show available slash commands" },
+    { name: "/bye", description: "exit xeq" },
   ];
 
   const tui: Tui = new PiTui();
   await tui.start();
+  tui.setSlashCommands(slashCommandOptions);
 
   try {
     const ready = await ensureProviderConnected(tui, state);
     if (!ready) return;
 
-    tui.renderApprovalPrompt({
-      message: `Interactive mode (openharness). ${activeProviderSummary(state)}`,
-      options: promptOptions,
-    });
+    tui.renderApprovalPrompt(null);
 
     if (initialTask) {
-      await runTask(initialTask, tui, promptOptions, state, sessionId);
+      await runTask(initialTask, tui, state, sessionId);
     }
 
-    await runInteractive(tui, keybinds, state, sessionId);
+    await runInteractive(tui, state, sessionId);
   } finally {
     tui.stop();
   }

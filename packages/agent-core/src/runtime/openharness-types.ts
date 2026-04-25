@@ -18,6 +18,7 @@ export interface OpenHarnessRuntimeDeps {
   modelId?: string;
   instructions?: string;
   onStep?: (event: OpenHarnessRuntimeStepEvent) => void;
+  onTextDelta?: (delta: string) => void;
   sessionId?: string;
   providers: RuntimeProviders;
 }

@@ -61,7 +61,7 @@ export async function runOpenHarnessRuntime(
         throw new Error(MAX_STEPS_ERROR);
       }
 
-      mapEvent(event, deps.onStep, ++stepCounter, (text) => {
+      mapEvent(event, deps.onStep, deps.onTextDelta, ++stepCounter, (text) => {
         finalText += text;
       });
     }
