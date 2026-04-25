@@ -617,15 +617,22 @@ async function runInteractive(tui: Tui, state: SessionState, sessionId: string):
     if (line.length === 0) continue;
 
     const slash = await handleSlashCommand(line, tui, state);
-    if (slash.type === "exit") break;
+    if (slash.type === "exit") {
+      tui.renderApprovalPrompt(null);
+      break;
+    }
     if (slash.type === "continue") {
+      tui.renderApprovalPrompt(null);
       tui.renderApprovalPrompt({
         message: slash.message,
       });
       continue;
     }
 
-    if (line === "exit" || line === "quit") break;
+    if (line === "exit" || line === "quit") {
+      tui.renderApprovalPrompt(null);
+      break;
+    }
 
     try {
       await runTask(line, tui, state, sessionId);
@@ -672,6 +679,12 @@ async function main(): Promise<void> {
   await tui.start();
   tui.setSlashCommands(slashCommandOptions);
 
+  const handleSigint = () => {
+    tui.stop();
+    process.exit(130);
+  };
+  process.once("SIGINT", handleSigint);
+
   try {
     const ready = await ensureProviderConnected(tui, state);
     if (!ready) return;
@@ -684,6 +697,7 @@ async function main(): Promise<void> {
 
     await runInteractive(tui, state, sessionId);
   } finally {
+    process.off("SIGINT", handleSigint);
     tui.stop();
   }
 }
