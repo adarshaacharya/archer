@@ -204,9 +204,15 @@ async function runTask(
     });
   }, 120);
 
+  const patchApprovedPaths = new Set<string>();
+
   const env = createSandboxEnvironment({
     cwd: request.repoRoot,
     approvals: async (approvalRequest) => {
+      if (approvalRequest.kind === "file-write" && patchApprovedPaths.has(approvalRequest.target)) {
+        patchApprovedPaths.delete(approvalRequest.target);
+        return "once";
+      }
       promptPending = true;
       try {
         return await requestApproval(tui, approvalRequest);
@@ -303,6 +309,11 @@ async function runTask(
               },
             ],
           });
+          if (approval !== "reject" && preview.files) {
+            for (const f of preview.files) {
+              patchApprovedPaths.add(f.filePath);
+            }
+          }
           return approval !== "reject";
         } finally {
           promptPending = false;

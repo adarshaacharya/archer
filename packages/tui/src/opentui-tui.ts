@@ -617,9 +617,10 @@ export class PiTui implements Tui {
       actionSelect,
       preview,
       box,
-      focused: "files",
+      focused: "actions",
     };
     this.pendingModal = modal;
+    actionSelect.focus();
 
     fileSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () => {
       const sel = fileSelect.getSelectedOption();
