@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import "./ai-sdk-warnings.js";
 import { performance } from "node:perf_hooks";
 import { runOpenHarnessRuntime } from "@xeq/agent-core";
 import type { SupportedProvider } from "@xeq/model-providers";
@@ -174,7 +175,7 @@ async function runTask(
     task,
     repoRoot: process.cwd(),
     approvalMode: "suggest",
-    maxSteps: 6,
+    maxSteps: 256,
     maxDurationMs: 120000,
   });
 
@@ -301,9 +302,7 @@ async function runTask(
     estimatedCostUsd: 0,
   });
 
-  tui.renderApprovalPrompt({
-    message: result.status === "cancelled" ? "Run cancelled. Type next task" : "Type next task",
-  });
+  tui.renderApprovalPrompt(null);
 }
 
 async function promptForProvider(tui: Tui): Promise<SupportedProvider | "exit"> {

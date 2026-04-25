@@ -139,18 +139,11 @@ export class PiTui implements Tui {
   }
 
   renderStep(step: AgentStep): void {
-    const isFinalAnswer = step.action === "model.final";
     const parts = [`[${step.step}] ${step.action}`];
     if (step.thought) parts.push(step.thought);
-    if (step.observation) {
-      if (isFinalAnswer) {
-        parts.push(`answer:\n${step.observation}`);
-      } else {
-        parts.push(step.observation);
-      }
-    }
+    if (step.observation) parts.push(step.observation);
 
-    this.steps.push(isFinalAnswer ? parts.join("\n") : parts.join(" | "));
+    this.steps.push(parts.join(" | "));
     if (this.steps.length > defaultTuiLayout.maxStepsVisible) this.steps.shift();
     this.viewState.transcript = this.getTranscriptText();
     this.requestRender();
@@ -165,8 +158,7 @@ export class PiTui implements Tui {
   finalizeAssistantStream(text?: string): void {
     const finalText = (text ?? this.assistantStreamText).trim();
     if (finalText.length > 0) {
-      const step = this.steps.length + 1;
-      this.steps.push(`[${step}] model.final\n${finalText}`);
+      this.steps.push(finalText);
     }
     this.assistantStreamText = "";
     this.requestRender();
@@ -187,8 +179,7 @@ export class PiTui implements Tui {
     this.requestRender();
   }
 
-  renderSummary(summary: RunSummary): void {
-    this.viewState.status = `last_run=${summary.success ? "ok" : "failed"}  steps=${summary.steps}  duration_ms=${summary.durationMs}`;
+  renderSummary(_summary: RunSummary): void {
     this.viewState.header = "XEQ ready";
     this.requestRender();
   }
@@ -252,7 +243,7 @@ export class PiTui implements Tui {
       return committed;
     }
 
-    const liveBlock = `[streaming] model.generate\n${this.assistantStreamText}`;
+    const liveBlock = `[streaming]\n${this.assistantStreamText}`;
     return committed ? `${committed}\n\n${liveBlock}` : liveBlock;
   }
 

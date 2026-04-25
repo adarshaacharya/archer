@@ -37,13 +37,6 @@ export async function runOpenHarnessRuntime(
   let stepCounter = 0;
   let finalText = "";
 
-  deps.onStep?.({
-    step: 1,
-    action: "model.generate",
-    thought: "thinking",
-    observation: "starting (openharness)",
-  });
-
   const run = async () => {
     const stream = runtime.session.send(prompt);
     for await (const event of stream) {
