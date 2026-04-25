@@ -1,5 +1,6 @@
 import { Agent, Session, createLocalTools } from "@openharness/core";
 import { resolveModelConfig } from "@xeq/model-providers";
+import { createWebFetchTool, createWebSearchTool } from "@xeq/tools";
 import { DEFAULT_MAX_STEPS } from "../types.js";
 import { sanitizeId } from "./ids.js";
 import { resolveModel } from "./model.js";
@@ -28,7 +29,15 @@ function createSession({
   sessionId?: string;
 }): RuntimeSession {
   const model = resolveModel(modelId);
-  const tools = createLocalTools({ fs: providers.fs, shell: providers.shell });
+  const tools = {
+    ...createLocalTools({ fs: providers.fs, shell: providers.shell }),
+    ...(providers.webSearch
+      ? {
+          webFetch: createWebFetchTool(providers.webSearch),
+          webSearch: createWebSearchTool(providers.webSearch),
+        }
+      : {}),
+  };
 
   const agent = new Agent({
     name: "xeq",

@@ -1,4 +1,5 @@
 import type { FsProvider, ShellProvider } from "@openharness/core";
+import type { WebSearchProvider } from "@xeq/tools";
 
 export interface OpenHarnessRuntimeStepEvent {
   step: number;
@@ -10,6 +11,7 @@ export interface OpenHarnessRuntimeStepEvent {
 export type RuntimeProviders = {
   fs: FsProvider;
   shell: ShellProvider;
+  webSearch?: WebSearchProvider;
 };
 
 export interface OpenHarnessRuntimeDeps {

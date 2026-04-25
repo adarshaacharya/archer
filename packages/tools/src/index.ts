@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import type { SandboxPolicy } from "@xeq/sandbox";
 import type { ToolResult } from "@xeq/shared";
 export * from "./bashTools.js";
+export * from "./webTools.js";
 
 export async function readFileTool(
   repoRoot: string,

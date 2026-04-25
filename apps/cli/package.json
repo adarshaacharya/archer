@@ -16,9 +16,10 @@
   },
   "dependencies": {
     "@xeq/agent-core": "workspace:*",
-    "@xeq/sandbox": "workspace:*",
     "@xeq/model-providers": "workspace:*",
+    "@xeq/sandbox": "workspace:*",
     "@xeq/shared": "workspace:*",
+    "@xeq/tools": "workspace:*",
     "@xeq/tui": "workspace:*"
   }
 }

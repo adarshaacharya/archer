@@ -1,4 +1,5 @@
 import { type FsProvider, NodeFsProvider, type ShellProvider } from "@openharness/core";
+import type { ApprovalHandler } from "./approvals.js";
 import { DefaultSandboxPolicy } from "./policy.js";
 import { SandboxFsProvider } from "./providers/fs-provider.js";
 import { SandboxShellProvider } from "./providers/shell-provider.js";
@@ -10,12 +11,13 @@ export interface SandboxEnvironment {
 
 export function createSandboxEnvironment(opts: {
   cwd: string;
+  approvals?: ApprovalHandler;
 }): SandboxEnvironment {
   const policy = new DefaultSandboxPolicy(opts.cwd);
 
   const baseFs = new NodeFsProvider({ cwd: opts.cwd });
-  const fs = new SandboxFsProvider(baseFs, policy);
-  const shell = new SandboxShellProvider(policy);
+  const fs = new SandboxFsProvider(baseFs, policy, opts.approvals);
+  const shell = new SandboxShellProvider(policy, opts.approvals);
 
   return { fs, shell };
 }

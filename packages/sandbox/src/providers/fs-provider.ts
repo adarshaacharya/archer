@@ -1,4 +1,5 @@
 import type { DirEntry, FileStat, FsProvider } from "@openharness/core";
+import type { ApprovalHandler } from "../approvals.js";
 import type { SandboxPolicy } from "../policy.js";
 
 export class PolicyError extends Error {
@@ -12,54 +13,68 @@ export class SandboxFsProvider implements FsProvider {
   constructor(
     private readonly base: FsProvider,
     private readonly policy: SandboxPolicy,
+    private readonly approvals?: ApprovalHandler,
   ) {}
 
-  private check(path: string, mode: "read" | "write"): void {
+  private async check(path: string, mode: "read" | "write"): Promise<void> {
     const resolved = this.base.resolvePath(path);
     const decision = this.policy.decidePathAccess(resolved, mode);
-    if (decision !== "allow") {
-      throw new PolicyError(`Sandbox blocked fs ${mode}: ${resolved} (${decision})`);
+    if (decision === "allow") {
+      return;
     }
+
+    if (decision === "ask" && mode === "write" && this.approvals) {
+      const approval = await this.approvals({
+        kind: "file-write",
+        target: resolved,
+      });
+
+      if (approval === "once" || approval === "always") {
+        return;
+      }
+    }
+
+    throw new PolicyError(`Sandbox blocked fs ${mode}: ${resolved} (${decision})`);
   }
 
-  readFile(path: string): Promise<string> {
-    this.check(path, "read");
+  async readFile(path: string): Promise<string> {
+    await this.check(path, "read");
     return this.base.readFile(path);
   }
 
-  writeFile(path: string, content: string): Promise<void> {
-    this.check(path, "write");
+  async writeFile(path: string, content: string): Promise<void> {
+    await this.check(path, "write");
     return this.base.writeFile(path, content);
   }
 
-  exists(path: string): Promise<boolean> {
-    this.check(path, "read");
+  async exists(path: string): Promise<boolean> {
+    await this.check(path, "read");
     return this.base.exists(path);
   }
 
-  stat(path: string): Promise<FileStat> {
-    this.check(path, "read");
+  async stat(path: string): Promise<FileStat> {
+    await this.check(path, "read");
     return this.base.stat(path);
   }
 
-  readdir(path: string): Promise<DirEntry[]> {
-    this.check(path, "read");
+  async readdir(path: string): Promise<DirEntry[]> {
+    await this.check(path, "read");
     return this.base.readdir(path);
   }
 
-  mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
-    this.check(path, "write");
+  async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
+    await this.check(path, "write");
     return this.base.mkdir(path, options);
   }
 
-  remove(path: string, options?: { recursive?: boolean }): Promise<void> {
-    this.check(path, "write");
+  async remove(path: string, options?: { recursive?: boolean }): Promise<void> {
+    await this.check(path, "write");
     return this.base.remove(path, options);
   }
 
-  rename(oldPath: string, newPath: string): Promise<void> {
-    this.check(oldPath, "write");
-    this.check(newPath, "write");
+  async rename(oldPath: string, newPath: string): Promise<void> {
+    await this.check(oldPath, "write");
+    await this.check(newPath, "write");
     return this.base.rename(oldPath, newPath);
   }
 

@@ -24,7 +24,11 @@ export class DefaultSandboxPolicy implements SandboxPolicy {
       return "deny";
     }
 
-    if (mode === "write" && relativePath.startsWith(".git/")) {
+    if (mode === "write") {
+      if (relativePath.startsWith(".git/")) {
+        return "ask";
+      }
+
       return "ask";
     }
 
