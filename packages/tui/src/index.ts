@@ -1,4 +1,13 @@
-import { Box, Container, Input, Key, ProcessTerminal, Text, TUI, matchesKey } from "@mariozechner/pi-tui";
+import {
+  Box,
+  Container,
+  Input,
+  Key,
+  ProcessTerminal,
+  TUI,
+  Text,
+  matchesKey,
+} from "@mariozechner/pi-tui";
 import type { AgentStep, RunSummary } from "@xeq/shared";
 import { defaultTuiLayout } from "./layout.js";
 import { xeqBranding } from "./theme.js";
@@ -63,7 +72,11 @@ export class PiTui implements Tui {
     this.tui = new TUI(this.terminal);
 
     this.rootContainer = new Container();
-    this.headerText = new Text(`${XEQ_LOGO_TEXT}\n${this.viewState.header}\n${this.viewState.status}`, 0, 0);
+    this.headerText = new Text(
+      `${XEQ_LOGO_TEXT}\n${this.viewState.header}\n${this.viewState.status}`,
+      0,
+      0,
+    );
     this.transcriptText = new Text(`Transcript\n${this.viewState.transcript}`, 0, 0);
     this.promptInfoText = new Text(this.viewState.prompt, 0, 0);
     this.input = new Input();
@@ -169,8 +182,12 @@ export class PiTui implements Tui {
 
   private requestRender(): void {
     if (!this.tui) return;
-    if (this.headerText) this.headerText.setText(`${XEQ_LOGO_TEXT}\n${this.viewState.header}\n${this.viewState.status}`);
-    if (this.transcriptText) this.transcriptText.setText(`Transcript\n${this.viewState.transcript}`);
+    if (this.headerText)
+      this.headerText.setText(
+        `${XEQ_LOGO_TEXT}\n${this.viewState.header}\n${this.viewState.status}`,
+      );
+    if (this.transcriptText)
+      this.transcriptText.setText(`Transcript\n${this.viewState.transcript}`);
     if (this.promptInfoText) this.promptInfoText.setText(this.viewState.prompt);
     if (this.hintsText) this.hintsText.setText(this.viewState.hints);
     this.tui.requestRender();

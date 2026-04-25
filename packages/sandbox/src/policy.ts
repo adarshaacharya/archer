@@ -1,22 +1,39 @@
+import { relative, resolve } from "node:path";
+
 export type PolicyDecision = "allow" | "ask" | "deny";
 
 export interface SandboxPolicy {
-    decidePathAccess(path: string, mode: "read" | "write"): PolicyDecision;
-    decideCommand(command: string): PolicyDecision;
+  decidePathAccess(path: string, mode: "read" | "write"): PolicyDecision;
+  decideCommand(command: string): PolicyDecision;
 }
 
-
 export class DefaultSandboxPolicy implements SandboxPolicy {
-    constructor(private readonly workspaceRoot: string) { }
+  private readonly workspaceRoot: string;
 
-    decidePathAccess(path: string, mode: "read" | "write"): PolicyDecision {
-        if (!path.startsWith(this.workspaceRoot)) return "deny";
-        return "allow";
+  constructor(workspaceRoot: string) {
+    this.workspaceRoot = resolve(workspaceRoot);
+  }
+
+  decidePathAccess(path: string, mode: "read" | "write"): PolicyDecision {
+    const targetPath = resolve(path);
+    const relativePath = relative(this.workspaceRoot, targetPath);
+    const escapesWorkspace =
+      relativePath === "" ? false : relativePath.startsWith("..") || relativePath.includes("/../");
+
+    if (escapesWorkspace) {
+      return "deny";
     }
 
-    decideCommand(command: string): PolicyDecision {
-        const dangerous = ["rm -rf /", "sudo", "mkfs", "dd if="];
-        if (dangerous.some((token) => command.includes(token))) return "deny";
-        return "allow";
+    if (mode === "write" && relativePath.startsWith(".git/")) {
+      return "ask";
     }
+
+    return "allow";
+  }
+
+  decideCommand(command: string): PolicyDecision {
+    const dangerous = ["rm -rf /", "sudo", "mkfs", "dd if="];
+    if (dangerous.some((token) => command.includes(token))) return "deny";
+    return "allow";
+  }
 }

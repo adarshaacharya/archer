@@ -35,6 +35,38 @@ bun install
 bun run check-types
 ```
 
+## Provider Configuration
+
+Current runtime selection is env-driven:
+
+```bash
+# default behavior (current-compatible): OpenRouter
+XEQ_PROVIDER=openrouter
+OPENROUTER_API_KEY=...
+AGENT_MODEL=openai/gpt-4o-mini
+
+# direct OpenAI
+XEQ_PROVIDER=openai
+OPENAI_API_KEY=...
+AGENT_MODEL=gpt-4o-mini
+
+# direct Anthropic
+XEQ_PROVIDER=anthropic
+ANTHROPIC_API_KEY=...
+AGENT_MODEL=claude-3-5-sonnet-latest
+
+# direct Gemini
+XEQ_PROVIDER=gemini
+GEMINI_API_KEY=...
+AGENT_MODEL=gemini-2.0-flash
+```
+
+Provider aliases accepted by `XEQ_PROVIDER`:
+- `openrouter`
+- `openai` or `codex`
+- `anthropic` or `claude`
+- `gemini` or `google`
+
 
 ## Checklist:
 

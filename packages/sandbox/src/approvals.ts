@@ -26,4 +26,3 @@
 
  */
 export type ApprovalChoice = "once" | "always" | "reject";
-

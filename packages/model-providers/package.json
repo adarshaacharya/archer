@@ -12,6 +12,9 @@
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.12",
+    "@ai-sdk/google": "^2.0.11",
+    "@ai-sdk/openai": "^2.0.16",
     "@openrouter/ai-sdk-provider": "^2.3.3",
     "@xeq/shared": "workspace:*",
     "ai": "^6.0.141",

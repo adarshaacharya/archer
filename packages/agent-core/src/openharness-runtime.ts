@@ -1,10 +1,12 @@
-import { DEFAULT_MAX_STEPS, DEFAULT_TIMEOUT_MS, type RunOptions, type RunResult } from "./types.js";
 import { mapEvent } from "./runtime/events.js";
 import { newRunId, sanitizeId } from "./runtime/ids.js";
 import type { OpenHarnessRuntimeDeps } from "./runtime/openharness-types.js";
 import { getOrCreateSession } from "./runtime/session.js";
 import { withTimeout } from "./runtime/timeout.js";
+import { DEFAULT_MAX_STEPS, DEFAULT_TIMEOUT_MS, type RunOptions, type RunResult } from "./types.js";
 
+const CANCELLED_ERROR = "__XEQ_CANCELLED__";
+const MAX_STEPS_ERROR = "__XEQ_MAX_STEPS__";
 
 export async function runOpenHarnessRuntime(
   deps: OpenHarnessRuntimeDeps,
@@ -25,7 +27,13 @@ export async function runOpenHarnessRuntime(
   const maxSteps = options.maxSteps ?? DEFAULT_MAX_STEPS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const sessionKey = deps.sessionId ? sanitizeId(deps.sessionId) : runId;
-  const runtime = getOrCreateSession({ cwd: options.cwd, providers: deps.providers, modelId: deps.modelId, instructions: deps.instructions, sessionId: sessionKey });
+  const runtime = getOrCreateSession({
+    cwd: options.cwd,
+    providers: deps.providers,
+    modelId: deps.modelId,
+    instructions: deps.instructions,
+    sessionId: sessionKey,
+  });
   let stepCounter = 0;
   let finalText = "";
 
@@ -39,12 +47,20 @@ export async function runOpenHarnessRuntime(
   const run = async () => {
     const stream = runtime.session.send(prompt);
     for await (const event of stream) {
-        if (isAborted()) {
-          if (typeof stream.return === "function") {
+      if (isAborted()) {
+        if (typeof stream.return === "function") {
           await stream.return(undefined);
-          }
-          throw new Error("__XEQ_CANCELLED__");
         }
+        throw new Error(CANCELLED_ERROR);
+      }
+
+      if (stepCounter >= maxSteps) {
+        if (typeof stream.return === "function") {
+          await stream.return(undefined);
+        }
+        throw new Error(MAX_STEPS_ERROR);
+      }
+
       mapEvent(event, deps.onStep, ++stepCounter, (text) => {
         finalText += text;
       });
@@ -68,12 +84,21 @@ export async function runOpenHarnessRuntime(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message === "__XEQ_CANCELLED__" || isAborted()) {
+    if (message === CANCELLED_ERROR || isAborted()) {
       return {
         status: "cancelled",
         steps: Math.max(1, stepCounter),
         outputText: "",
         error: "Run cancelled",
+      };
+    }
+
+    if (message === MAX_STEPS_ERROR) {
+      return {
+        status: "failed",
+        steps: Math.max(1, stepCounter),
+        outputText: finalText.trim(),
+        error: `Run exceeded maxSteps=${maxSteps}`,
       };
     }
 

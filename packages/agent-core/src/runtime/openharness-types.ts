@@ -10,7 +10,7 @@ export interface OpenHarnessRuntimeStepEvent {
 export type RuntimeProviders = {
   fs: FsProvider;
   shell: ShellProvider;
-}
+};
 
 export interface OpenHarnessRuntimeDeps {
   modelId?: string;

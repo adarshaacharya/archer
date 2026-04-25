@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 import { performance } from "node:perf_hooks";
 import { runOpenHarnessRuntime } from "@xeq/agent-core";
+import { createSandboxEnvironment } from "@xeq/sandbox";
 import { AgentRequestSchema } from "@xeq/shared";
 import { PiTui, type Tui } from "@xeq/tui";
 import { KeybindManager } from "./keybinds.js";
 import { loadTuiConfig } from "./tui-config.js";
-import { createSandboxEnvironment } from "@xeq/sandbox";
 
 function parseInitialTask(argv: string[]): string | null {
   const task = argv.join(" ").trim();
