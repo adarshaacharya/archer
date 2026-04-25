@@ -16,14 +16,17 @@ export type PermissionRequest =
   | {
       kind: "file-write";
       target: string;
+      details?: string;
     }
   | {
       kind: "command";
       target: string;
+      details?: string;
     }
   | {
       kind: "web-fetch";
       target: string;
+      details?: string;
     };
 
 const SETTINGS_DIR = path.join(os.homedir(), ".local", "share", "xeq");

@@ -14,11 +14,18 @@ export type RuntimeProviders = {
   webSearch?: WebSearchProvider;
 };
 
+export type PatchPreview = {
+  patchId: string;
+  filePath: string;
+  diff: string;
+};
+
 export interface OpenHarnessRuntimeDeps {
   modelId?: string;
   instructions?: string;
   onStep?: (event: OpenHarnessRuntimeStepEvent) => void;
   onTextDelta?: (delta: string) => void;
+  approvePatchApply?: (preview: PatchPreview) => Promise<boolean> | boolean;
   sessionId?: string;
   providers: RuntimeProviders;
 }

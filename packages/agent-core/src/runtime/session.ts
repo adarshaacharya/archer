@@ -1,10 +1,10 @@
 import { Agent, Session, createLocalTools } from "@openharness/core";
 import { resolveModelConfig } from "@xeq/model-providers";
-import { createWebFetchTool, createWebSearchTool } from "@xeq/tools";
+import { createEditTools, createWebFetchTool, createWebSearchTool } from "@xeq/tools";
 import { DEFAULT_MAX_STEPS } from "../types.js";
 import { sanitizeId } from "./ids.js";
 import { resolveModel } from "./model.js";
-import type { RuntimeProviders } from "./openharness-types.js";
+import type { OpenHarnessRuntimeDeps, RuntimeProviders } from "./openharness-types.js";
 
 type RuntimeSession = {
   session: Session;
@@ -20,17 +20,22 @@ function createSession({
   providers,
   modelId,
   instructions,
+  approvePatchApply,
   sessionId,
 }: {
   cwd: string;
   providers: RuntimeProviders;
   modelId?: string;
   instructions?: string;
+  approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
   sessionId?: string;
 }): RuntimeSession {
   const model = resolveModel(modelId);
+  const editTools = createEditTools(providers.fs);
   const tools = {
     ...createLocalTools({ fs: providers.fs, shell: providers.shell }),
+    preparePatch: editTools.preparePatch,
+    applyPatch: editTools.applyPatch,
     ...(providers.webSearch
       ? {
           webFetch: createWebFetchTool(providers.webSearch),
@@ -45,10 +50,24 @@ function createSession({
     model: model.model,
     systemPrompt:
       instructions ??
-      "You are XEQ, a terminal coding agent. Make minimal safe edits and use tools deliberately.",
+      "You are XEQ, a terminal coding agent. Make minimal safe edits and use tools deliberately. Prefer preparePatch followed by applyPatch for file changes so diffs stay reviewable.",
     maxSteps: DEFAULT_MAX_STEPS,
     tools,
-    approve: (toolCall) => {
+    approve: async (toolCall) => {
+      if (toolCall.toolName === "applyPatch" && approvePatchApply) {
+        const input = toolCall.input as { patchId?: string } | undefined;
+        if (input?.patchId) {
+          const patch = editTools.describePatch(input.patchId);
+          if (patch) {
+            return approvePatchApply({
+              patchId: patch.patchId,
+              filePath: patch.filePath,
+              diff: patch.diff,
+            });
+          }
+        }
+      }
+
       // if (toolCall.toolName === "bash") {
       //   return false;
       // }
@@ -70,12 +89,14 @@ export function getOrCreateSession({
   providers,
   modelId,
   instructions,
+  approvePatchApply,
   sessionId,
 }: {
   cwd: string;
   providers: RuntimeProviders;
   modelId?: string;
   instructions?: string;
+  approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
   sessionId?: string;
 }): RuntimeSession {
   const resolved = resolveModelConfig({ modelId });
@@ -95,6 +116,7 @@ export function getOrCreateSession({
     providers,
     modelId: resolved.modelId,
     instructions,
+    approvePatchApply,
     sessionId: key,
   });
   SESSIONS.set(key, created);

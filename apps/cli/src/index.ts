@@ -63,7 +63,9 @@ function describeApprovalRequest(request: LocalApprovalRequest): string {
     case "command":
       return `Allow command?\n${request.target}`;
     case "file-write":
-      return `Allow file write?\n${request.target}`;
+      return request.details
+        ? `Review patch before applying?\n${request.target}`
+        : `Allow file write?\n${request.target}`;
     case "web-fetch":
       return `Allow web fetch?\n${request.target}`;
   }
@@ -75,29 +77,33 @@ async function requestApproval(tui: Tui, request: LocalApprovalRequest): Promise
     return "always";
   }
 
-  while (true) {
-    tui.renderApprovalPrompt({
-      message: describeApprovalRequest(request),
-      options: ["y=once", "a=always", "n=reject"],
-    });
+  const result = await tui.promptApproval({
+    message: describeApprovalRequest(request),
+    details: request.details,
+    choices: [
+      {
+        value: "reject",
+        label: "Reject",
+        description: "Deny this action",
+      },
+      {
+        value: "once",
+        label: "Approve once",
+        description: "Allow this action this time only",
+      },
+      {
+        value: "always",
+        label: "Always approve",
+        description: "Remember this rule for next time",
+      },
+    ],
+  });
 
-    const input = (await tui.readInputLine()).trim().toLowerCase();
-    if (input === "y" || input === "yes" || input === "once") {
-      return "once";
-    }
-    if (input === "a" || input === "always") {
-      await applyApprovalChoice(request, "always");
-      return "always";
-    }
-    if (input === "n" || input === "no" || input === "reject") {
-      return "reject";
-    }
-
-    tui.renderApprovalPrompt({
-      message: "Enter y, a, or n",
-      options: ["y=once", "a=always", "n=reject"],
-    });
+  if (result === "always") {
+    await applyApprovalChoice(request, "always");
   }
+
+  return result as ApprovalChoice;
 }
 
 async function permissionsSummary(): Promise<string> {
@@ -210,6 +216,7 @@ async function runTask(
     },
   });
 
+  tui.renderUserMessage(request.task);
   const webSearch = createWebSearchProvider(
     async () => {
       promptPending = true;
@@ -263,6 +270,19 @@ async function runTask(
       providers: {
         ...env,
         webSearch,
+      },
+      approvePatchApply: async (preview) => {
+        promptPending = true;
+        try {
+          const approval = await requestApproval(tui, {
+            kind: "file-write",
+            target: preview.filePath,
+            details: preview.diff,
+          });
+          return approval !== "reject";
+        } finally {
+          promptPending = false;
+        }
       },
       onStep: (step) => {
         if (step.action === "model.final") {

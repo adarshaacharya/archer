@@ -9,11 +9,14 @@ import {
   matchesKey,
 } from "@mariozechner/pi-tui";
 import type { AgentStep, RunSummary } from "@xeq/shared";
+import { ApprovalDialog, type ApprovalDialogChoice } from "./approval-dialog.js";
 import { defaultTuiLayout } from "./layout.js";
 
 export interface ApprovalPromptState {
   message: string;
   options?: string[];
+  choices?: ApprovalDialogChoice[];
+  details?: string;
 }
 
 export interface SlashCommandItem {
@@ -23,10 +26,12 @@ export interface SlashCommandItem {
 
 export interface Tui {
   start(): Promise<void>;
+  renderUserMessage(message: string): void;
   renderStep(step: AgentStep): void;
   renderAssistantDelta(delta: string): void;
   finalizeAssistantStream(text?: string): void;
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void;
+  promptApproval(prompt: ApprovalPromptState): Promise<string>;
   renderSummary(summary: RunSummary): void;
   setSlashCommands(commands: SlashCommandItem[]): void;
   readInputLine(): Promise<string>;
@@ -62,9 +67,11 @@ export class PiTui implements Tui {
   private slashMenuText: Text | null = null;
   private hintsText: Text | null = null;
   private input: Input | null = null;
+  private approvalOverlay: { hide: () => void } | null = null;
   private removeInputListener: (() => void) | null = null;
   private cancelRunningHandler: (() => void) | null = null;
   private pendingReadResolve: ((line: string) => void) | null = null;
+  private pendingApprovalResolve: ((choice: string) => void) | null = null;
   private slashCommands: SlashCommandItem[] = [];
   private fixedPromptOptions: string[] | null = null;
   private currentInput = "";
@@ -84,7 +91,7 @@ export class PiTui implements Tui {
     this.tui = new TUI(this.terminal);
 
     this.rootContainer = new Container();
-    this.headerText = new Text(`${XEQ_LOGO_TEXT}\n${this.viewState.header}`, 0, 0);
+    this.headerText = new Text(XEQ_LOGO_TEXT, 0, 0);
     this.transcriptText = new Text(this.viewState.transcript, 0, 0);
     this.promptInfoText = new Text(this.viewState.prompt, 0, 0);
     this.input = new Input();
@@ -122,6 +129,9 @@ export class PiTui implements Tui {
 
     this.removeInputListener = this.tui.addInputListener((data) => {
       if (matchesKey(data, Key.escape)) {
+        if (this.approvalOverlay) {
+          return undefined;
+        }
         this.cancelRunningHandler?.();
         return { consume: true };
       }
@@ -136,6 +146,16 @@ export class PiTui implements Tui {
 
       return undefined;
     });
+  }
+
+  renderUserMessage(message: string): void {
+    const text = message.trim();
+    if (!text) return;
+
+    this.steps.push(`> ${text}`);
+    if (this.steps.length > defaultTuiLayout.maxStepsVisible) this.steps.shift();
+    this.viewState.transcript = this.getTranscriptText();
+    this.requestRender();
   }
 
   renderStep(step: AgentStep): void {
@@ -166,6 +186,7 @@ export class PiTui implements Tui {
 
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
     if (!prompt) {
+      this.hideApprovalOverlay();
       this.viewState.prompt = "";
       this.fixedPromptOptions = null;
       this.viewState.hints = this.getPromptHints();
@@ -173,10 +194,52 @@ export class PiTui implements Tui {
       return;
     }
 
+    this.hideApprovalOverlay();
     this.viewState.prompt = prompt.message;
     this.fixedPromptOptions = prompt.options ?? null;
     this.viewState.hints = this.getPromptHints();
     this.requestRender();
+  }
+
+  promptApproval(prompt: ApprovalPromptState): Promise<string> {
+    const tui = this.tui;
+    if (!tui) return Promise.resolve("reject");
+
+    this.hideApprovalOverlay();
+    this.viewState.prompt = "";
+    this.fixedPromptOptions = null;
+    this.viewState.hints = "";
+
+    return new Promise<string>((resolve) => {
+      this.pendingApprovalResolve = resolve;
+      const dialog = new ApprovalDialog(
+        prompt.details ? `${prompt.message}\n\n${prompt.details}` : prompt.message,
+        prompt.choices ?? [],
+      );
+
+      dialog.onSelect = (value) => {
+        const pending = this.pendingApprovalResolve;
+        this.pendingApprovalResolve = null;
+        this.hideApprovalOverlay();
+        pending?.(value);
+        this.requestRender();
+      };
+      dialog.onCancel = () => {
+        const pending = this.pendingApprovalResolve;
+        this.pendingApprovalResolve = null;
+        this.hideApprovalOverlay();
+        pending?.(prompt.choices?.find((choice) => choice.value === "reject")?.value ?? "reject");
+        this.requestRender();
+      };
+
+      this.approvalOverlay = tui.showOverlay(dialog, {
+        anchor: "center",
+        width: "72%",
+        minWidth: 42,
+        maxHeight: 18,
+      });
+      this.requestRender();
+    });
   }
 
   renderSummary(_summary: RunSummary): void {
@@ -205,6 +268,8 @@ export class PiTui implements Tui {
     this.hintsText = null;
     this.input = null;
     this.pendingReadResolve = null;
+    this.approvalOverlay = null;
+    this.pendingApprovalResolve = null;
     this.removeInputListener = null;
     this.cancelRunningHandler = null;
   }
@@ -225,16 +290,19 @@ export class PiTui implements Tui {
   private requestRender(): void {
     if (!this.tui) return;
     this.viewState.hints = this.getPromptHints();
-    if (this.headerText)
-      this.headerText.setText(
-        [XEQ_LOGO_TEXT, this.viewState.header, this.viewState.status].filter(Boolean).join("\n"),
-      );
+    if (this.headerText) this.headerText.setText(XEQ_LOGO_TEXT);
     this.viewState.transcript = this.getTranscriptText();
     if (this.transcriptText) this.transcriptText.setText(this.viewState.transcript);
     if (this.promptInfoText) this.promptInfoText.setText(this.viewState.prompt);
     if (this.slashMenuText) this.slashMenuText.setText(this.getSlashMenuText());
     if (this.hintsText) this.hintsText.setText(this.viewState.hints);
     this.tui.requestRender();
+  }
+
+  private hideApprovalOverlay(): void {
+    if (!this.approvalOverlay) return;
+    this.approvalOverlay.hide();
+    this.approvalOverlay = null;
   }
 
   private getTranscriptText(): string {

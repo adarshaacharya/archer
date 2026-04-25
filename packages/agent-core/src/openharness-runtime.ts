@@ -32,6 +32,7 @@ export async function runOpenHarnessRuntime(
     providers: deps.providers,
     modelId: deps.modelId,
     instructions: deps.instructions,
+    approvePatchApply: deps.approvePatchApply,
     sessionId: sessionKey,
   });
   let stepCounter = 0;
