@@ -5,8 +5,8 @@ import type { SupportedProvider } from "@xeq/model-providers";
 import { type ApprovalChoice, type ApprovalRequest, createSandboxEnvironment } from "@xeq/sandbox";
 import { AgentRequestSchema } from "@xeq/shared";
 import { PiTui, type Tui } from "@xeq/tui";
+import { type SupportedWebProvider, createWebSearchProvider } from "@xeq/web";
 import {
-  type SupportedWebProvider,
   clearProviderEnv,
   clearWebProviderEnv,
   defaultModelForProvider,
@@ -32,7 +32,6 @@ import {
   webFetchRuleForUrl,
 } from "./settings-store.js";
 import { loadTuiConfig } from "./tui-config.js";
-import { createWebSearchProvider } from "./web-client.js";
 
 function parseInitialTask(argv: string[]): string | null {
   const task = argv.join(" ").trim();

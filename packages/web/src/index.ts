@@ -7,14 +7,15 @@ import type {
   WebSearchResultItem,
   WebSearchTopic,
 } from "@xeq/tools";
-import type { SupportedWebProvider } from "./auth-store.js";
 
-type ActiveWebConfig = {
+export type SupportedWebProvider = "tavily" | "exa";
+
+export type ActiveWebConfig = {
   provider: SupportedWebProvider;
   apiKey: string;
 };
 
-type WebPermissions = {
+export type WebPermissions = {
   allowUrl(url: string): Promise<void>;
 };
 

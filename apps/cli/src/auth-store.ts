@@ -2,9 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { SupportedProvider } from "@xeq/model-providers";
+import type { SupportedWebProvider } from "@xeq/web";
 
 export type AuthSource = "env" | "saved";
-export type SupportedWebProvider = "tavily" | "exa";
 
 export type StoredProviderAuth = {
   key: string;

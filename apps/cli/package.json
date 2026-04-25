@@ -19,7 +19,7 @@
     "@xeq/model-providers": "workspace:*",
     "@xeq/sandbox": "workspace:*",
     "@xeq/shared": "workspace:*",
-    "@xeq/tools": "workspace:*",
-    "@xeq/tui": "workspace:*"
+    "@xeq/tui": "workspace:*",
+    "@xeq/web": "workspace:*"
   }
 }
