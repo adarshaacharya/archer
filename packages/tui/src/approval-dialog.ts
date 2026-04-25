@@ -5,6 +5,7 @@ import {
   SelectList,
   type SelectListTheme,
   matchesKey,
+  truncateToWidth,
   wrapTextWithAnsi,
 } from "@mariozechner/pi-tui";
 
@@ -24,6 +25,29 @@ const theme: SelectListTheme = {
 };
 
 export type ApprovalDialogChoice = SelectItem;
+
+function boxedLines(title: string, lines: string[], width: number): string[] {
+  const safeWidth = Math.max(12, width);
+  const innerWidth = Math.max(1, safeWidth - 4);
+  const titleChunk = ` ${title.trim()} `;
+  const topBorder = `┌${titleChunk}${"─".repeat(Math.max(1, innerWidth - titleChunk.length + 2))}┐`;
+  const bottomBorder = `└${"─".repeat(safeWidth - 2)}┘`;
+
+  return [
+    topBorder,
+    ...lines.flatMap((line) => {
+      const wrapped = wrapTextWithAnsi(line, innerWidth);
+      if (wrapped.length === 0) {
+        return [`│ ${" ".repeat(innerWidth)} │`];
+      }
+      return wrapped.map((part) => {
+        const visible = truncateToWidth(part, innerWidth);
+        return `│ ${visible}${" ".repeat(Math.max(0, innerWidth - visible.length))} │`;
+      });
+    }),
+    bottomBorder,
+  ];
+}
 
 export class ApprovalDialog implements Component {
   private readonly selectList: SelectList;
@@ -45,16 +69,13 @@ export class ApprovalDialog implements Component {
 
   render(width: number): string[] {
     const safeWidth = Math.max(1, width);
-    const bodyWidth = Math.max(1, safeWidth);
-    const promptLines = wrapTextWithAnsi(this.message, bodyWidth);
-    const listLines = this.selectList.render(bodyWidth);
+    const promptLines = wrapTextWithAnsi(this.message, safeWidth);
+    const listLines = this.selectList.render(safeWidth - 4);
 
     return [
-      ...promptLines,
+      ...boxedLines("Approval", [...promptLines, "", ...listLines], safeWidth),
       "",
-      ...listLines,
-      "",
-      ...wrapTextWithAnsi("↑/↓ move  enter select  esc reject", bodyWidth),
+      ...wrapTextWithAnsi("↑/↓ move  enter select  esc reject", safeWidth),
     ];
   }
 
