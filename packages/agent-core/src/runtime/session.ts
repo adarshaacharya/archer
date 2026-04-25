@@ -31,11 +31,47 @@ function createSession({
   sessionId?: string;
 }): RuntimeSession {
   const model = resolveModel(modelId);
-  const editTools = createEditTools(providers.fs);
+  const editTools = createEditTools(providers.fs, {
+    onPatchPreview: async (preview) => {
+      if (!approvePatchApply) {
+        return true;
+      }
+
+      return approvePatchApply(
+        "files" in preview
+          ? {
+              bundleId: preview.bundleId,
+              filePath: preview.bundleId,
+              diff: preview.files
+                .map((patch) => `### ${patch.filePath}\n${patch.diff}`)
+                .join("\n\n"),
+              summary: preview.summary,
+              changedFilesCount: preview.changedFilesCount,
+              files: preview.files.map((patch) => ({
+                filePath: patch.filePath,
+                diff: patch.diff,
+                status: patch.status,
+              })),
+            }
+          : {
+              patchId: preview.patchId,
+              filePath: preview.filePath,
+              diff: preview.diff,
+              files: [
+                {
+                  filePath: preview.filePath,
+                  diff: preview.diff,
+                  status: preview.status,
+                },
+              ],
+            },
+      );
+    },
+  });
   const tools = {
     ...createLocalTools({ fs: providers.fs, shell: providers.shell }),
+    preparePatchBundle: editTools.preparePatchBundle,
     preparePatch: editTools.preparePatch,
-    applyPatch: editTools.applyPatch,
     ...(providers.webSearch
       ? {
           webFetch: createWebFetchTool(providers.webSearch),
@@ -50,24 +86,10 @@ function createSession({
     model: model.model,
     systemPrompt:
       instructions ??
-      "You are XEQ, a terminal coding agent. Make minimal safe edits and use tools deliberately. Prefer preparePatch followed by applyPatch for file changes so diffs stay reviewable.",
+      "You are XEQ, a terminal coding agent. Make minimal safe edits and use tools deliberately. Prefer preparePatchBundle for multi-file changes and preparePatch for single-file changes. These tools show a reviewable diff and apply the change immediately when approved.",
     maxSteps: DEFAULT_MAX_STEPS,
     tools,
     approve: async (toolCall) => {
-      if (toolCall.toolName === "applyPatch" && approvePatchApply) {
-        const input = toolCall.input as { patchId?: string } | undefined;
-        if (input?.patchId) {
-          const patch = editTools.describePatch(input.patchId);
-          if (patch) {
-            return approvePatchApply({
-              patchId: patch.patchId,
-              filePath: patch.filePath,
-              diff: patch.diff,
-            });
-          }
-        }
-      }
-
       // if (toolCall.toolName === "bash") {
       //   return false;
       // }

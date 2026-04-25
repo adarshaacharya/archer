@@ -15,9 +15,17 @@ export type RuntimeProviders = {
 };
 
 export type PatchPreview = {
-  patchId: string;
+  patchId?: string;
+  bundleId?: string;
   filePath: string;
   diff: string;
+  summary?: string;
+  changedFilesCount?: number;
+  files?: Array<{
+    filePath: string;
+    diff: string;
+    status?: string;
+  }>;
 };
 
 export interface OpenHarnessRuntimeDeps {

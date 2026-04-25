@@ -11,12 +11,14 @@ import {
 import type { AgentStep, RunSummary } from "@xeq/shared";
 import { ApprovalDialog, type ApprovalDialogChoice } from "./approval-dialog.js";
 import { defaultTuiLayout } from "./layout.js";
+import { PatchReviewDialog, type PatchReviewState } from "./review-dialog.js";
 
 export interface ApprovalPromptState {
   message: string;
   options?: string[];
   choices?: ApprovalDialogChoice[];
   details?: string;
+  review?: PatchReviewState;
 }
 
 export interface SlashCommandItem {
@@ -212,10 +214,12 @@ export class PiTui implements Tui {
 
     return new Promise<string>((resolve) => {
       this.pendingApprovalResolve = resolve;
-      const dialog = new ApprovalDialog(
-        prompt.details ? `${prompt.message}\n\n${prompt.details}` : prompt.message,
-        prompt.choices ?? [],
-      );
+      const dialog = prompt.review
+        ? new PatchReviewDialog(prompt.message, prompt.details, prompt.review, prompt.choices ?? [])
+        : new ApprovalDialog(
+            prompt.details ? `${prompt.message}\n\n${prompt.details}` : prompt.message,
+            prompt.choices ?? [],
+          );
 
       dialog.onSelect = (value) => {
         const pending = this.pendingApprovalResolve;

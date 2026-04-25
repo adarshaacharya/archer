@@ -274,10 +274,34 @@ async function runTask(
       approvePatchApply: async (preview) => {
         promptPending = true;
         try {
-          const approval = await requestApproval(tui, {
-            kind: "file-write",
-            target: preview.filePath,
-            details: preview.diff,
+          const approval = await tui.promptApproval({
+            message: "Review changes",
+            details: preview.summary ? preview.summary : "Inspect the patch before applying.",
+            review:
+              preview.files && preview.files.length > 0
+                ? {
+                    summary: preview.summary ?? "Prepared changes",
+                    changedFilesCount: preview.changedFilesCount ?? preview.files.length,
+                    files: preview.files,
+                  }
+                : undefined,
+            choices: [
+              {
+                value: "reject",
+                label: "Reject",
+                description: "Deny these changes",
+              },
+              {
+                value: "once",
+                label: "Approve once",
+                description: "Apply these changes this time only",
+              },
+              {
+                value: "always",
+                label: "Always approve",
+                description: "Remember this approval choice",
+              },
+            ],
           });
           return approval !== "reject";
         } finally {
