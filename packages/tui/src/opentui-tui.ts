@@ -61,6 +61,7 @@ export type PatchReviewState = {
 
 const col = {
   bg:        "#0D1117",
+  userBg:    "#161B22",
   text:      "#E6EDF3",
   muted:     "#6E7681",
   border:    "#30363D",
@@ -342,7 +343,27 @@ export class PiTui implements Tui {
   renderUserMessage(message: string): void {
     const text = normalizeText(message);
     if (!text) return;
-    this.print(text, col.user);
+    if (!this.renderer) return;
+    this.renderer.writeToScrollback((ctx) => {
+      const box = new BoxRenderable(ctx.renderContext, {
+        id: "user-msg-box",
+        width: ctx.width,
+        backgroundColor: col.userBg,
+        paddingLeft: 2,
+        paddingRight: 2,
+        paddingTop: 0,
+        paddingBottom: 0,
+      });
+      box.add(new TextRenderable(ctx.renderContext, {
+        id: "user-msg-text",
+        content: `› ${text}`,
+        width: ctx.width - 4,
+        wrapMode: "word",
+        truncate: false,
+        fg: col.text,
+      }));
+      return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
     this.print("");
   }
 
