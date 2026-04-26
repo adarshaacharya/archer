@@ -5,13 +5,8 @@ import {
   InputRenderableEvents,
   SelectRenderable,
   SelectRenderableEvents,
-  StyledText,
   TextRenderable,
-  bold,
   createCliRenderer,
-  fg,
-  stringToStyledText,
-  t,
 } from "@opentui/core";
 import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
 import type { AgentStep, RunSummary } from "@xeq/shared";
@@ -134,34 +129,13 @@ function slashCommandMatches(commands: SlashCommandItem[], input: string): Slash
   return matches.length > 0 ? matches : commands;
 }
 
-function renderSlashMenu(items: SlashCommandItem[], selectedIndex: number, startIndex: number, maxRows: number): StyledText {
-  const lines = items
-    .slice(startIndex, startIndex + maxRows)
-    .map((item, index) => {
-      const absoluteIndex = startIndex + index;
-
-      if (absoluteIndex === selectedIndex) {
-        return t`${fg(col.accent)("▶")} ${bold(fg(col.text)(item.name.padEnd(16)))} ${fg(col.muted)(item.description)}`
-      }
-
-      return t`${fg(col.muted)("▶")} ${fg(col.muted)(item.name.padEnd(16))} ${fg(col.muted)(item.description)}`
-    });
-
-  if (lines.length === 0) return stringToStyledText("");
-  let content = lines[0]!;
-  for (const line of lines.slice(1)) {
-    content = new StyledText([...content.chunks, ...stringToStyledText("\n").chunks, ...line.chunks]);
-  }
-  return content;
-}
-
 export class PiTui implements Tui {
   private renderer: CliRenderer | null = null;
   private footerRoot: BoxRenderable | null = null;
   private statusText: TextRenderable | null = null;
   private input: InputRenderable | null = null;
   private slashMenuBox: BoxRenderable | null = null;
-  private slashMenuText: TextRenderable | null = null;
+  private slashMenuSelect: SelectRenderable | null = null;
   private slashCommands: SlashCommandItem[] = [];
   private slashMenuItems: SlashCommandItem[] = [];
   private slashMenuIndex = 0;
@@ -179,6 +153,24 @@ export class PiTui implements Tui {
   private setSlashCommandsState: ((value: SlashCommandItem[]) => void) | null = null;
   private setApprovalRows: ((value: number) => void) | null = null;
 
+  private handleSlashMenuClick(screenY: number): void {
+    if (!this.currentInput.trim().startsWith("/") || this.slashMenuItems.length === 0 || !this.slashMenuSelect) {
+      return;
+    }
+    const row = screenY - this.slashMenuSelect.screenY;
+    if (row < 0 || row >= this.slashLineCount) {
+      return;
+    }
+    const absoluteIndex = this.slashMenuScrollOffset + row;
+    if (absoluteIndex < 0 || absoluteIndex >= this.slashMenuItems.length) {
+      return;
+    }
+    this.slashMenuIndex = absoluteIndex;
+    this.syncSlashMenuViewport();
+    this.syncSlashMenuSelect();
+    this.submitSlashMenuSelection();
+  }
+
   async start(): Promise<void> {
     this.renderer = await createCliRenderer({
       screenMode: "split-footer",
@@ -187,7 +179,7 @@ export class PiTui implements Tui {
       exitOnCtrlC: false,
       clearOnShutdown: false,
       autoFocus: true,
-      useMouse: false,
+      useMouse: true,
       targetFps: 30,
     });
 
@@ -252,15 +244,37 @@ export class PiTui implements Tui {
       flexShrink: 0,
       paddingLeft: 1,
       paddingRight: 1,
+      onMouseDown: (event) => {
+        this.handleSlashMenuClick(event.y);
+        event.stopPropagation();
+      },
     });
-    this.slashMenuText = new TextRenderable(this.renderer, {
-      id: "slash-menu",
+    this.slashMenuSelect = new SelectRenderable(this.renderer, {
+      id: "slash-menu-select",
       width: "100%",
       height: 0,
-      content: "",
-      fg: col.muted,
+      options: [],
+      showDescription: false,
+      showScrollIndicator: this.slashMenuItems.length > MAX_SLASH_ROWS,
+      wrapSelection: true,
+      textColor: col.muted,
+      descriptionColor: col.muted,
+      selectedBackgroundColor: col.userBg,
+      selectedTextColor: col.text,
+      selectedDescriptionColor: col.muted,
+      onMouseDown: (event) => {
+        this.handleSlashMenuClick(event.y);
+        event.stopPropagation();
+      },
     });
-    this.slashMenuBox.add(this.slashMenuText);
+    this.slashMenuSelect.on(SelectRenderableEvents.ITEM_SELECTED, (_i: number, item: { value: number }) => {
+      if (typeof item.value !== "number") return;
+      this.slashMenuIndex = item.value;
+      this.syncSlashMenuViewport();
+      this.syncSlashMenuSelect();
+      this.submitSlashMenuSelection();
+    });
+    this.slashMenuBox.add(this.slashMenuSelect);
 
     // Composer box: just the border + input row (no slash inside)
     const composerBox = new BoxRenderable(this.renderer, {
@@ -525,10 +539,10 @@ export class PiTui implements Tui {
   }
 
   private updateSlashMenu(value: string): void {
-    const menuText = this.slashMenuText;
+    const menuSelect = this.slashMenuSelect;
     const menuBox = this.slashMenuBox;
     const renderer = this.renderer;
-    if (!menuText || !menuBox || !renderer) return;
+    if (!menuSelect || !menuBox || !renderer) return;
 
     const items = slashCommandMatches(this.slashCommands, value);
     const previous = this.slashMenuItems[this.slashMenuIndex];
@@ -542,13 +556,8 @@ export class PiTui implements Tui {
     this.syncSlashMenuViewport();
 
     batch(() => {
-      menuText.content = renderSlashMenu(
-        items,
-        this.slashMenuIndex,
-        this.slashMenuScrollOffset,
-        MAX_SLASH_ROWS,
-      );
-      menuText.height = this.slashLineCount;
+      this.syncSlashMenuSelect();
+      menuSelect.height = this.slashLineCount;
       menuBox.height = this.slashLineCount;
     });
     renderer.footerHeight = BASE_FOOTER + this.slashLineCount + (this.pendingModal ? (this.pendingModal.type === "review" ? 19 : this.pendingModal.box.height) : 0);
@@ -559,21 +568,16 @@ export class PiTui implements Tui {
     if (this.pendingModal) return false;
     if (!this.currentInput.trim().startsWith("/") || this.slashMenuItems.length === 0) return false;
 
-    const menuText = this.slashMenuText;
+    const menuSelect = this.slashMenuSelect;
     const renderer = this.renderer;
     const input = this.input;
-    if (!menuText || !renderer || !input) return false;
+    if (!menuSelect || !renderer || !input) return false;
 
     if (seq === "\x1b[A") {
       this.slashMenuIndex =
         this.slashMenuIndex <= 0 ? this.slashMenuItems.length - 1 : this.slashMenuIndex - 1;
       this.syncSlashMenuViewport();
-      menuText.content = renderSlashMenu(
-        this.slashMenuItems,
-        this.slashMenuIndex,
-        this.slashMenuScrollOffset,
-        MAX_SLASH_ROWS,
-      );
+      this.syncSlashMenuSelect();
       renderer.requestRender();
       return true;
     }
@@ -582,12 +586,7 @@ export class PiTui implements Tui {
       this.slashMenuIndex =
         this.slashMenuIndex >= this.slashMenuItems.length - 1 ? 0 : this.slashMenuIndex + 1;
       this.syncSlashMenuViewport();
-      menuText.content = renderSlashMenu(
-        this.slashMenuItems,
-        this.slashMenuIndex,
-        this.slashMenuScrollOffset,
-        MAX_SLASH_ROWS,
-      );
+      this.syncSlashMenuSelect();
       renderer.requestRender();
       return true;
     }
@@ -607,21 +606,7 @@ export class PiTui implements Tui {
     if (seq === "\r") {
       const selected = this.slashMenuItems[this.slashMenuIndex];
       if (!selected) return false;
-
-      input.value = "";
-      this.currentInput = "";
-      this.setInputValue?.("");
-      this.updateSlashMenu("");
-
-      if (this.pendingReadResolve) {
-        const resolve = this.pendingReadResolve;
-        this.pendingReadResolve = null;
-        resolve(selected.name);
-        return true;
-      }
-
-      this.renderUserMessage(selected.name);
-      renderer.requestRender();
+      this.submitSlashMenuSelection();
       return true;
     }
 
@@ -648,6 +633,43 @@ export class PiTui implements Tui {
     if (this.slashMenuScrollOffset > maxOffset) {
       this.slashMenuScrollOffset = maxOffset;
     }
+  }
+
+  private syncSlashMenuSelect(): void {
+    if (!this.slashMenuSelect) return;
+    const visibleItems = this.slashMenuItems
+      .slice(this.slashMenuScrollOffset, this.slashMenuScrollOffset + MAX_SLASH_ROWS)
+      .map((item, index) => ({
+        name: `${item.name.padEnd(16)} ${item.description}`,
+        description: "",
+        value: this.slashMenuScrollOffset + index,
+      }));
+    this.slashMenuSelect.options = visibleItems;
+    this.slashMenuSelect.selectedIndex = Math.max(0, this.slashMenuIndex - this.slashMenuScrollOffset);
+    this.slashMenuSelect.showScrollIndicator = this.slashMenuItems.length > MAX_SLASH_ROWS;
+  }
+
+  private submitSlashMenuSelection(): void {
+    const selected = this.slashMenuItems[this.slashMenuIndex];
+    const renderer = this.renderer;
+    const input = this.input;
+    if (!selected || !renderer || !input) return;
+
+    input.value = "";
+    this.currentInput = "";
+    this.setInputValue?.("");
+    this.updateSlashMenu("");
+
+    if (this.pendingReadResolve) {
+      const resolve = this.pendingReadResolve;
+      this.pendingReadResolve = null;
+      renderer.requestRender();
+      resolve(selected.name);
+      return;
+    }
+
+    this.renderUserMessage(selected.name);
+    renderer.requestRender();
   }
 
   private closePendingModal(): void {
@@ -694,8 +716,9 @@ export class PiTui implements Tui {
     if (!this.renderer || !this.footerRoot) return;
 
     const choices = prompt.choices ?? defaultApprovalChoices();
-    // innerRows = message(1) + choices(N) + help(1)
-    const innerRows = 1 + choices.length + 1;
+    const visibleChoices = Math.min(choices.length, 8);
+    // innerRows = message(1) + choices viewport + help(1)
+    const innerRows = 1 + visibleChoices + 1;
     const box = this.approvalBox("approval-modal", innerRows, "approval");
 
     box.add(new TextRenderable(this.renderer, {
@@ -715,8 +738,8 @@ export class PiTui implements Tui {
       })),
       selectedIndex: Math.max(0, Math.min(choices.length - 1, prompt.selectedIndex ?? 1)),
       width: "100%",
-      height: choices.length,
-      showScrollIndicator: false,
+      height: visibleChoices,
+      showScrollIndicator: choices.length > visibleChoices,
       showDescription: false,
       selectedBackgroundColor: col.accent,
       selectedTextColor: "#000000",
