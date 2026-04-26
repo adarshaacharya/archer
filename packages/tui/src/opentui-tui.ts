@@ -27,6 +27,7 @@ export interface SlashCommandItem {
 
 export interface Tui {
   start(): Promise<void>;
+  renderStartupBanner(): void;
   setActiveModel(modelId: string): void;
   renderUserMessage(message: string): void;
   renderInfoMessage(message: string): void;
@@ -100,6 +101,18 @@ type PendingModal =
 
 function normalizeText(value: string): string {
   return value.trim().replace(/\r\n/g, "\n");
+}
+
+function truncateMiddle(value: string, max: number): string {
+  if (value.length <= max) return value;
+  if (max <= 3) return value.slice(0, max);
+  const head = Math.ceil((max - 1) / 2);
+  const tail = Math.floor((max - 1) / 2);
+  return `${value.slice(0, head)}…${value.slice(-tail)}`;
+}
+
+function padRight(value: string, width: number): string {
+  return value.length >= width ? value : `${value}${" ".repeat(width - value.length)}`;
 }
 
 function compactDiff(diff: string, maxLines = 16): string {
@@ -394,10 +407,6 @@ export class PiTui implements Tui {
     this.renderer.root.add(this.footerRoot);
     this.renderer.start();
 
-    // Welcome banner
-    this.print("xeq  type a task to get started  /help for commands  ctrl+c to quit", col.muted);
-    this.print("");
-
     // ── Input events ──────────────────────────────────────────────────────────
     this.input.on(InputRenderableEvents.INPUT, (value: string) => {
       this.currentInput = value;
@@ -443,10 +452,15 @@ export class PiTui implements Tui {
     this.input.focus();
   }
 
+  renderStartupBanner(): void {
+    this.renderStartupCard();
+    this.print("");
+  }
+
   setActiveModel(modelId: string): void {
     const value = modelId.trim();
     this.activeModelLabel = value ? `model=${value}` : "model=unconfigured";
-    this.setStatus(this.activeModelLabel);
+    this.setStatus("", col.muted, "", col.muted);
   }
 
   renderUserMessage(message: string): void {
@@ -510,7 +524,7 @@ export class PiTui implements Tui {
   finalizeAssistantStream(text?: string): void {
     const final = normalizeText(text ?? this.assistantStreamText);
     this.assistantStreamText = "";
-    this.setStatus(this.activeModelLabel, col.muted, "", col.muted);
+    this.setStatus("", col.muted, "", col.muted);
     if (final) {
       this.print(final, col.text);
       this.print("");
@@ -520,7 +534,7 @@ export class PiTui implements Tui {
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
     if (!prompt) {
       this.closePendingModal();
-      this.setStatus(this.activeModelLabel, col.muted, "", col.muted);
+      this.setStatus("", col.muted, "", col.muted);
       this.input?.focus();
       return;
     }
@@ -619,6 +633,56 @@ export class PiTui implements Tui {
         wrapMode: "word",
         truncate: false,
         fg,
+      });
+      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
+  }
+
+  private renderStartupCard(): void {
+    if (!this.renderer) return;
+    this.renderer.writeToScrollback((ctx) => {
+      const width = clamp(ctx.width - 8, 68, 86);
+      const innerWidth = width - 2;
+      const labelWidth = 10;
+      const commandWidth = 18;
+      const directory = truncateMiddle(
+        process.cwd().replace(/^\/Users\/[^/]+/, "~"),
+        innerWidth - labelWidth - 3,
+      );
+      const modelLine = truncateMiddle(
+        this.activeModelLabel.replace(/^model=/, ""),
+        innerWidth - labelWidth - 3,
+      );
+      const row = (content = ""): string => `│${padRight(` ${content}`, innerWidth)}│`;
+      const keyValue = (label: string, value: string): string =>
+        row(`${padRight(label, labelWidth)}${value}`);
+      const actionRow = (command: string, hint: string): string => {
+        const content = `${padRight(command, commandWidth)}${hint}`;
+        return row(content);
+      };
+
+      const lines = [
+        `┌${"─".repeat(innerWidth)}┐`,
+        row(`>_ xeq  v${Bun.version}`),
+        row("ready for a task"),
+        `├${"─".repeat(innerWidth)}┤`,
+        keyValue("workspace", directory),
+        keyValue("model", modelLine),
+        `├${"─".repeat(innerWidth)}┤`,
+        actionRow("type anything", "start a new turn"),
+        actionRow("/", "browse commands"),
+        actionRow("/resume", "restore a saved session"),
+        actionRow("ctrl+c", "quit"),
+        `└${"─".repeat(innerWidth)}┘`,
+      ];
+      const text = new TextRenderable(ctx.renderContext, {
+        id: "startup-card-text",
+        content: lines.join("\n"),
+        width,
+        height: lines.length,
+        wrapMode: "none",
+        truncate: false,
+        fg: col.text,
       });
       return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
     });

@@ -1310,6 +1310,7 @@ async function main(): Promise<void> {
     const ready = await ensureProviderConnected(tui, state);
     if (!ready) return;
     tui.setActiveModel(state.modelId);
+    tui.renderStartupBanner();
     const existing = await getSession(state.sessionId);
     if (!existing) {
       await createSession({
