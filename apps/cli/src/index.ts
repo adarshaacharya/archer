@@ -5,6 +5,7 @@ import { runOpenHarnessRuntime } from "@xeq/agent-core";
 import type { SupportedProvider } from "@xeq/model-providers";
 import { type ApprovalChoice, type ApprovalRequest, createSandboxEnvironment } from "@xeq/sandbox";
 import { AgentRequestSchema } from "@xeq/shared";
+import { appendMessage, createSession, getMessages, listSessions } from "@xeq/storage";
 import { PiTui, type SlashCommandItem, type Tui } from "@xeq/tui";
 import { type SupportedWebProvider, createWebSearchProvider } from "@xeq/web";
 import {
@@ -46,12 +47,17 @@ function newSessionId(): string {
   return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function newMessageId(): string {
+  return `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 type SlashCommandResult =
   | { type: "continue"; message: string; lines?: Array<{ text: string; color?: string }> }
   | { type: "exit" }
   | { type: "none" };
 
 type SessionState = {
+  sessionId: string;
   provider: SupportedProvider | null;
   modelId: string;
   authSource: "env" | "saved" | null;
@@ -145,7 +151,9 @@ function modelChoiceIndex(provider: SupportedProvider, modelId: string): number 
   const normalized = normalizeModelIdForProvider(provider, modelId);
   const choices = MODEL_CHOICES_BY_PROVIDER[provider];
   const index = choices.findIndex((choice) => choice.value === normalized);
-  const defaultIndex = choices.findIndex((choice) => choice.value === defaultModelForProvider(provider));
+  const defaultIndex = choices.findIndex(
+    (choice) => choice.value === defaultModelForProvider(provider),
+  );
   return index >= 0 ? index : Math.max(0, defaultIndex);
 }
 
@@ -175,10 +183,7 @@ function parseModelSelectionValue(value: string): ModelSelection | null {
   };
 }
 
-function parseModelInput(
-  currentProvider: SupportedProvider,
-  input: string,
-): ModelSelection {
+function parseModelInput(currentProvider: SupportedProvider, input: string): ModelSelection {
   const trimmed = input.trim();
   const [prefix, ...rest] = trimmed.split("/");
   const explicitProvider = prefix ? normalizeProvider(prefix) : null;
@@ -221,9 +226,7 @@ async function promptForModel(
   const selectedIndex = Math.max(
     0,
     catalog.findIndex(
-      (choice) =>
-        choice.provider === currentProvider &&
-        choice.modelId === currentModel,
+      (choice) => choice.provider === currentProvider && choice.modelId === currentModel,
     ),
   );
   const selected = await tui.promptApproval({
@@ -280,9 +283,9 @@ async function setModel(
   const resolved = await resolveActiveProvider();
   if (!resolved || resolved.provider !== selection.provider) {
     if (previousProvider) process.env.XEQ_PROVIDER = previousProvider;
-    else delete process.env.XEQ_PROVIDER;
+    else process.env.XEQ_PROVIDER = undefined;
     if (previousModel) process.env.AGENT_MODEL = previousModel;
-    else delete process.env.AGENT_MODEL;
+    else process.env.AGENT_MODEL = undefined;
     return {
       type: "continue",
       message: `Provider ${selection.provider} is not connected. Use /connect ${selection.provider} first.`,
@@ -297,7 +300,9 @@ async function setModel(
   };
 }
 
-async function providersSummary(state: SessionState): Promise<Array<{ text: string; color?: string }>> {
+async function providersSummary(
+  state: SessionState,
+): Promise<Array<{ text: string; color?: string }>> {
   const statuses = await listProviderStatuses();
   const lines = statuses.map((item) => {
     const parts = [
@@ -362,12 +367,7 @@ function updateWebSessionState(
   state.webAuthSource = resolved.authSource;
 }
 
-async function runTask(
-  task: string,
-  tui: Tui,
-  state: SessionState,
-  sessionId: string,
-): Promise<void> {
+async function runTask(task: string, tui: Tui, state: SessionState): Promise<void> {
   const abortController = new AbortController();
   tui.onCancelRunning(() => {
     abortController.abort();
@@ -423,6 +423,12 @@ async function runTask(
   });
 
   tui.renderUserMessage(request.task);
+  await appendMessage({
+    id: newMessageId(),
+    session_id: state.sessionId,
+    role: "user",
+    content: request.task,
+  });
   const webSearch = createWebSearchProvider(
     async () => {
       promptPending = true;
@@ -472,7 +478,7 @@ async function runTask(
   const result = await runOpenHarnessRuntime(
     {
       modelId: state.modelId,
-      sessionId,
+      sessionId: state.sessionId,
       providers: {
         ...env,
         webSearch,
@@ -557,7 +563,56 @@ async function runTask(
     estimatedCostUsd: 0,
   });
 
+  if (result.outputText.trim().length > 0) {
+    await appendMessage({
+      id: newMessageId(),
+      session_id: state.sessionId,
+      role: "assistant",
+      kind: result.status === "completed" ? "message" : "status",
+      content: result.outputText,
+    });
+  }
+
   tui.renderApprovalPrompt(null);
+}
+
+function formatTimestamp(timestamp: number | null | undefined): string {
+  if (!timestamp) {
+    return "unknown";
+  }
+
+  return new Date(timestamp).toLocaleString();
+}
+
+async function historySummary(): Promise<Array<{ text: string; color?: string }>> {
+  const sessions = await listSessions({
+    limit: 12,
+    project_root: process.cwd(),
+  });
+
+  if (sessions.length === 0) {
+    return [{ text: "No stored sessions for this project yet.", color: "#6E7681" }];
+  }
+
+  return sessions.map((session, index) => ({
+    text: [
+      `${index + 1}.`,
+      session.title ?? session.id,
+      `[${session.status}]`,
+      `updated=${formatTimestamp(session.updated_at)}`,
+      `id=${session.id}`,
+    ].join(" "),
+    color: session.id.startsWith("session_") ? "#E6EDF3" : "#6E7681",
+  }));
+}
+
+async function historyTranscript(sessionId: string): Promise<string> {
+  const messages = await getMessages(sessionId);
+  if (messages.length === 0) {
+    return `No stored messages for ${sessionId}.`;
+  }
+
+  return messages.map((message) => `[${message.role}] ${message.content}`).join("\n\n");
 }
 
 async function promptForProvider(
@@ -735,7 +790,24 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message:
-        "Commands: /help, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+        "Commands: /help, /history, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+    };
+  }
+
+  if (command === "history") {
+    const args = trimmed.slice(command.length + 1).trim();
+    if (!args) {
+      const lines = await historySummary();
+      return {
+        type: "continue",
+        message: lines.map((line) => line.text).join("\n"),
+        lines,
+      };
+    }
+
+    return {
+      type: "continue",
+      message: await historyTranscript(args),
     };
   }
 
@@ -908,7 +980,7 @@ async function handleSlashCommand(
   return { type: "continue", message: `Unknown command: ${trimmed}. Try /help` };
 }
 
-async function runInteractive(tui: Tui, state: SessionState, sessionId: string): Promise<void> {
+async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
   while (true) {
     const line = await tui.readInputLine();
     if (line.length === 0) continue;
@@ -938,7 +1010,7 @@ async function runInteractive(tui: Tui, state: SessionState, sessionId: string):
     }
 
     try {
-      await runTask(line, tui, state, sessionId);
+      await runTask(line, tui, state);
     } catch (error) {
       tui.renderApprovalPrompt({
         message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -952,6 +1024,7 @@ async function main(): Promise<void> {
   const initialTask = parseInitialTask(process.argv.slice(2));
   const sessionId = newSessionId();
   const state: SessionState = {
+    sessionId,
     provider: null,
     modelId: "",
     authSource: null,
@@ -996,14 +1069,22 @@ async function main(): Promise<void> {
     const ready = await ensureProviderConnected(tui, state);
     if (!ready) return;
     tui.setActiveModel(state.modelId);
+    await createSession({
+      id: state.sessionId,
+      title: initialTask ? initialTask.slice(0, 80) : null,
+      cwd: process.cwd(),
+      project_root: process.cwd(),
+      provider: state.provider ?? "unknown",
+      model: state.modelId || "unknown",
+    });
 
     tui.renderApprovalPrompt(null);
 
     if (initialTask) {
-      await runTask(initialTask, tui, state, sessionId);
+      await runTask(initialTask, tui, state);
     }
 
-    await runInteractive(tui, state, sessionId);
+    await runInteractive(tui, state);
   } finally {
     process.off("SIGINT", handleSigint);
     tui.stop();

@@ -100,7 +100,11 @@ function getEnvKey(provider: SupportedProvider, env: NodeJS.ProcessEnv): string 
   return env[providerEnvVar(provider)];
 }
 
-function hasProviderCredential(provider: SupportedProvider, store: AuthStore, env: NodeJS.ProcessEnv): boolean {
+function hasProviderCredential(
+  provider: SupportedProvider,
+  store: AuthStore,
+  env: NodeJS.ProcessEnv,
+): boolean {
   return Boolean(getEnvKey(provider, env) ?? store.providers[provider]?.key);
 }
 
