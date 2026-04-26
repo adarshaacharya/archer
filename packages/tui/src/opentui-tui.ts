@@ -296,8 +296,7 @@ export class PiTui implements Tui {
   renderUserMessage(message: string): void {
     const text = normalizeText(message);
     if (!text) return;
-    this.print("You", col.user);
-    this.print(text, col.text);
+    this.print(text, col.user);
     this.print("");
   }
 
@@ -327,7 +326,6 @@ export class PiTui implements Tui {
       this.renderer?.requestRender();
     }
     if (final) {
-      this.print("XEQ", col.accent);
       this.print(final, col.text);
       this.print("");
     }
@@ -368,6 +366,8 @@ export class PiTui implements Tui {
     ].join("  ");
     this.print(`◆ ${line}`, col.summary);
     this.print("");
+    this.printSeparator();
+    this.print("");
   }
 
   setSlashCommands(commands: SlashCommandItem[]): void {
@@ -393,6 +393,21 @@ export class PiTui implements Tui {
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  private printSeparator(): void {
+    if (!this.renderer) return;
+    this.renderer.writeToScrollback((ctx) => {
+      const text = new TextRenderable(ctx.renderContext, {
+        id: "sb-sep",
+        content: "─".repeat(ctx.width),
+        width: ctx.width,
+        wrapMode: "none",
+        truncate: true,
+        fg: col.border,
+      });
+      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
+  }
 
   /** Write a styled line to the scrollback area above the footer. */
   private print(content: string, fg: string = col.text): void {
