@@ -449,6 +449,10 @@ export class PiTui implements Tui {
         this.rejectPendingModal();
         return true;
       }
+      if (seq === "\x1b" && this.cancelRunningHandler) {
+        this.cancelRunningHandler();
+        return true;
+      }
       return false;
     });
 
