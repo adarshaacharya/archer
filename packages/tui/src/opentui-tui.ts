@@ -29,6 +29,8 @@ export interface Tui {
   start(): Promise<void>;
   setActiveModel(modelId: string): void;
   renderUserMessage(message: string): void;
+  renderInfoMessage(message: string): void;
+  renderInfoLines(lines: Array<{ text: string; color?: string }>): void;
   renderStep(step: AgentStep): void;
   renderAssistantDelta(delta: string): void;
   finalizeAssistantStream(text?: string): void;
@@ -73,8 +75,8 @@ const col = {
   summary:   "#F0883E",
 };
 
-// Footer sizing: status(1) + border-top(1) + input(1) + border-bottom(1) = 4
-const BASE_FOOTER = 4;
+// Footer sizing: status(2) + border-top(1) + input(1) + border-bottom(1) = 5
+const BASE_FOOTER = 5;
 const MAX_SLASH_ROWS = 6;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,6 +142,28 @@ function approvalDialogWidth(prompt: ApprovalPromptState, choices: ApprovalDialo
   return clamp(Math.max(labelWidth + 10, detailWidth + 4, messageWidth + 4), 42, 88);
 }
 
+function statusPromptStyle(prompt: ApprovalPromptState): {
+  primary: string;
+  primaryColor: string;
+  secondary?: string;
+  secondaryColor?: string;
+} {
+  const message = normalizeText(prompt.message);
+  const hint = prompt.options ? `  ${prompt.options.join("  ")}` : "";
+  if (message.startsWith("Enter API key for ")) {
+    return {
+      primary: message,
+      primaryColor: col.accent,
+      secondary: "Type /exit to cancel",
+      secondaryColor: col.muted,
+    };
+  }
+  return {
+    primary: message + hint,
+    primaryColor: col.text,
+  };
+}
+
 function slashCommandMatches(commands: SlashCommandItem[], input: string): SlashCommandItem[] {
   const v = input.trim();
   if (!v.startsWith("/")) return [];
@@ -151,7 +175,8 @@ function slashCommandMatches(commands: SlashCommandItem[], input: string): Slash
 export class PiTui implements Tui {
   private renderer: CliRenderer | null = null;
   private footerRoot: BoxRenderable | null = null;
-  private statusText: TextRenderable | null = null;
+  private statusPrimaryText: TextRenderable | null = null;
+  private statusSecondaryText: TextRenderable | null = null;
   private input: InputRenderable | null = null;
   private slashMenuBox: BoxRenderable | null = null;
   private slashMenuSelect: SelectRenderable | null = null;
@@ -171,6 +196,20 @@ export class PiTui implements Tui {
   private setInputValue: ((value: string) => void) | null = null;
   private setSlashCommandsState: ((value: SlashCommandItem[]) => void) | null = null;
   private setApprovalRows: ((value: number) => void) | null = null;
+
+  private setStatus(
+    primary: string,
+    primaryColor: string = col.muted,
+    secondary = "",
+    secondaryColor: string = col.muted,
+  ): void {
+    if (!this.statusPrimaryText || !this.statusSecondaryText) return;
+    this.statusPrimaryText.content = primary;
+    this.statusPrimaryText.fg = primaryColor;
+    this.statusSecondaryText.content = secondary;
+    this.statusSecondaryText.fg = secondaryColor;
+    this.renderer?.requestRender();
+  }
 
   private handleSlashMenuClick(screenY: number): void {
     if (!this.currentInput.trim().startsWith("/") || this.slashMenuItems.length === 0 || !this.slashMenuSelect) {
@@ -238,22 +277,32 @@ export class PiTui implements Tui {
       alignItems: "stretch",
     });
 
-    // Status line (1 row, above composer border)
+    // Status line (2 rows, above composer border)
     const statusRow = new BoxRenderable(this.renderer, {
       id: "status-row",
       width: "100%",
-      height: 1,
+      height: 2,
       flexShrink: 0,
+      flexDirection: "column",
+      alignItems: "stretch",
       paddingLeft: 1,
     });
-    this.statusText = new TextRenderable(this.renderer, {
-      id: "status-text",
+    this.statusPrimaryText = new TextRenderable(this.renderer, {
+      id: "status-primary-text",
       content: "",
       width: "100%",
       height: 1,
       fg: col.muted,
     });
-    statusRow.add(this.statusText);
+    this.statusSecondaryText = new TextRenderable(this.renderer, {
+      id: "status-secondary-text",
+      content: "",
+      width: "100%",
+      height: 1,
+      fg: col.muted,
+    });
+    statusRow.add(this.statusPrimaryText);
+    statusRow.add(this.statusSecondaryText);
 
     // Slash menu — sits below the composer, hidden until typing "/"
     this.slashMenuBox = new BoxRenderable(this.renderer, {
@@ -397,10 +446,7 @@ export class PiTui implements Tui {
   setActiveModel(modelId: string): void {
     const value = modelId.trim();
     this.activeModelLabel = value ? `model=${value}` : "model=unconfigured";
-    if (this.statusText) {
-      this.statusText.content = this.activeModelLabel;
-      this.renderer?.requestRender();
-    }
+    this.setStatus(this.activeModelLabel);
   }
 
   renderUserMessage(message: string): void {
@@ -430,6 +476,22 @@ export class PiTui implements Tui {
     this.print("");
   }
 
+  renderInfoMessage(message: string): void {
+    const text = normalizeText(message);
+    if (!text) return;
+    for (const line of text.split("\n")) {
+      this.print(line, col.muted);
+    }
+    this.print("");
+  }
+
+  renderInfoLines(lines: Array<{ text: string; color?: string }>): void {
+    for (const line of lines) {
+      this.print(line.text, line.color ?? col.muted);
+    }
+    this.print("");
+  }
+
   renderStep(step: AgentStep): void {
     const detail = step.observation
       ? `\n  ${normalizeText(step.observation).split("\n").slice(0, 3).join("\n  ")}`
@@ -440,21 +502,15 @@ export class PiTui implements Tui {
   renderAssistantDelta(delta: string): void {
     if (!delta) return;
     this.assistantStreamText += delta;
-    if (this.statusText) {
-      const lines = this.assistantStreamText.trimEnd().split("\n");
-      const last = (lines[lines.length - 1] ?? "").slice(0, 100);
-      this.statusText.content = `${this.activeModelLabel}  |  ${last}`;
-      this.renderer?.requestRender();
-    }
+    const lines = this.assistantStreamText.trimEnd().split("\n");
+    const last = (lines[lines.length - 1] ?? "").slice(0, 100);
+    this.setStatus(`${this.activeModelLabel}  |  ${last}`);
   }
 
   finalizeAssistantStream(text?: string): void {
     const final = normalizeText(text ?? this.assistantStreamText);
     this.assistantStreamText = "";
-    if (this.statusText) {
-      this.statusText.content = this.activeModelLabel;
-      this.renderer?.requestRender();
-    }
+    this.setStatus(this.activeModelLabel);
     if (final) {
       this.print(final, col.text);
       this.print("");
@@ -464,17 +520,28 @@ export class PiTui implements Tui {
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
     if (!prompt) {
       this.closePendingModal();
-      if (this.statusText) this.statusText.content = this.activeModelLabel;
+      this.setStatus(this.activeModelLabel);
       this.input?.focus();
-      this.renderer?.requestRender();
       return;
     }
     if (this.pendingModal) return;
-    if (this.statusText) {
-      const hint = prompt.options ? `  ${prompt.options.join("  ")}` : "";
-      this.statusText.content = `${this.activeModelLabel}  |  ${normalizeText(prompt.message)}${hint}`;
-      this.renderer?.requestRender();
+    const style = statusPromptStyle(prompt);
+    const showModel = !normalizeText(prompt.message).startsWith("Enter API key for ");
+    if (showModel) {
+      this.setStatus(
+        `${this.activeModelLabel}  |  ${style.primary}`,
+        style.primaryColor,
+        style.secondary ?? "",
+        style.secondaryColor ?? col.muted,
+      );
+      return;
     }
+    this.setStatus(
+      style.primary,
+      style.primaryColor,
+      style.secondary ?? "",
+      style.secondaryColor ?? col.muted,
+    );
   }
 
   promptApproval(prompt: ApprovalPromptState): Promise<string> {

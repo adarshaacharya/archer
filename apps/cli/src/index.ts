@@ -13,6 +13,7 @@ import {
   defaultModelForProvider,
   getAuthFilePath,
   listAvailableProviders,
+  listProviderStatuses,
   listSavedProviders,
   listSavedWebProviders,
   normalizeProvider,
@@ -46,7 +47,7 @@ function newSessionId(): string {
 }
 
 type SlashCommandResult =
-  | { type: "continue"; message: string }
+  | { type: "continue"; message: string; lines?: Array<{ text: string; color?: string }> }
   | { type: "exit" }
   | { type: "none" };
 
@@ -153,6 +154,8 @@ type ModelSelection = {
   modelId: string;
 };
 
+const CONNECT_PROVIDER_VALUE = "__connect_provider__";
+
 function providerLabel(provider: SupportedProvider): string {
   return PROVIDER_CHOICES.find((choice) => choice.value === provider)?.label ?? provider;
 }
@@ -196,7 +199,7 @@ function parseModelInput(
 async function promptForModel(
   tui: Tui,
   state: SessionState,
-): Promise<ModelSelection | "exit" | "cancel"> {
+): Promise<ModelSelection | "connect-provider" | "exit" | "cancel"> {
   const currentProvider = state.provider ?? "openrouter";
   const currentModel = normalizeModelIdForProvider(
     currentProvider,
@@ -227,16 +230,24 @@ async function promptForModel(
     message: "Choose model",
     details: `Providers: ${providers.map(providerLabel).join(", ")}  Current: ${providerLabel(currentProvider)}/${currentModel}`,
     selectedIndex,
-    choices: catalog.map((choice) => ({
-      value: modelSelectionValue({
-        provider: choice.provider,
-        modelId: choice.modelId,
-      }),
-      label: `${choice.label}  [${providerLabel(choice.provider)}]`,
-      description: choice.description,
-    })),
+    choices: [
+      ...catalog.map((choice) => ({
+        value: modelSelectionValue({
+          provider: choice.provider,
+          modelId: choice.modelId,
+        }),
+        label: `${choice.label}  [${providerLabel(choice.provider)}]`,
+        description: choice.description,
+      })),
+      {
+        value: CONNECT_PROVIDER_VALUE,
+        label: "Connect provider...",
+        description: "Add or update another provider API key",
+      },
+    ],
   });
   if (selected === "reject") return "cancel";
+  if (selected === CONNECT_PROVIDER_VALUE) return "connect-provider";
 
   return parseModelSelectionValue(selected) ?? "cancel";
 }
@@ -247,10 +258,17 @@ async function setModel(
   modelId?: string,
 ): Promise<SlashCommandResult> {
   const currentProvider = state.provider ?? "openrouter";
-  const selection =
+  let selection: ModelSelection | "connect-provider" | "exit" | "cancel" =
     modelId && modelId.trim().length > 0
       ? parseModelInput(currentProvider, modelId)
       : await promptForModel(tui, state);
+
+  while (selection === "connect-provider") {
+    const result = await connectProvider(tui, state);
+    if (result.type === "exit") return result;
+    selection = await promptForModel(tui, state);
+  }
+
   if (selection === "exit") return { type: "exit" };
   if (selection === "cancel") return { type: "continue", message: "Model selection cancelled." };
 
@@ -277,6 +295,33 @@ async function setModel(
     type: "continue",
     message: `Model set to ${state.provider}/${state.modelId}. ${activeProviderSummary(state)}`,
   };
+}
+
+async function providersSummary(state: SessionState): Promise<Array<{ text: string; color?: string }>> {
+  const statuses = await listProviderStatuses();
+  const lines = statuses.map((item) => {
+    const parts = [
+      state.provider === item.provider ? "active" : null,
+      item.saved ? "saved" : null,
+      !item.saved && item.env ? "env only" : null,
+      !item.available ? "not connected" : null,
+    ].filter(Boolean);
+    const status = parts.join(", ");
+    return {
+      text: `${providerLabel(item.provider)}: ${status}`,
+      color: item.available ? "#3FB950" : "#D29922",
+    };
+  });
+  const activeLine =
+    state.provider && state.modelId
+      ? `Active model: ${providerLabel(state.provider)}/${state.modelId}`
+      : "Active model: unconfigured";
+  return [
+    { text: "Providers", color: "#E6EDF3" },
+    { text: activeLine, color: "#6E7681" },
+    ...lines,
+    { text: `Store: ${getAuthFilePath()}`, color: "#6E7681" },
+  ];
 }
 
 function updateSessionState(
@@ -690,7 +735,16 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message:
-        "Commands: /help, /connect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+        "Commands: /help, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+    };
+  }
+
+  if (command === "providers") {
+    const lines = await providersSummary(state);
+    return {
+      type: "continue",
+      message: lines.map((line) => line.text).join("\n"),
+      lines,
     };
   }
 
@@ -730,6 +784,52 @@ async function handleSlashCommand(
     }
 
     return connectProvider(tui, state);
+  }
+
+  if (command === "change-key") {
+    const args = trimmed.slice(command.length + 1).trim();
+    if (!args) {
+      return { type: "continue", message: "Usage: /change-key <provider>" };
+    }
+    const provider = normalizeProvider(args);
+    if (!provider) {
+      return { type: "continue", message: `Unknown provider: ${args}` };
+    }
+    return connectProvider(tui, state, provider);
+  }
+
+  if (command === "disconnect") {
+    const args = trimmed.slice(command.length + 1).trim();
+    if (!args) {
+      return { type: "continue", message: "Usage: /disconnect <provider>" };
+    }
+    const provider = normalizeProvider(args);
+    if (!provider) {
+      return { type: "continue", message: `Unknown provider: ${args}` };
+    }
+
+    const statuses = await listProviderStatuses();
+    const status = statuses.find((item) => item.provider === provider);
+    if (!status?.saved) {
+      return {
+        type: "continue",
+        message: status?.env
+          ? `Provider ${provider} is coming from env. Remove the env var manually.`
+          : `Provider ${provider} has no saved key.`,
+      };
+    }
+
+    await removeProviderAuth(provider);
+    clearProviderEnv(provider);
+    const resolved = await resolveActiveProvider();
+    updateSessionState(state, resolved);
+    tui.setActiveModel(state.modelId);
+    return {
+      type: "continue",
+      message: state.provider
+        ? `Disconnected ${provider}. Active ${activeProviderSummary(state)}`
+        : `Disconnected ${provider}. No active provider configured.`,
+    };
   }
 
   if (command === "web") {
@@ -820,9 +920,15 @@ async function runInteractive(tui: Tui, state: SessionState, sessionId: string):
     }
     if (slash.type === "continue") {
       tui.renderApprovalPrompt(null);
-      tui.renderApprovalPrompt({
-        message: slash.message,
-      });
+      if (slash.lines && slash.lines.length > 0) {
+        tui.renderInfoLines(slash.lines);
+      } else if (slash.message.includes("\n")) {
+        tui.renderInfoMessage(slash.message);
+      } else {
+        tui.renderApprovalPrompt({
+          message: slash.message,
+        });
+      }
       continue;
     }
 
@@ -861,7 +967,10 @@ async function main(): Promise<void> {
     `${keybinds.print("app_exit")}=quit`,
   ];
   const slashCommandOptions: SlashCommandItem[] = [
+    { name: "/providers", description: "show provider connection status" },
     { name: "/connect", description: "connect a model provider" },
+    { name: "/change-key", description: "update a provider API key" },
+    { name: "/disconnect", description: "remove a saved provider key" },
     { name: "/provider", description: "show the active model provider" },
     { name: "/model", description: "choose the active model" },
     { name: "/web", description: "connect a web search provider" },

@@ -30,6 +30,13 @@ export type ActiveWebProviderState = {
   apiKey: string;
 };
 
+export type ProviderStatus = {
+  provider: SupportedProvider;
+  saved: boolean;
+  env: boolean;
+  available: boolean;
+};
+
 const AUTH_DIR = path.join(os.homedir(), ".local", "share", "xeq");
 const AUTH_FILE = path.join(AUTH_DIR, "auth.json");
 const SUPPORTED_PROVIDERS: SupportedProvider[] = ["openrouter", "openai", "anthropic", "gemini"];
@@ -239,6 +246,22 @@ export async function listAvailableProviders(
 ): Promise<SupportedProvider[]> {
   const store = await readAuthStore();
   return SUPPORTED_PROVIDERS.filter((provider) => hasProviderCredential(provider, store, env));
+}
+
+export async function listProviderStatuses(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<ProviderStatus[]> {
+  const store = await readAuthStore();
+  return SUPPORTED_PROVIDERS.map((provider) => {
+    const envAvailable = Boolean(getEnvKey(provider, env));
+    const saved = Boolean(store.providers[provider]?.key);
+    return {
+      provider,
+      saved,
+      env: envAvailable,
+      available: envAvailable || saved,
+    };
+  });
 }
 
 export async function listSavedWebProviders(): Promise<SupportedWebProvider[]> {
