@@ -1,6 +1,6 @@
 # @xeq/tui
 
-Terminal UI package (pi-tui).
+Terminal UI package built on OpenTUI with Solid-driven state.
 
 ## Responsibility
 
@@ -16,5 +16,5 @@ Terminal UI package (pi-tui).
 ## Depends On
 
 - `@xeq/shared`
-- `@mariozechner/pi-tui`
-- `react`
+- `@opentui/core`
+- `solid-js`

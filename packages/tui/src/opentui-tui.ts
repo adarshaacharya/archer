@@ -8,6 +8,7 @@ import {
   TextRenderable,
   createCliRenderer,
 } from "@opentui/core";
+import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
 import type { AgentStep, RunSummary } from "@xeq/shared";
 
 export interface ApprovalPromptState {
@@ -135,14 +136,16 @@ export class PiTui implements Tui {
   private slashMenuBox: BoxRenderable | null = null;
   private slashMenuText: TextRenderable | null = null;
   private slashCommands: SlashCommandItem[] = [];
-  private slashLineCount = 0;
-  private currentInput = "";
   private assistantStreamText = "";
   private pendingReadResolve: ((line: string) => void) | null = null;
   private pendingApprovalResolve: ((choice: string) => void) | null = null;
   private pendingModal: PendingModal | null = null;
   private cancelRunningHandler: (() => void) | null = null;
-  private approvalRows = 0;
+  private dispose: VoidFunction | null = null;
+  private setInputValue: ((value: string) => void) | null = null;
+  private setSlashCommandsState: ((value: SlashCommandItem[]) => void) | null = null;
+  private setSlashLineCount: ((value: number) => void) | null = null;
+  private setApprovalRows: ((value: number) => void) | null = null;
 
   async start(): Promise<void> {
     this.renderer = await createCliRenderer({
@@ -154,6 +157,51 @@ export class PiTui implements Tui {
       autoFocus: true,
       useMouse: false,
       targetFps: 30,
+    });
+
+    this.dispose = createRoot((dispose) => {
+      const [inputValue, setInputValue] = createSignal("")
+      const [slashCommands, setSlashCommandsState] = createSignal<SlashCommandItem[]>([])
+      const [slashLineCount, setSlashLineCount] = createSignal(0)
+      const [approvalRows, setApprovalRows] = createSignal(0)
+
+      this.setInputValue = setInputValue
+      this.setSlashCommandsState = setSlashCommandsState
+      this.setSlashLineCount = setSlashLineCount
+      this.setApprovalRows = setApprovalRows
+
+      createEffect(() => {
+        const commands = slashCommands()
+        const value = inputValue()
+        const preview = slashCommandPreview(commands, value)
+        const next = preview ? preview.split("\n").length : 0
+        setSlashLineCount(next)
+
+        const menuText = this.slashMenuText
+        const menuBox = this.slashMenuBox
+        const renderer = this.renderer
+        if (!menuText || !menuBox || !renderer) return
+        batch(() => {
+          menuText.content = preview
+          menuText.height = next
+          menuBox.height = next
+        })
+        renderer.requestRender()
+      })
+
+      createEffect(() => {
+        if (!this.renderer) return
+        this.renderer.footerHeight = BASE_FOOTER + slashLineCount() + approvalRows()
+      })
+
+      onCleanup(() => {
+        this.setInputValue = null
+        this.setSlashCommandsState = null
+        this.setSlashLineCount = null
+        this.setApprovalRows = null
+      })
+
+      return dispose
     });
 
     // ── Footer layout ─────────────────────────────────────────────────────────
@@ -255,15 +303,13 @@ export class PiTui implements Tui {
 
     // ── Input events ──────────────────────────────────────────────────────────
     this.input.on(InputRenderableEvents.INPUT, (value: string) => {
-      this.currentInput = value;
-      this.updateSlashMenu(value);
+      this.setInputValue?.(value);
     });
 
     this.input.on(InputRenderableEvents.ENTER, (value: string) => {
       const submit = normalizeText(value);
-      this.currentInput = "";
       if (this.input) this.input.value = "";
-      this.updateSlashMenu("");
+      this.setInputValue?.("");
 
       if (this.pendingReadResolve) {
         const resolve = this.pendingReadResolve;
@@ -372,8 +418,7 @@ export class PiTui implements Tui {
 
   setSlashCommands(commands: SlashCommandItem[]): void {
     this.slashCommands = commands;
-    this.updateSlashMenu(this.currentInput);
-    this.renderer?.requestRender();
+    this.setSlashCommandsState?.([...commands]);
   }
 
   readInputLine(): Promise<string> {
@@ -388,6 +433,8 @@ export class PiTui implements Tui {
   }
 
   stop(): void {
+    this.dispose?.();
+    this.dispose = null;
     this.renderer?.destroy();
     this.renderer = null;
   }
@@ -425,29 +472,11 @@ export class PiTui implements Tui {
     });
   }
 
-  private updateSlashMenu(value: string): void {
-    if (!this.slashMenuText || !this.slashMenuBox || !this.renderer) return;
-    const preview = slashCommandPreview(this.slashCommands, value);
-    const lineCount = preview ? preview.split("\n").length : 0;
-    this.slashLineCount = lineCount;
-    this.slashMenuText.content = preview;
-    this.slashMenuText.height = lineCount;
-    this.slashMenuBox.height = lineCount;
-    this.syncFooterHeight();
-    this.renderer.requestRender();
-  }
-
-  private syncFooterHeight(): void {
-    if (!this.renderer) return;
-    this.renderer.footerHeight = BASE_FOOTER + this.slashLineCount + this.approvalRows;
-  }
-
   private closePendingModal(): void {
     if (this.pendingModal) {
       this.pendingModal.box.destroyRecursively();
       this.pendingModal = null;
-      this.approvalRows = 0;
-      this.syncFooterHeight();
+      this.setApprovalRows?.(0);
     }
   }
 
@@ -463,7 +492,7 @@ export class PiTui implements Tui {
 
   /**
    * Create a box appended below the composer in the footer column.
-   * Caller must set this.approvalRows and call syncFooterHeight() after.
+   * Footer height is driven by the Solid signal in start().
    */
   private approvalBox(id: string, innerRows: number, title: string): BoxRenderable {
     if (!this.renderer) throw new Error("renderer not ready");
@@ -525,8 +554,7 @@ export class PiTui implements Tui {
     }));
 
     this.footerRoot.add(box);
-    this.approvalRows = innerRows + 2;
-    this.syncFooterHeight();
+    this.setApprovalRows?.(innerRows + 2);
     this.pendingModal = { type: "approval", resolve, select, box };
 
     select.focus();
@@ -622,8 +650,7 @@ export class PiTui implements Tui {
     }));
 
     this.footerRoot.add(box);
-    this.approvalRows = 17 + 2;
-    this.syncFooterHeight();
+    this.setApprovalRows?.(17 + 2);
 
     const modal: PendingModal = {
       type: "review",
