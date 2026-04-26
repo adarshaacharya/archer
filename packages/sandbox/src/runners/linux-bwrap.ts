@@ -27,7 +27,9 @@ export const runWithLinuxBwrap: SandboxRunner = async (
     "--unshare-net",
     "--",
     "bash",
-    "-lc",
+    "--noprofile",
+    "--norc",
+    "-c",
     command,
   ];
 

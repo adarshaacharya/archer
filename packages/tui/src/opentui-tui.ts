@@ -510,10 +510,13 @@ export class PiTui implements Tui {
   }
 
   renderStep(step: AgentStep): void {
-    const detail = step.observation
-      ? `\n  ${normalizeText(step.observation).split("\n").slice(0, 3).join("\n  ")}`
-      : "";
-    this.print(`● ${step.action}  step ${step.step}${detail}`, col.step);
+    this.print(`● ${step.action}  step ${step.step}`, col.step);
+    if (!step.observation) return;
+
+    const lines = normalizeText(step.observation).split("\n").slice(0, 3);
+    for (const line of lines) {
+      this.print(`  ${line}`, col.step);
+    }
   }
 
   renderAssistantDelta(delta: string): void {

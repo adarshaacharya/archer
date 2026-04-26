@@ -1,10 +1,14 @@
 export function classifyToolCall(toolName: string, input: unknown) {
-  if (["read", "list", "grep", "glob"].includes(toolName)) {
+  if (["readFile", "listFiles", "grep"].includes(toolName)) {
     return { permission: "read" as const, pattern: "*" };
   }
 
-  if (["preparePatch", "preparePatchBundle", "write", "edit"].includes(toolName)) {
-    return { permission: "edit" as const, pattern: "*" };
+  if (["preparePatch", "preparePatchBundle"].includes(toolName)) {
+    return { permission: "patch_review" as const, pattern: "*" };
+  }
+
+  if (["writeFile", "editFile", "deleteFile"].includes(toolName)) {
+    return { permission: "edit" as const, pattern: filePattern(input) };
   }
 
   if (toolName === "bash") {
@@ -16,6 +20,14 @@ export function classifyToolCall(toolName: string, input: unknown) {
   }
 
   return { permission: "bash" as const, pattern: toolName };
+}
+
+function filePattern(input: unknown): string {
+  if (!input || typeof input !== "object") return "*";
+  const filePath = (input as { filePath?: unknown }).filePath;
+  if (typeof filePath !== "string" || filePath.trim() === "") return "*";
+
+  return filePath;
 }
 
 function commandPattern(input: unknown): string {

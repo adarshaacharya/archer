@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
 import { performance } from "node:perf_hooks";
-import { runOpenHarnessRuntime } from "@xeq/agent-core";
+import { classifyToolCall, runOpenHarnessRuntime } from "@xeq/agent-core";
 import type { SupportedProvider } from "@xeq/model-providers";
 import { type ApprovalChoice, type ApprovalRequest, createSandboxEnvironment } from "@xeq/sandbox";
 import { AgentRequestSchema } from "@xeq/shared";
@@ -529,22 +529,30 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
         webSearch,
       },
       approveToolCall: async (toolCall) => {
-        if (toolCall.toolName !== "bash") {
+        const decision = classifyToolCall(toolCall.toolName, toolCall.input);
+
+        if (decision.permission === "read" || decision.permission === "patch_review") {
           return true;
         }
 
-        const input =
-          typeof toolCall.input === "object" && toolCall.input !== null
-            ? (toolCall.input as { command?: unknown })
-            : {};
-        const command = typeof input.command === "string" ? input.command : "";
+        if (decision.permission === "web_fetch") {
+          return true;
+        }
+
+        const requestTarget =
+          decision.permission === "bash"
+            ? decision.pattern || toolCall.toolName
+            : env.fs.resolvePath(decision.pattern);
 
         promptPending = true;
         try {
           const approval = await requestApproval(tui, {
-            kind: "command",
-            target: command || "bash",
+            kind: decision.permission === "bash" ? "command" : "file-write",
+            target: requestTarget,
           });
+          if (approval !== "reject" && decision.permission === "edit") {
+            patchApprovedPaths.add(requestTarget);
+          }
           return approval !== "reject";
         } finally {
           promptPending = false;
