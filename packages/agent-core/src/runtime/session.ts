@@ -1,6 +1,8 @@
 import { Agent, Session, createLocalTools } from "@openharness/core";
 import { resolveModelConfig } from "@xeq/model-providers";
+import { loadModelMessages, replaceMessages } from "@xeq/storage";
 import { createEditTools, createWebFetchTool, createWebSearchTool } from "@xeq/tools";
+import type { ModelMessage } from "ai";
 import { DEFAULT_MAX_STEPS } from "../types.js";
 import { sanitizeId } from "./ids.js";
 import { resolveModel } from "./model.js";
@@ -11,6 +13,7 @@ type RuntimeSession = {
   cwd: string;
   provider: string;
   modelId: string;
+  loaded: boolean;
 };
 
 const SESSIONS = new Map<string, RuntimeSession>();
@@ -111,9 +114,15 @@ function createSession({
     agent,
     contextWindow: 200_000,
     sessionId: sessionId ? sanitizeId(sessionId) : undefined,
+    sessionStore: {
+      load: async (id: string) => loadModelMessages(id),
+      save: async (id: string, messages: ModelMessage[]) => {
+        await replaceMessages(id, messages);
+      },
+    },
   });
 
-  return { session, cwd, provider: model.provider, modelId: model.modelId };
+  return { session, cwd, provider: model.provider, modelId: model.modelId, loaded: false };
 }
 
 export function getOrCreateSession({

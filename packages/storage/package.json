@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@xeq/shared": "workspace:*",
+    "ai": "^5.0.66",
     "drizzle-orm": "^0.45.2"
   },
   "exports": {

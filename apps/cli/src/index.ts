@@ -5,7 +5,13 @@ import { runOpenHarnessRuntime } from "@xeq/agent-core";
 import type { SupportedProvider } from "@xeq/model-providers";
 import { type ApprovalChoice, type ApprovalRequest, createSandboxEnvironment } from "@xeq/sandbox";
 import { AgentRequestSchema } from "@xeq/shared";
-import { appendMessage, createSession, getMessages, listSessions } from "@xeq/storage";
+import {
+  createSession,
+  getMessages,
+  getSession,
+  listSessions,
+  updateSessionTitle,
+} from "@xeq/storage";
 import { PiTui, type SlashCommandItem, type Tui } from "@xeq/tui";
 import { type SupportedWebProvider, createWebSearchProvider } from "@xeq/web";
 import {
@@ -47,8 +53,8 @@ function newSessionId(): string {
   return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function newMessageId(): string {
-  return `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+function titleFromTask(task: string): string {
+  return task.replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
 type SlashCommandResult =
@@ -58,6 +64,7 @@ type SlashCommandResult =
 
 type SessionState = {
   sessionId: string;
+  sessionTitle: string | null;
   provider: SupportedProvider | null;
   modelId: string;
   authSource: "env" | "saved" | null;
@@ -385,6 +392,14 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
     maxDurationMs: 120000,
   });
 
+  if (!state.sessionTitle) {
+    state.sessionTitle = titleFromTask(request.task);
+    await updateSessionTitle({
+      id: state.sessionId,
+      title: state.sessionTitle,
+    });
+  }
+
   tui.renderApprovalPrompt({ message: request.task, options: ["running"] });
 
   const started = performance.now();
@@ -423,12 +438,6 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
   });
 
   tui.renderUserMessage(request.task);
-  await appendMessage({
-    id: newMessageId(),
-    session_id: state.sessionId,
-    role: "user",
-    content: request.task,
-  });
   const webSearch = createWebSearchProvider(
     async () => {
       promptPending = true;
@@ -563,16 +572,6 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
     estimatedCostUsd: 0,
   });
 
-  if (result.outputText.trim().length > 0) {
-    await appendMessage({
-      id: newMessageId(),
-      session_id: state.sessionId,
-      role: "assistant",
-      kind: result.status === "completed" ? "message" : "status",
-      content: result.outputText,
-    });
-  }
-
   tui.renderApprovalPrompt(null);
 }
 
@@ -584,26 +583,115 @@ function formatTimestamp(timestamp: number | null | undefined): string {
   return new Date(timestamp).toLocaleString();
 }
 
-async function historySummary(): Promise<Array<{ text: string; color?: string }>> {
-  const sessions = await listSessions({
+function sessionLabel(
+  session: Awaited<ReturnType<typeof listSessions>>[number],
+  index?: number,
+): string {
+  const prefix = index === undefined ? "" : `${index + 1}. `;
+  return `${prefix}${session.title ?? "Untitled session"}`;
+}
+
+function sessionDescription(session: Awaited<ReturnType<typeof listSessions>>[number]): string {
+  return `updated=${formatTimestamp(session.updated_at)}  id=${session.id}`;
+}
+
+async function projectSessions() {
+  return listSessions({
     limit: 12,
     project_root: process.cwd(),
   });
+}
+
+async function historySummary(): Promise<Array<{ text: string; color?: string }>> {
+  const sessions = await projectSessions();
 
   if (sessions.length === 0) {
     return [{ text: "No stored sessions for this project yet.", color: "#6E7681" }];
   }
 
   return sessions.map((session, index) => ({
-    text: [
-      `${index + 1}.`,
-      session.title ?? session.id,
-      `[${session.status}]`,
-      `updated=${formatTimestamp(session.updated_at)}`,
-      `id=${session.id}`,
-    ].join(" "),
+    text: `${sessionLabel(session, index)}  ${sessionDescription(session)}`,
     color: session.id.startsWith("session_") ? "#E6EDF3" : "#6E7681",
   }));
+}
+
+function renderStoredContent(content: string): string {
+  const renderPart = (part: unknown): string[] => {
+    if (typeof part === "string") {
+      return [part];
+    }
+
+    if (!part || typeof part !== "object") {
+      return [];
+    }
+
+    const record = part as Record<string, unknown>;
+    const type = typeof record.type === "string" ? record.type : null;
+
+    if (typeof record.text === "string") {
+      return [record.text];
+    }
+
+    if (type === "text" && typeof record.value === "string") {
+      return [record.value];
+    }
+
+    if ((type === "reasoning" || type === "reasoning_text") && typeof record.text === "string") {
+      return [`[reasoning] ${record.text}`];
+    }
+
+    if ((type === "tool-call" || type === "tool_call") && typeof record.toolName === "string") {
+      const input =
+        record.input === undefined ? "" : ` ${JSON.stringify(record.input).slice(0, 240)}`;
+      return [`[tool-call:${record.toolName}]${input}`];
+    }
+
+    if ((type === "tool-result" || type === "tool_result") && typeof record.toolName === "string") {
+      const output =
+        record.output === undefined ? "" : ` ${JSON.stringify(record.output).slice(0, 240)}`;
+      return [`[tool-result:${record.toolName}]${output}`];
+    }
+
+    if ((type === "image" || type === "file") && typeof record.mimeType === "string") {
+      return [`[${type}:${record.mimeType}]`];
+    }
+
+    if (type === "file") {
+      return ["[file]"];
+    }
+
+    if (type) {
+      return [`[${type}]`];
+    }
+
+    return [];
+  };
+
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+
+    if (Array.isArray(parsed)) {
+      const parts = parsed.flatMap((item) => renderPart(item));
+
+      if (parts.length > 0) {
+        return parts.join("\n");
+      }
+    }
+
+    if (parsed && typeof parsed === "object") {
+      const lines = renderPart(parsed);
+      if (lines.length > 0) {
+        return lines.join("\n");
+      }
+    }
+  } catch {
+    return content;
+  }
+
+  return content;
 }
 
 async function historyTranscript(sessionId: string): Promise<string> {
@@ -612,7 +700,70 @@ async function historyTranscript(sessionId: string): Promise<string> {
     return `No stored messages for ${sessionId}.`;
   }
 
-  return messages.map((message) => `[${message.role}] ${message.content}`).join("\n\n");
+  return messages
+    .map((message) => `[${message.role}] ${renderStoredContent(message.content)}`)
+    .join("\n\n");
+}
+
+async function pickSession(tui: Tui, prompt: string): Promise<string | "cancel"> {
+  const sessions = await projectSessions();
+  if (sessions.length === 0) {
+    return "cancel";
+  }
+
+  const picked = await tui.promptApproval({
+    message: prompt,
+    choices: sessions.map((session) => ({
+      value: session.id,
+      label: sessionLabel(session),
+      description: sessionDescription(session),
+    })),
+  });
+
+  if (picked === "reject") {
+    return "cancel";
+  }
+
+  return picked;
+}
+
+async function continueSession(
+  sessionId: string,
+  state: SessionState,
+): Promise<SlashCommandResult> {
+  const session = await getSession(sessionId);
+  if (!session) {
+    return {
+      type: "continue",
+      message: `Unknown session: ${sessionId}`,
+    };
+  }
+
+  state.sessionId = session.id;
+  state.sessionTitle = session.title ?? null;
+  return {
+    type: "continue",
+    message: `Continuing ${session.title ?? "Untitled session"}. Future prompts will reuse its stored context.`,
+  };
+}
+
+async function startNewSession(state: SessionState): Promise<SlashCommandResult> {
+  const sessionId = newSessionId();
+  await createSession({
+    id: sessionId,
+    title: null,
+    cwd: process.cwd(),
+    project_root: process.cwd(),
+    provider: state.provider ?? "unknown",
+    model: state.modelId || "unknown",
+  });
+
+  state.sessionId = sessionId;
+  state.sessionTitle = null;
+  return {
+    type: "continue",
+    message: "Started a new session.",
+  };
 }
 
 async function promptForProvider(
@@ -790,13 +941,42 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message:
-        "Commands: /help, /history, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+        "Commands: /help, /new, /history, /sessions, /continue, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
     };
+  }
+
+  if (command === "new") {
+    return startNewSession(state);
   }
 
   if (command === "history") {
     const args = trimmed.slice(command.length + 1).trim();
     if (!args) {
+      const picked = await pickSession(tui, "Choose session to inspect");
+      if (picked === "cancel") {
+        const lines = await historySummary();
+        return {
+          type: "continue",
+          message: lines.map((line) => line.text).join("\n"),
+          lines,
+        };
+      }
+
+      return {
+        type: "continue",
+        message: await historyTranscript(picked),
+      };
+    }
+
+    return {
+      type: "continue",
+      message: await historyTranscript(args),
+    };
+  }
+
+  if (command === "sessions") {
+    const picked = await pickSession(tui, "Choose session to continue");
+    if (picked === "cancel") {
       const lines = await historySummary();
       return {
         type: "continue",
@@ -805,10 +985,30 @@ async function handleSlashCommand(
       };
     }
 
+    const result = await continueSession(picked, state);
     return {
       type: "continue",
-      message: await historyTranscript(args),
+      message: result.type === "continue" ? result.message : "Session selection cancelled.",
     };
+  }
+
+  if (command === "continue") {
+    const args = trimmed.slice(command.length + 1).trim();
+    if (!args) {
+      const picked = await pickSession(tui, "Choose session to continue");
+      if (picked === "cancel") {
+        const lines = await historySummary();
+        return {
+          type: "continue",
+          message: lines.map((line) => line.text).join("\n"),
+          lines,
+        };
+      }
+
+      return continueSession(picked, state);
+    }
+
+    return continueSession(args, state);
   }
 
   if (command === "providers") {
@@ -1025,6 +1225,7 @@ async function main(): Promise<void> {
   const sessionId = newSessionId();
   const state: SessionState = {
     sessionId,
+    sessionTitle: null,
     provider: null,
     modelId: "",
     authSource: null,
@@ -1041,6 +1242,9 @@ async function main(): Promise<void> {
   ];
   const slashCommandOptions: SlashCommandItem[] = [
     { name: "/providers", description: "show provider connection status" },
+    { name: "/new", description: "start a fresh session" },
+    { name: "/sessions", description: "list saved sessions for this project" },
+    { name: "/continue", description: "continue a saved session by id" },
     { name: "/connect", description: "connect a model provider" },
     { name: "/change-key", description: "update a provider API key" },
     { name: "/disconnect", description: "remove a saved provider key" },
@@ -1069,14 +1273,20 @@ async function main(): Promise<void> {
     const ready = await ensureProviderConnected(tui, state);
     if (!ready) return;
     tui.setActiveModel(state.modelId);
-    await createSession({
-      id: state.sessionId,
-      title: initialTask ? initialTask.slice(0, 80) : null,
-      cwd: process.cwd(),
-      project_root: process.cwd(),
-      provider: state.provider ?? "unknown",
-      model: state.modelId || "unknown",
-    });
+    const existing = await getSession(state.sessionId);
+    if (!existing) {
+      await createSession({
+        id: state.sessionId,
+        title: initialTask ? titleFromTask(initialTask) : null,
+        cwd: process.cwd(),
+        project_root: process.cwd(),
+        provider: state.provider ?? "unknown",
+        model: state.modelId || "unknown",
+      });
+      state.sessionTitle = initialTask ? titleFromTask(initialTask) : null;
+    } else {
+      state.sessionTitle = existing.title ?? null;
+    }
 
     tui.renderApprovalPrompt(null);
 

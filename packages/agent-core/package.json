@@ -20,6 +20,7 @@
   "dependencies": {
     "@openharness/core": "^0.6.0",
     "@xeq/model-providers": "workspace:*",
+    "@xeq/storage": "workspace:*",
     "@xeq/shared": "workspace:*",
     "@xeq/tools": "workspace:*"
   }

@@ -39,6 +39,11 @@ export async function runOpenHarnessRuntime(
   let finalText = "";
 
   const run = async () => {
+    if (!runtime.loaded) {
+      await runtime.session.load();
+      runtime.loaded = true;
+    }
+
     const stream = runtime.session.send(prompt);
     for await (const event of stream) {
       if (isAborted()) {

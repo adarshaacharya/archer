@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, max, sql } from "drizzle-orm";
+import type { ModelMessage } from "ai";
+import { asc, eq, max } from "drizzle-orm";
 import { getDb } from "./db.js";
 import { messages } from "./schema.js";
 import { touchSession } from "./session.js";
@@ -51,4 +52,44 @@ export async function getMessages(sessionId: string) {
     where: eq(messages.session_id, sessionId),
     orderBy: [asc(messages.seq)],
   });
+}
+
+export async function replaceMessages(
+  sessionId: string,
+  nextMessages: ModelMessage[],
+): Promise<void> {
+  const createdAt = Date.now();
+  const db = getDb();
+
+  await db.delete(messages).where(eq(messages.session_id, sessionId));
+  if (nextMessages.length > 0) {
+    await db.insert(messages).values(
+      nextMessages.map((message, index) => ({
+        id: `${sessionId}_msg_${index + 1}`,
+        session_id: sessionId,
+        role: message.role,
+        kind: "model_message",
+        content: JSON.stringify(message.content),
+        seq: index + 1,
+        created_at: createdAt + index,
+      })),
+    );
+  }
+
+  await touchSession({
+    id: sessionId,
+    updated_at: createdAt,
+    last_message_at: nextMessages.length > 0 ? createdAt + nextMessages.length - 1 : null,
+  });
+}
+
+export async function loadModelMessages(sessionId: string): Promise<ModelMessage[]> {
+  const rows = await getMessages(sessionId);
+  return rows.map(
+    (row) =>
+      ({
+        role: row.role,
+        content: JSON.parse(row.content),
+      }) as ModelMessage,
+  );
 }
