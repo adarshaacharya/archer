@@ -5,8 +5,13 @@ import {
   InputRenderableEvents,
   SelectRenderable,
   SelectRenderableEvents,
+  StyledText,
   TextRenderable,
+  bold,
   createCliRenderer,
+  fg,
+  stringToStyledText,
+  t,
 } from "@opentui/core";
 import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
 import type { AgentStep, RunSummary } from "@xeq/shared";
@@ -129,14 +134,25 @@ function slashCommandMatches(commands: SlashCommandItem[], input: string): Slash
   return matches.length > 0 ? matches : commands;
 }
 
-function renderSlashMenu(items: SlashCommandItem[], selectedIndex: number, startIndex: number, maxRows: number): string {
-  return items
+function renderSlashMenu(items: SlashCommandItem[], selectedIndex: number, startIndex: number, maxRows: number): StyledText {
+  const lines = items
     .slice(startIndex, startIndex + maxRows)
     .map((item, index) => {
       const absoluteIndex = startIndex + index;
-      return `${absoluteIndex === selectedIndex ? "▶" : " "} ${item.name.padEnd(16)} ${item.description}`;
-    })
-    .join("\n");
+
+      if (absoluteIndex === selectedIndex) {
+        return t`${fg(col.accent)("▶")} ${bold(fg(col.text)(item.name.padEnd(16)))} ${fg(col.muted)(item.description)}`
+      }
+
+      return t`${fg(col.muted)("▶")} ${fg(col.muted)(item.name.padEnd(16))} ${fg(col.muted)(item.description)}`
+    });
+
+  if (lines.length === 0) return stringToStyledText("");
+  let content = lines[0]!;
+  for (const line of lines.slice(1)) {
+    content = new StyledText([...content.chunks, ...stringToStyledText("\n").chunks, ...line.chunks]);
+  }
+  return content;
 }
 
 export class PiTui implements Tui {

@@ -24,6 +24,7 @@ import {
   saveWebProviderAuth,
 } from "./auth-store.js";
 import { KeybindManager } from "./keybinds.js";
+import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
 import {
   type PermissionRequest,
   applyApprovalChoice,
@@ -57,49 +58,6 @@ type SessionState = {
 };
 
 type LocalApprovalRequest = ApprovalRequest | PermissionRequest;
-
-const OPENAI_MODEL_CHOICES = [
-  {
-    value: "gpt-5-nano",
-    label: "GPT-5 nano",
-    description: "Cheapest OpenAI option for simple summarization and classification",
-  },
-  {
-    value: "gpt-5.4-nano",
-    label: "GPT-5.4 nano",
-    description: "Very low-cost OpenAI model for simple high-volume tasks",
-  },
-  {
-    value: "gpt-4o-mini",
-    label: "GPT-4o mini",
-    description: "Fast, affordable default for focused tasks",
-  },
-  {
-    value: "gpt-4.1-mini",
-    label: "GPT-4.1 mini",
-    description: "Smaller model with strong tool calling",
-  },
-  {
-    value: "gpt-5-mini",
-    label: "GPT-5 mini",
-    description: "Low-latency reasoning model",
-  },
-  {
-    value: "gpt-5.4-mini",
-    label: "GPT-5.4 mini",
-    description: "Strong mini model for coding and agentic work",
-  },
-  {
-    value: "gpt-5.2",
-    label: "GPT-5.2",
-    description: "Stronger, more expensive model for harder tasks",
-  },
-  {
-    value: "__custom__",
-    label: "Custom model",
-    description: "Type any OpenAI model id manually",
-  },
-] as const;
 
 function describeApprovalRequest(request: LocalApprovalRequest): string {
   switch (request.kind) {
@@ -167,43 +125,48 @@ function activeProviderSummary(state: SessionState): string {
   return `provider=${state.provider}  model=${state.modelId}  auth=${state.authSource}`;
 }
 
-function normalizeOpenAIModelId(modelId: string): string {
-  return modelId.trim().replace(/^openai\//, "");
+function normalizeModelIdForProvider(provider: SupportedProvider, modelId: string): string {
+  const value = modelId.trim();
+  switch (provider) {
+    case "openai":
+      return value.replace(/^openai\//, "");
+    case "anthropic":
+      return value.replace(/^anthropic\//, "");
+    case "gemini":
+      return value.replace(/^(google|gemini)\//, "");
+    default:
+      return value;
+  }
 }
 
-function modelChoiceIndex(modelId: string): number {
-  const normalized = normalizeOpenAIModelId(modelId);
-  const index = OPENAI_MODEL_CHOICES.findIndex((choice) => choice.value === normalized);
-  return index >= 0 ? index : 1;
+function modelChoiceIndex(provider: SupportedProvider, modelId: string): number {
+  const normalized = normalizeModelIdForProvider(provider, modelId);
+  const choices = MODEL_CHOICES_BY_PROVIDER[provider];
+  const index = choices.findIndex((choice) => choice.value === normalized);
+  const defaultIndex = choices.findIndex((choice) => choice.value === defaultModelForProvider(provider));
+  return index >= 0 ? index : Math.max(0, defaultIndex);
 }
 
-async function promptForModel(tui: Tui, state: SessionState): Promise<string | "exit"> {
-  const currentModel = normalizeOpenAIModelId(state.modelId) || "gpt-4o-mini";
+async function promptForModel(tui: Tui, state: SessionState): Promise<string | "exit" | "cancel"> {
+  const provider = state.provider ?? "openrouter";
+  const currentModel = normalizeModelIdForProvider(
+    provider,
+    state.modelId || defaultModelForProvider(provider),
+  );
+  const choices = MODEL_CHOICES_BY_PROVIDER[provider];
   const selected = await tui.promptApproval({
     message: "Choose model",
-    details: `Current: ${currentModel}`,
-    selectedIndex: modelChoiceIndex(currentModel),
-    choices: OPENAI_MODEL_CHOICES.map((choice) => ({
+    details: `Provider: ${provider}  Current: ${currentModel}`,
+    selectedIndex: modelChoiceIndex(provider, currentModel),
+    choices: choices.map((choice) => ({
       value: choice.value,
       label: choice.label,
       description: choice.description,
     })),
   });
+  if (selected === "reject") return "cancel";
 
-  if (selected === "__custom__") {
-    while (true) {
-      tui.renderApprovalPrompt({
-        message: "Enter OpenAI model id",
-        options: ["/exit"],
-      });
-      const value = (await tui.readInputLine()).trim();
-      if (!value) continue;
-      if (value === "/exit" || value === "/quit" || value === "/bye") return "exit";
-      return normalizeOpenAIModelId(value);
-    }
-  }
-
-  return normalizeOpenAIModelId(selected);
+  return normalizeModelIdForProvider(provider, selected);
 }
 
 async function setModel(
@@ -211,9 +174,13 @@ async function setModel(
   state: SessionState,
   modelId?: string,
 ): Promise<SlashCommandResult> {
+  const provider = state.provider ?? "openrouter";
   const selectedModel =
-    modelId && modelId.trim().length > 0 ? normalizeOpenAIModelId(modelId) : await promptForModel(tui, state);
+    modelId && modelId.trim().length > 0
+      ? normalizeModelIdForProvider(provider, modelId)
+      : await promptForModel(tui, state);
   if (selectedModel === "exit") return { type: "exit" };
+  if (selectedModel === "cancel") return { type: "continue", message: "Model selection cancelled." };
 
   process.env.AGENT_MODEL = selectedModel;
   state.modelId = selectedModel;
@@ -460,24 +427,26 @@ async function runTask(
   tui.renderApprovalPrompt(null);
 }
 
-async function promptForProvider(tui: Tui): Promise<SupportedProvider | "exit"> {
-  while (true) {
-    tui.renderApprovalPrompt({
-      message: "No provider configured. Enter provider: openai, anthropic, gemini, openrouter",
-      options: ["/exit"],
-    });
-    const value = (await tui.readInputLine()).trim();
-    if (!value) continue;
-    if (value === "/exit" || value === "/quit" || value === "/bye") return "exit";
+async function promptForProvider(
+  tui: Tui,
+  currentProvider: SupportedProvider | null,
+): Promise<SupportedProvider | "exit" | "cancel"> {
+  const selected = await tui.promptApproval({
+    message: "Choose model provider",
+    selectedIndex: Math.max(
+      0,
+      PROVIDER_CHOICES.findIndex((choice) => choice.value === currentProvider),
+    ),
+    choices: PROVIDER_CHOICES.map((choice) => ({
+      value: choice.value,
+      label: choice.label,
+      description: choice.description,
+    })),
+  });
+  if (selected === "reject") return "cancel";
 
-    const provider = normalizeProvider(value);
-    if (provider) return provider;
-
-    tui.renderApprovalPrompt({
-      message: `Unknown provider: ${value}`,
-      options: ["openai", "anthropic", "gemini", "openrouter"],
-    });
-  }
+  const provider = normalizeProvider(selected);
+  return provider ?? "exit";
 }
 
 async function promptForWebProvider(tui: Tui): Promise<SupportedWebProvider | "skip" | "exit"> {
@@ -506,8 +475,12 @@ async function connectProvider(
   state: SessionState,
   provider?: SupportedProvider,
 ): Promise<SlashCommandResult> {
-  const selectedProvider = provider ?? (await promptForProvider(tui));
+  const previousProvider = state.provider;
+  const selectedProvider = provider ?? (await promptForProvider(tui, state.provider));
   if (selectedProvider === "exit") return { type: "exit" };
+  if (selectedProvider === "cancel") {
+    return { type: "continue", message: "Provider selection cancelled." };
+  }
 
   while (true) {
     tui.renderApprovalPrompt({
@@ -520,7 +493,11 @@ async function connectProvider(
 
     await saveProviderAuth(selectedProvider, key);
     process.env.XEQ_PROVIDER = selectedProvider;
-    process.env.AGENT_MODEL ??= defaultModelForProvider(selectedProvider);
+    if (selectedProvider !== previousProvider) {
+      process.env.AGENT_MODEL = defaultModelForProvider(selectedProvider);
+    } else {
+      process.env.AGENT_MODEL ??= defaultModelForProvider(selectedProvider);
+    }
     switch (selectedProvider) {
       case "openai":
         process.env.OPENAI_API_KEY = key;
@@ -655,6 +632,15 @@ async function handleSlashCommand(
   }
 
   if (command === "connect") {
+    const args = trimmed.slice(command.length + 1).trim();
+    if (args) {
+      const provider = normalizeProvider(args);
+      if (!provider) {
+        return { type: "continue", message: `Unknown provider: ${args}` };
+      }
+      return connectProvider(tui, state, provider);
+    }
+
     return connectProvider(tui, state);
   }
 
