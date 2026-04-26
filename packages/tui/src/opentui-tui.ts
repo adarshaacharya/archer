@@ -824,7 +824,7 @@ export class PiTui implements Tui {
 
     const choices = prompt.choices ?? defaultApprovalChoices();
     const selectedIndex = Math.max(0, Math.min(choices.length - 1, prompt.selectedIndex ?? 1));
-    const visibleChoices = Math.min(choices.length, 8);
+    const visibleChoices = Math.min(choices.length, 12);
     const hasDetails = Boolean(prompt.details?.trim());
     const showPreview = choices.some((choice) => choice.description?.trim());
     // innerRows = message(1) + details?(1) + choices viewport + preview?(1) + help(1)
@@ -865,11 +865,11 @@ export class PiTui implements Tui {
       focusedBackgroundColor: col.userBg,
       showScrollIndicator: choices.length > visibleChoices,
       showDescription: false,
-      selectedBackgroundColor: col.accent,
-      selectedTextColor: "#000000",
+      selectedBackgroundColor: col.border,
+      selectedTextColor: col.text,
       textColor: col.text,
       descriptionColor: col.muted,
-      selectedDescriptionColor: "#000000",
+      selectedDescriptionColor: col.muted,
     });
 
     box.add(select);

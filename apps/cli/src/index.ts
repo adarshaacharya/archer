@@ -58,7 +58,12 @@ function titleFromTask(task: string): string {
 }
 
 type SlashCommandResult =
-  | { type: "continue"; message: string; lines?: Array<{ text: string; color?: string }> }
+  | {
+      type: "continue";
+      message: string;
+      lines?: Array<{ text: string; color?: string }>;
+      restoreSessionId?: string;
+    }
   | { type: "exit" }
   | { type: "none" };
 
@@ -588,7 +593,13 @@ function sessionLabel(
   index?: number,
 ): string {
   const prefix = index === undefined ? "" : `${index + 1}. `;
-  return `${prefix}${session.title ?? "Untitled session"}`;
+  if (session.title?.trim()) {
+    return `${prefix}${session.title.trim()}`;
+  }
+
+  const stamp = formatTimestamp(session.updated_at);
+  const shortId = session.id.replace(/^session_/, "").slice(-8);
+  return `${prefix}Untitled  ${stamp}  ${shortId}`;
 }
 
 function sessionDescription(session: Awaited<ReturnType<typeof listSessions>>[number]): string {
@@ -597,7 +608,7 @@ function sessionDescription(session: Awaited<ReturnType<typeof listSessions>>[nu
 
 async function projectSessions() {
   return listSessions({
-    limit: 12,
+    limit: 50,
     project_root: process.cwd(),
   });
 }
@@ -694,17 +705,6 @@ function renderStoredContent(content: string): string {
   return content;
 }
 
-async function historyTranscript(sessionId: string): Promise<string> {
-  const messages = await getMessages(sessionId);
-  if (messages.length === 0) {
-    return `No stored messages for ${sessionId}.`;
-  }
-
-  return messages
-    .map((message) => `[${message.role}] ${renderStoredContent(message.content)}`)
-    .join("\n\n");
-}
-
 async function pickSession(tui: Tui, prompt: string): Promise<string | "cancel"> {
   const sessions = await projectSessions();
   if (sessions.length === 0) {
@@ -744,6 +744,7 @@ async function continueSession(
   return {
     type: "continue",
     message: `Continuing ${session.title ?? "Untitled session"}. Future prompts will reuse its stored context.`,
+    restoreSessionId: session.id,
   };
 }
 
@@ -924,6 +925,37 @@ async function ensureWebProviderConnected(tui: Tui, state: SessionState): Promis
   return result.type !== "exit" && state.webProvider !== null;
 }
 
+async function replaySessionTranscript(tui: Tui, sessionId: string): Promise<void> {
+  const messages = await getMessages(sessionId);
+  if (messages.length === 0) {
+    tui.renderInfoMessage(`No stored messages for ${sessionId}.`);
+    return;
+  }
+
+  tui.renderInfoMessage(
+    `Restored ${messages.length} stored message${messages.length === 1 ? "" : "s"} from ${sessionId}.`,
+  );
+
+  for (const message of messages) {
+    const content = renderStoredContent(message.content);
+    if (!content.trim()) {
+      continue;
+    }
+
+    if (message.role === "user") {
+      tui.renderUserMessage(content);
+      continue;
+    }
+
+    if (message.role === "assistant") {
+      tui.finalizeAssistantStream(content);
+      continue;
+    }
+
+    tui.renderInfoMessage(`[${message.role}] ${content}`);
+  }
+}
+
 async function handleSlashCommand(
   input: string,
   tui: Tui,
@@ -941,7 +973,7 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message:
-        "Commands: /help, /new, /history, /sessions, /continue, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+        "Commands: /help, /new, /resume, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
     };
   }
 
@@ -949,53 +981,10 @@ async function handleSlashCommand(
     return startNewSession(state);
   }
 
-  if (command === "history") {
+  if (command === "resume") {
     const args = trimmed.slice(command.length + 1).trim();
     if (!args) {
-      const picked = await pickSession(tui, "Choose session to inspect");
-      if (picked === "cancel") {
-        const lines = await historySummary();
-        return {
-          type: "continue",
-          message: lines.map((line) => line.text).join("\n"),
-          lines,
-        };
-      }
-
-      return {
-        type: "continue",
-        message: await historyTranscript(picked),
-      };
-    }
-
-    return {
-      type: "continue",
-      message: await historyTranscript(args),
-    };
-  }
-
-  if (command === "sessions") {
-    const picked = await pickSession(tui, "Choose session to continue");
-    if (picked === "cancel") {
-      const lines = await historySummary();
-      return {
-        type: "continue",
-        message: lines.map((line) => line.text).join("\n"),
-        lines,
-      };
-    }
-
-    const result = await continueSession(picked, state);
-    return {
-      type: "continue",
-      message: result.type === "continue" ? result.message : "Session selection cancelled.",
-    };
-  }
-
-  if (command === "continue") {
-    const args = trimmed.slice(command.length + 1).trim();
-    if (!args) {
-      const picked = await pickSession(tui, "Choose session to continue");
+      const picked = await pickSession(tui, "Choose session to resume");
       if (picked === "cancel") {
         const lines = await historySummary();
         return {
@@ -1192,6 +1181,9 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
     }
     if (slash.type === "continue") {
       tui.renderApprovalPrompt(null);
+      if (slash.restoreSessionId) {
+        await replaySessionTranscript(tui, slash.restoreSessionId);
+      }
       if (slash.lines && slash.lines.length > 0) {
         tui.renderInfoLines(slash.lines);
       } else if (slash.message.includes("\n")) {
@@ -1243,8 +1235,7 @@ async function main(): Promise<void> {
   const slashCommandOptions: SlashCommandItem[] = [
     { name: "/providers", description: "show provider connection status" },
     { name: "/new", description: "start a fresh session" },
-    { name: "/sessions", description: "list saved sessions for this project" },
-    { name: "/continue", description: "continue a saved session by id" },
+    { name: "/resume", description: "pick and resume a saved session" },
     { name: "/connect", description: "connect a model provider" },
     { name: "/change-key", description: "update a provider API key" },
     { name: "/disconnect", description: "remove a saved provider key" },
