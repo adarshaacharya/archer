@@ -58,6 +58,49 @@ type SessionState = {
 
 type LocalApprovalRequest = ApprovalRequest | PermissionRequest;
 
+const OPENAI_MODEL_CHOICES = [
+  {
+    value: "gpt-5-nano",
+    label: "GPT-5 nano",
+    description: "Cheapest OpenAI option for simple summarization and classification",
+  },
+  {
+    value: "gpt-5.4-nano",
+    label: "GPT-5.4 nano",
+    description: "Very low-cost OpenAI model for simple high-volume tasks",
+  },
+  {
+    value: "gpt-4o-mini",
+    label: "GPT-4o mini",
+    description: "Fast, affordable default for focused tasks",
+  },
+  {
+    value: "gpt-4.1-mini",
+    label: "GPT-4.1 mini",
+    description: "Smaller model with strong tool calling",
+  },
+  {
+    value: "gpt-5-mini",
+    label: "GPT-5 mini",
+    description: "Low-latency reasoning model",
+  },
+  {
+    value: "gpt-5.4-mini",
+    label: "GPT-5.4 mini",
+    description: "Strong mini model for coding and agentic work",
+  },
+  {
+    value: "gpt-5.2",
+    label: "GPT-5.2",
+    description: "Stronger, more expensive model for harder tasks",
+  },
+  {
+    value: "__custom__",
+    label: "Custom model",
+    description: "Type any OpenAI model id manually",
+  },
+] as const;
+
 function describeApprovalRequest(request: LocalApprovalRequest): string {
   switch (request.kind) {
     case "command":
@@ -122,6 +165,63 @@ function activeProviderSummary(state: SessionState): string {
   }
 
   return `provider=${state.provider}  model=${state.modelId}  auth=${state.authSource}`;
+}
+
+function normalizeOpenAIModelId(modelId: string): string {
+  return modelId.trim().replace(/^openai\//, "");
+}
+
+function modelChoiceIndex(modelId: string): number {
+  const normalized = normalizeOpenAIModelId(modelId);
+  const index = OPENAI_MODEL_CHOICES.findIndex((choice) => choice.value === normalized);
+  return index >= 0 ? index : 1;
+}
+
+async function promptForModel(tui: Tui, state: SessionState): Promise<string | "exit"> {
+  const currentModel = normalizeOpenAIModelId(state.modelId) || "gpt-4o-mini";
+  const selected = await tui.promptApproval({
+    message: "Choose model",
+    details: `Current: ${currentModel}`,
+    selectedIndex: modelChoiceIndex(currentModel),
+    choices: OPENAI_MODEL_CHOICES.map((choice) => ({
+      value: choice.value,
+      label: choice.label,
+      description: choice.description,
+    })),
+  });
+
+  if (selected === "__custom__") {
+    while (true) {
+      tui.renderApprovalPrompt({
+        message: "Enter OpenAI model id",
+        options: ["/exit"],
+      });
+      const value = (await tui.readInputLine()).trim();
+      if (!value) continue;
+      if (value === "/exit" || value === "/quit" || value === "/bye") return "exit";
+      return normalizeOpenAIModelId(value);
+    }
+  }
+
+  return normalizeOpenAIModelId(selected);
+}
+
+async function setModel(
+  tui: Tui,
+  state: SessionState,
+  modelId?: string,
+): Promise<SlashCommandResult> {
+  const selectedModel =
+    modelId && modelId.trim().length > 0 ? normalizeOpenAIModelId(modelId) : await promptForModel(tui, state);
+  if (selectedModel === "exit") return { type: "exit" };
+
+  process.env.AGENT_MODEL = selectedModel;
+  state.modelId = selectedModel;
+  tui.setActiveModel(selectedModel);
+  return {
+    type: "continue",
+    message: `Model set to ${selectedModel}. ${activeProviderSummary(state)}`,
+  };
 }
 
 function updateSessionState(
@@ -420,7 +520,7 @@ async function connectProvider(
 
     await saveProviderAuth(selectedProvider, key);
     process.env.XEQ_PROVIDER = selectedProvider;
-    process.env.AGENT_MODEL = defaultModelForProvider(selectedProvider);
+    process.env.AGENT_MODEL ??= defaultModelForProvider(selectedProvider);
     switch (selectedProvider) {
       case "openai":
         process.env.OPENAI_API_KEY = key;
@@ -438,6 +538,7 @@ async function connectProvider(
 
     const resolved = await resolveActiveProvider();
     updateSessionState(state, resolved);
+    tui.setActiveModel(state.modelId);
     return {
       type: "continue",
       message: `Connected ${selectedProvider}. ${activeProviderSummary(state)}`,
@@ -448,6 +549,7 @@ async function connectProvider(
 async function ensureProviderConnected(tui: Tui, state: SessionState): Promise<boolean> {
   const resolved = await resolveActiveProvider();
   updateSessionState(state, resolved);
+  tui.setActiveModel(state.modelId);
 
   if (state.provider && state.authSource) {
     return true;
@@ -523,7 +625,7 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message:
-        "Commands: /help, /connect, /provider, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+        "Commands: /help, /connect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
     };
   }
 
@@ -534,6 +636,15 @@ async function handleSlashCommand(
       type: "continue",
       message: `${activeProviderSummary(state)}  ${savedText}  store=${getAuthFilePath()}`,
     };
+  }
+
+  if (command === "model") {
+    const args = trimmed.slice(command.length + 1).trim();
+    if (!args || args.toLowerCase() === "pick" || args.toLowerCase() === "list") {
+      return setModel(tui, state);
+    }
+
+    return setModel(tui, state, args);
   }
 
   if (command === "permissions") {
@@ -600,6 +711,7 @@ async function handleSlashCommand(
     clearProviderEnv(state.provider);
     const resolved = await resolveActiveProvider();
     updateSessionState(state, resolved);
+    tui.setActiveModel(state.modelId);
 
     if (state.provider && state.authSource) {
       return {
@@ -677,6 +789,7 @@ async function main(): Promise<void> {
   const slashCommandOptions: SlashCommandItem[] = [
     { name: "/connect", description: "connect a model provider" },
     { name: "/provider", description: "show the active model provider" },
+    { name: "/model", description: "choose the active model" },
     { name: "/web", description: "connect a web search provider" },
     { name: "/web-provider", description: "show the active web search provider" },
     { name: "/web-logout", description: "remove the saved web provider key" },
@@ -699,6 +812,7 @@ async function main(): Promise<void> {
   try {
     const ready = await ensureProviderConnected(tui, state);
     if (!ready) return;
+    tui.setActiveModel(state.modelId);
 
     tui.renderApprovalPrompt(null);
 

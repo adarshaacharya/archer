@@ -15,6 +15,7 @@ export interface ApprovalPromptState {
   message: string;
   options?: string[];
   choices?: ApprovalDialogChoice[];
+  selectedIndex?: number;
   details?: string;
   review?: PatchReviewState;
 }
@@ -26,6 +27,7 @@ export interface SlashCommandItem {
 
 export interface Tui {
   start(): Promise<void>;
+  setActiveModel(modelId: string): void;
   renderUserMessage(message: string): void;
   renderStep(step: AgentStep): void;
   renderAssistantDelta(delta: string): void;
@@ -129,6 +131,20 @@ function slashCommandPreview(commands: SlashCommandItem[], input: string): strin
     .join("\n");
 }
 
+function slashCommandMatches(commands: SlashCommandItem[], input: string): SlashCommandItem[] {
+  const v = input.trim();
+  if (!v.startsWith("/")) return [];
+  const query = v.slice(1).toLowerCase();
+  const matches = commands.filter((c) => c.name.slice(1).toLowerCase().startsWith(query));
+  return (matches.length > 0 ? matches : commands).slice(0, 6);
+}
+
+function renderSlashMenu(items: SlashCommandItem[], selectedIndex: number): string {
+  return items
+    .map((item, index) => `${index === selectedIndex ? "▶" : " "} ${item.name.padEnd(16)} ${item.description}`)
+    .join("\n");
+}
+
 export class PiTui implements Tui {
   private renderer: CliRenderer | null = null;
   private footerRoot: BoxRenderable | null = null;
@@ -137,15 +153,19 @@ export class PiTui implements Tui {
   private slashMenuBox: BoxRenderable | null = null;
   private slashMenuText: TextRenderable | null = null;
   private slashCommands: SlashCommandItem[] = [];
+  private slashMenuItems: SlashCommandItem[] = [];
+  private slashMenuIndex = 0;
+  private slashLineCount = 0;
+  private currentInput = "";
   private assistantStreamText = "";
   private pendingReadResolve: ((line: string) => void) | null = null;
   private pendingApprovalResolve: ((choice: string) => void) | null = null;
   private pendingModal: PendingModal | null = null;
   private cancelRunningHandler: (() => void) | null = null;
+  private activeModelLabel = "model=unconfigured";
   private dispose: VoidFunction | null = null;
   private setInputValue: ((value: string) => void) | null = null;
   private setSlashCommandsState: ((value: SlashCommandItem[]) => void) | null = null;
-  private setSlashLineCount: ((value: number) => void) | null = null;
   private setApprovalRows: ((value: number) => void) | null = null;
 
   async start(): Promise<void> {
@@ -161,44 +181,26 @@ export class PiTui implements Tui {
     });
 
     this.dispose = createRoot((dispose) => {
-      const [inputValue, setInputValue] = createSignal("")
-      const [slashCommands, setSlashCommandsState] = createSignal<SlashCommandItem[]>([])
-      const [slashLineCount, setSlashLineCount] = createSignal(0)
+      const [, setInputValue] = createSignal("")
+      const [, setSlashCommandsState] = createSignal<SlashCommandItem[]>([])
       const [approvalRows, setApprovalRows] = createSignal(0)
 
       this.setInputValue = setInputValue
       this.setSlashCommandsState = setSlashCommandsState
-      this.setSlashLineCount = setSlashLineCount
       this.setApprovalRows = setApprovalRows
 
       createEffect(() => {
-        const commands = slashCommands()
-        const value = inputValue()
-        const preview = slashCommandPreview(commands, value)
-        const next = preview ? preview.split("\n").length : 0
-        setSlashLineCount(next)
-
-        const menuText = this.slashMenuText
-        const menuBox = this.slashMenuBox
         const renderer = this.renderer
-        if (!menuText || !menuBox || !renderer) return
-        batch(() => {
-          menuText.content = preview
-          menuText.height = next
-          menuBox.height = next
-        })
+        if (!renderer) return
+        const nextHeight = BASE_FOOTER + this.slashLineCount + approvalRows()
+        if (renderer.footerHeight === nextHeight) return
+        renderer.footerHeight = nextHeight
         renderer.requestRender()
-      })
-
-      createEffect(() => {
-        if (!this.renderer) return
-        this.renderer.footerHeight = BASE_FOOTER + slashLineCount() + approvalRows()
       })
 
       onCleanup(() => {
         this.setInputValue = null
         this.setSlashCommandsState = null
-        this.setSlashLineCount = null
         this.setApprovalRows = null
       })
 
@@ -231,19 +233,20 @@ export class PiTui implements Tui {
     });
     statusRow.add(this.statusText);
 
-    // Slash menu — sits above the composer, outside the border, hidden until typing "/"
+    // Slash menu — sits below the composer, hidden until typing "/"
     this.slashMenuBox = new BoxRenderable(this.renderer, {
       id: "slash-menu-box",
       width: "100%",
       height: 0,
       flexShrink: 0,
-      paddingLeft: 2,
+      paddingLeft: 1,
+      paddingRight: 1,
     });
     this.slashMenuText = new TextRenderable(this.renderer, {
       id: "slash-menu",
-      content: "",
       width: "100%",
       height: 0,
+      content: "",
       fg: col.muted,
     });
     this.slashMenuBox.add(this.slashMenuText);
@@ -293,8 +296,8 @@ export class PiTui implements Tui {
     composerBox.add(inputRow);
 
     this.footerRoot.add(statusRow);
-    this.footerRoot.add(this.slashMenuBox);
     this.footerRoot.add(composerBox);
+    this.footerRoot.add(this.slashMenuBox);
     this.renderer.root.add(this.footerRoot);
     this.renderer.start();
 
@@ -304,13 +307,17 @@ export class PiTui implements Tui {
 
     // ── Input events ──────────────────────────────────────────────────────────
     this.input.on(InputRenderableEvents.INPUT, (value: string) => {
+      this.currentInput = value;
       this.setInputValue?.(value);
+      this.updateSlashMenu(value);
     });
 
     this.input.on(InputRenderableEvents.ENTER, (value: string) => {
       const submit = normalizeText(value);
+      this.currentInput = "";
       if (this.input) this.input.value = "";
       this.setInputValue?.("");
+      this.updateSlashMenu("");
 
       if (this.pendingReadResolve) {
         const resolve = this.pendingReadResolve;
@@ -330,6 +337,9 @@ export class PiTui implements Tui {
         process.exit(130);
         return true;
       }
+      if (this.handleSlashMenuInput(seq)) {
+        return true;
+      }
       if (seq === "\x1b" && this.pendingModal) {
         this.rejectPendingModal();
         return true;
@@ -338,6 +348,15 @@ export class PiTui implements Tui {
     });
 
     this.input.focus();
+  }
+
+  setActiveModel(modelId: string): void {
+    const value = modelId.trim();
+    this.activeModelLabel = value ? `model=${value}` : "model=unconfigured";
+    if (this.statusText) {
+      this.statusText.content = this.activeModelLabel;
+      this.renderer?.requestRender();
+    }
   }
 
   renderUserMessage(message: string): void {
@@ -380,7 +399,7 @@ export class PiTui implements Tui {
     if (this.statusText) {
       const lines = this.assistantStreamText.trimEnd().split("\n");
       const last = (lines[lines.length - 1] ?? "").slice(0, 100);
-      this.statusText.content = last;
+      this.statusText.content = `${this.activeModelLabel}  |  ${last}`;
       this.renderer?.requestRender();
     }
   }
@@ -389,7 +408,7 @@ export class PiTui implements Tui {
     const final = normalizeText(text ?? this.assistantStreamText);
     this.assistantStreamText = "";
     if (this.statusText) {
-      this.statusText.content = "";
+      this.statusText.content = this.activeModelLabel;
       this.renderer?.requestRender();
     }
     if (final) {
@@ -401,7 +420,7 @@ export class PiTui implements Tui {
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
     if (!prompt) {
       this.closePendingModal();
-      if (this.statusText) this.statusText.content = "";
+      if (this.statusText) this.statusText.content = this.activeModelLabel;
       this.input?.focus();
       this.renderer?.requestRender();
       return;
@@ -409,7 +428,7 @@ export class PiTui implements Tui {
     if (this.pendingModal) return;
     if (this.statusText) {
       const hint = prompt.options ? `  ${prompt.options.join("  ")}` : "";
-      this.statusText.content = normalizeText(prompt.message) + hint;
+      this.statusText.content = `${this.activeModelLabel}  |  ${normalizeText(prompt.message)}${hint}`;
       this.renderer?.requestRender();
     }
   }
@@ -440,6 +459,7 @@ export class PiTui implements Tui {
   setSlashCommands(commands: SlashCommandItem[]): void {
     this.slashCommands = commands;
     this.setSlashCommandsState?.([...commands]);
+    this.updateSlashMenu(this.currentInput);
   }
 
   readInputLine(): Promise<string> {
@@ -491,6 +511,93 @@ export class PiTui implements Tui {
       });
       return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
     });
+  }
+
+  private updateSlashMenu(value: string): void {
+    const menuText = this.slashMenuText;
+    const menuBox = this.slashMenuBox;
+    const renderer = this.renderer;
+    if (!menuText || !menuBox || !renderer) return;
+
+    const items = slashCommandMatches(this.slashCommands, value);
+    const previous = this.slashMenuItems[this.slashMenuIndex];
+    const nextIndex = previous
+      ? Math.max(0, items.findIndex((item) => item.name === previous.name))
+      : 0;
+    const lineCount = items.length;
+
+    this.slashMenuItems = items;
+    this.slashMenuIndex = items.length > 0 ? (nextIndex >= 0 ? nextIndex : 0) : 0;
+    this.slashLineCount = lineCount;
+
+    batch(() => {
+      menuText.content = renderSlashMenu(items, this.slashMenuIndex);
+      menuText.height = lineCount;
+      menuBox.height = lineCount;
+    });
+    renderer.footerHeight = BASE_FOOTER + this.slashLineCount + (this.pendingModal ? (this.pendingModal.type === "review" ? 19 : this.pendingModal.box.height) : 0);
+    renderer.requestRender();
+  }
+
+  private handleSlashMenuInput(seq: string): boolean {
+    if (this.pendingModal) return false;
+    if (!this.currentInput.trim().startsWith("/") || this.slashMenuItems.length === 0) return false;
+
+    const menuText = this.slashMenuText;
+    const renderer = this.renderer;
+    const input = this.input;
+    if (!menuText || !renderer || !input) return false;
+
+    if (seq === "\x1b[A") {
+      this.slashMenuIndex =
+        this.slashMenuIndex <= 0 ? this.slashMenuItems.length - 1 : this.slashMenuIndex - 1;
+      menuText.content = renderSlashMenu(this.slashMenuItems, this.slashMenuIndex);
+      renderer.requestRender();
+      return true;
+    }
+
+    if (seq === "\x1b[B") {
+      this.slashMenuIndex =
+        this.slashMenuIndex >= this.slashMenuItems.length - 1 ? 0 : this.slashMenuIndex + 1;
+      menuText.content = renderSlashMenu(this.slashMenuItems, this.slashMenuIndex);
+      renderer.requestRender();
+      return true;
+    }
+
+    if (seq === "\t") {
+      const selected = this.slashMenuItems[this.slashMenuIndex];
+      if (!selected) return false;
+      input.value = selected.name;
+      this.currentInput = selected.name;
+      this.setInputValue?.(selected.name);
+      this.updateSlashMenu(selected.name);
+      input.focus();
+      renderer.requestRender();
+      return true;
+    }
+
+    if (seq === "\r") {
+      const selected = this.slashMenuItems[this.slashMenuIndex];
+      if (!selected) return false;
+
+      input.value = "";
+      this.currentInput = "";
+      this.setInputValue?.("");
+      this.updateSlashMenu("");
+
+      if (this.pendingReadResolve) {
+        const resolve = this.pendingReadResolve;
+        this.pendingReadResolve = null;
+        resolve(selected.name);
+        return true;
+      }
+
+      this.renderUserMessage(selected.name);
+      renderer.requestRender();
+      return true;
+    }
+
+    return false;
   }
 
   private closePendingModal(): void {
@@ -556,7 +663,7 @@ export class PiTui implements Tui {
         description: ch.description ?? "",
         value: ch.value,
       })),
-      selectedIndex: 1,
+      selectedIndex: Math.max(0, Math.min(choices.length - 1, prompt.selectedIndex ?? 1)),
       width: "100%",
       height: choices.length,
       showScrollIndicator: false,
