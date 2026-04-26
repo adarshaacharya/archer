@@ -4,6 +4,7 @@ import { loadModelMessages, replaceMessages } from "@xeq/storage";
 import { createEditTools, createWebFetchTool, createWebSearchTool } from "@xeq/tools";
 import type { ModelMessage } from "ai";
 import { DEFAULT_MAX_STEPS } from "../types.js";
+import { createTrackedFsProvider } from "./file-tracker.js";
 import { sanitizeId } from "./ids.js";
 import { resolveModel } from "./model.js";
 import type { OpenHarnessRuntimeDeps, RuntimeProviders } from "./openharness-types.js";
@@ -36,7 +37,8 @@ function createSession({
   sessionId?: string;
 }): RuntimeSession {
   const model = resolveModel(modelId);
-  const editTools = createEditTools(providers.fs, {
+  const trackedFs = createTrackedFsProvider(providers.fs, sessionId ?? `${cwd}:${model.modelId}`);
+  const editTools = createEditTools(trackedFs, {
     onPatchPreview: async (preview) => {
       if (!approvePatchApply) {
         return true;
@@ -74,7 +76,7 @@ function createSession({
     },
   });
   const tools = {
-    ...createLocalTools({ fs: providers.fs, shell: providers.shell }),
+    ...createLocalTools({ fs: trackedFs, shell: providers.shell }),
     preparePatchBundle: editTools.preparePatchBundle,
     preparePatch: editTools.preparePatch,
     ...(providers.webSearch

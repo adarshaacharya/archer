@@ -103,16 +103,25 @@ type SessionState = {
 
 type LocalApprovalRequest = ApprovalRequest | PermissionRequest;
 
+let approvalQueueTail: Promise<void> = Promise.resolve();
+
+function withApprovalQueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = approvalQueueTail.then(task, task);
+  approvalQueueTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 function describeApprovalRequest(request: LocalApprovalRequest): string {
   switch (request.kind) {
     case "command":
-      return `Allow command?\n${request.target}`;
+      return "Allow bash command?";
     case "file-write":
-      return request.details
-        ? `Review patch before applying?\n${request.target}`
-        : `Allow file write?\n${request.target}`;
+      return request.details ? "Review patch before applying?" : "Allow file write?";
     case "web-fetch":
-      return `Allow web fetch?\n${request.target}`;
+      return "Allow web fetch?";
   }
 }
 
@@ -122,27 +131,29 @@ async function requestApproval(tui: Tui, request: LocalApprovalRequest): Promise
     return "always";
   }
 
-  const result = await tui.promptApproval({
-    message: describeApprovalRequest(request),
-    details: request.details,
-    choices: [
-      {
-        value: "reject",
-        label: "Reject",
-        description: "Deny this action",
-      },
-      {
-        value: "once",
-        label: "Approve once",
-        description: "Allow this action this time only",
-      },
-      {
-        value: "always",
-        label: "Always approve",
-        description: "Remember this rule for next time",
-      },
-    ],
-  });
+  const result = await withApprovalQueue(() =>
+    tui.promptApproval({
+      message: describeApprovalRequest(request),
+      details: [request.target, request.details].filter(Boolean).join("\n"),
+      choices: [
+        {
+          value: "reject",
+          label: "Reject",
+          description: "Deny this action",
+        },
+        {
+          value: "once",
+          label: "Approve once",
+          description: "Allow this action this time only",
+        },
+        {
+          value: "always",
+          label: "Always approve",
+          description: "Remember this rule for next time",
+        },
+      ],
+    }),
+  );
 
   if (result === "always") {
     await applyApprovalChoice(request, "always");
@@ -531,6 +542,10 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
       approveToolCall: async (toolCall) => {
         const decision = classifyToolCall(toolCall.toolName, toolCall.input);
 
+        if (decision.action === "deny") {
+          return false;
+        }
+
         if (decision.permission === "read" || decision.permission === "patch_review") {
           return true;
         }
@@ -539,57 +554,46 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
           return true;
         }
 
-        const requestTarget =
-          decision.permission === "bash"
-            ? decision.pattern || toolCall.toolName
-            : env.fs.resolvePath(decision.pattern);
-
-        promptPending = true;
-        try {
-          const approval = await requestApproval(tui, {
-            kind: decision.permission === "bash" ? "command" : "file-write",
-            target: requestTarget,
-          });
-          if (approval !== "reject" && decision.permission === "edit") {
-            patchApprovedPaths.add(requestTarget);
-          }
-          return approval !== "reject";
-        } finally {
-          promptPending = false;
+        if (decision.permission === "bash") {
+          return true;
         }
+
+        return true;
       },
       approvePatchApply: async (preview) => {
         promptPending = true;
         try {
-          const approval = await tui.promptApproval({
-            message: "Review changes",
-            details: preview.summary ? preview.summary : "Inspect the patch before applying.",
-            review:
-              preview.files && preview.files.length > 0
-                ? {
-                    summary: preview.summary ?? "Prepared changes",
-                    changedFilesCount: preview.changedFilesCount ?? preview.files.length,
-                    files: preview.files,
-                  }
-                : undefined,
-            choices: [
-              {
-                value: "reject",
-                label: "Reject",
-                description: "Deny these changes",
-              },
-              {
-                value: "once",
-                label: "Approve once",
-                description: "Apply these changes this time only",
-              },
-              {
-                value: "always",
-                label: "Always approve",
-                description: "Remember this approval choice",
-              },
-            ],
-          });
+          const approval = await withApprovalQueue(() =>
+            tui.promptApproval({
+              message: "Review changes",
+              details: preview.summary ? preview.summary : "Inspect the patch before applying.",
+              review:
+                preview.files && preview.files.length > 0
+                  ? {
+                      summary: preview.summary ?? "Prepared changes",
+                      changedFilesCount: preview.changedFilesCount ?? preview.files.length,
+                      files: preview.files,
+                    }
+                  : undefined,
+              choices: [
+                {
+                  value: "reject",
+                  label: "Reject",
+                  description: "Deny these changes",
+                },
+                {
+                  value: "once",
+                  label: "Approve once",
+                  description: "Apply these changes this time only",
+                },
+                {
+                  value: "always",
+                  label: "Always approve",
+                  description: "Remember this approval choice",
+                },
+              ],
+            }),
+          );
           if (approval !== "reject" && preview.files) {
             for (const f of preview.files) {
               patchApprovedPaths.add(f.filePath);
