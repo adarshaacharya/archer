@@ -23,6 +23,7 @@ function createSession({
   providers,
   modelId,
   instructions,
+  approveToolCall,
   approvePatchApply,
   sessionId,
 }: {
@@ -30,6 +31,7 @@ function createSession({
   providers: RuntimeProviders;
   modelId?: string;
   instructions?: string;
+  approveToolCall?: OpenHarnessRuntimeDeps["approveToolCall"];
   approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
   sessionId?: string;
 }): RuntimeSession {
@@ -103,10 +105,7 @@ function createSession({
     maxSteps: DEFAULT_MAX_STEPS,
     tools,
     approve: async (toolCall) => {
-      // if (toolCall.toolName === "bash") {
-      //   return false;
-      // }
-      return true;
+      return approveToolCall ? approveToolCall(toolCall) : true;
     },
   });
 
@@ -130,6 +129,7 @@ export function getOrCreateSession({
   providers,
   modelId,
   instructions,
+  approveToolCall,
   approvePatchApply,
   sessionId,
 }: {
@@ -137,6 +137,7 @@ export function getOrCreateSession({
   providers: RuntimeProviders;
   modelId?: string;
   instructions?: string;
+  approveToolCall?: OpenHarnessRuntimeDeps["approveToolCall"];
   approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
   sessionId?: string;
 }): RuntimeSession {
@@ -157,6 +158,7 @@ export function getOrCreateSession({
     providers,
     modelId: resolved.modelId,
     instructions,
+    approveToolCall,
     approvePatchApply,
     sessionId: key,
   });

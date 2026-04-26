@@ -528,6 +528,28 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
         ...env,
         webSearch,
       },
+      approveToolCall: async (toolCall) => {
+        if (toolCall.toolName !== "bash") {
+          return true;
+        }
+
+        const input =
+          typeof toolCall.input === "object" && toolCall.input !== null
+            ? (toolCall.input as { command?: unknown })
+            : {};
+        const command = typeof input.command === "string" ? input.command : "";
+
+        promptPending = true;
+        try {
+          const approval = await requestApproval(tui, {
+            kind: "command",
+            target: command || "bash",
+          });
+          return approval !== "reject";
+        } finally {
+          promptPending = false;
+        }
+      },
       approvePatchApply: async (preview) => {
         promptPending = true;
         try {
