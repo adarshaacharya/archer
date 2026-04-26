@@ -75,6 +75,7 @@ const col = {
 
 // Footer sizing: status(1) + border-top(1) + input(1) + border-bottom(1) = 4
 const BASE_FOOTER = 4;
+const MAX_SLASH_ROWS = 6;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -120,28 +121,21 @@ function defaultApprovalChoices(): ApprovalDialogChoice[] {
   ];
 }
 
-function slashCommandPreview(commands: SlashCommandItem[], input: string): string {
-  const v = input.trim();
-  if (!v.startsWith("/")) return "";
-  const query = v.slice(1).toLowerCase();
-  const matches = commands.filter((c) => c.name.slice(1).toLowerCase().startsWith(query));
-  const items = (matches.length > 0 ? matches : commands).slice(0, 6);
-  return items
-    .map((cmd, i) => `${i === 0 ? "▶" : " "} ${cmd.name.padEnd(16)} ${cmd.description}`)
-    .join("\n");
-}
-
 function slashCommandMatches(commands: SlashCommandItem[], input: string): SlashCommandItem[] {
   const v = input.trim();
   if (!v.startsWith("/")) return [];
   const query = v.slice(1).toLowerCase();
   const matches = commands.filter((c) => c.name.slice(1).toLowerCase().startsWith(query));
-  return (matches.length > 0 ? matches : commands).slice(0, 6);
+  return matches.length > 0 ? matches : commands;
 }
 
-function renderSlashMenu(items: SlashCommandItem[], selectedIndex: number): string {
+function renderSlashMenu(items: SlashCommandItem[], selectedIndex: number, startIndex: number, maxRows: number): string {
   return items
-    .map((item, index) => `${index === selectedIndex ? "▶" : " "} ${item.name.padEnd(16)} ${item.description}`)
+    .slice(startIndex, startIndex + maxRows)
+    .map((item, index) => {
+      const absoluteIndex = startIndex + index;
+      return `${absoluteIndex === selectedIndex ? "▶" : " "} ${item.name.padEnd(16)} ${item.description}`;
+    })
     .join("\n");
 }
 
@@ -155,6 +149,7 @@ export class PiTui implements Tui {
   private slashCommands: SlashCommandItem[] = [];
   private slashMenuItems: SlashCommandItem[] = [];
   private slashMenuIndex = 0;
+  private slashMenuScrollOffset = 0;
   private slashLineCount = 0;
   private currentInput = "";
   private assistantStreamText = "";
@@ -528,12 +523,17 @@ export class PiTui implements Tui {
 
     this.slashMenuItems = items;
     this.slashMenuIndex = items.length > 0 ? (nextIndex >= 0 ? nextIndex : 0) : 0;
-    this.slashLineCount = lineCount;
+    this.syncSlashMenuViewport();
 
     batch(() => {
-      menuText.content = renderSlashMenu(items, this.slashMenuIndex);
-      menuText.height = lineCount;
-      menuBox.height = lineCount;
+      menuText.content = renderSlashMenu(
+        items,
+        this.slashMenuIndex,
+        this.slashMenuScrollOffset,
+        MAX_SLASH_ROWS,
+      );
+      menuText.height = this.slashLineCount;
+      menuBox.height = this.slashLineCount;
     });
     renderer.footerHeight = BASE_FOOTER + this.slashLineCount + (this.pendingModal ? (this.pendingModal.type === "review" ? 19 : this.pendingModal.box.height) : 0);
     renderer.requestRender();
@@ -551,7 +551,13 @@ export class PiTui implements Tui {
     if (seq === "\x1b[A") {
       this.slashMenuIndex =
         this.slashMenuIndex <= 0 ? this.slashMenuItems.length - 1 : this.slashMenuIndex - 1;
-      menuText.content = renderSlashMenu(this.slashMenuItems, this.slashMenuIndex);
+      this.syncSlashMenuViewport();
+      menuText.content = renderSlashMenu(
+        this.slashMenuItems,
+        this.slashMenuIndex,
+        this.slashMenuScrollOffset,
+        MAX_SLASH_ROWS,
+      );
       renderer.requestRender();
       return true;
     }
@@ -559,7 +565,13 @@ export class PiTui implements Tui {
     if (seq === "\x1b[B") {
       this.slashMenuIndex =
         this.slashMenuIndex >= this.slashMenuItems.length - 1 ? 0 : this.slashMenuIndex + 1;
-      menuText.content = renderSlashMenu(this.slashMenuItems, this.slashMenuIndex);
+      this.syncSlashMenuViewport();
+      menuText.content = renderSlashMenu(
+        this.slashMenuItems,
+        this.slashMenuIndex,
+        this.slashMenuScrollOffset,
+        MAX_SLASH_ROWS,
+      );
       renderer.requestRender();
       return true;
     }
@@ -598,6 +610,28 @@ export class PiTui implements Tui {
     }
 
     return false;
+  }
+
+  private syncSlashMenuViewport(): void {
+    const total = this.slashMenuItems.length;
+    const visibleRows = Math.min(total, MAX_SLASH_ROWS);
+    this.slashLineCount = visibleRows;
+
+    if (visibleRows === 0) {
+      this.slashMenuScrollOffset = 0;
+      return;
+    }
+
+    if (this.slashMenuIndex < this.slashMenuScrollOffset) {
+      this.slashMenuScrollOffset = this.slashMenuIndex;
+    } else if (this.slashMenuIndex >= this.slashMenuScrollOffset + visibleRows) {
+      this.slashMenuScrollOffset = this.slashMenuIndex - visibleRows + 1;
+    }
+
+    const maxOffset = Math.max(0, total - visibleRows);
+    if (this.slashMenuScrollOffset > maxOffset) {
+      this.slashMenuScrollOffset = maxOffset;
+    }
   }
 
   private closePendingModal(): void {
