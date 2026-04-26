@@ -12,6 +12,7 @@ import {
   clearWebProviderEnv,
   defaultModelForProvider,
   getAuthFilePath,
+  listAvailableProviders,
   listSavedProviders,
   listSavedWebProviders,
   normalizeProvider,
@@ -147,26 +148,97 @@ function modelChoiceIndex(provider: SupportedProvider, modelId: string): number 
   return index >= 0 ? index : Math.max(0, defaultIndex);
 }
 
-async function promptForModel(tui: Tui, state: SessionState): Promise<string | "exit" | "cancel"> {
-  const provider = state.provider ?? "openrouter";
+type ModelSelection = {
+  provider: SupportedProvider;
+  modelId: string;
+};
+
+function providerLabel(provider: SupportedProvider): string {
+  return PROVIDER_CHOICES.find((choice) => choice.value === provider)?.label ?? provider;
+}
+
+function modelSelectionValue(selection: ModelSelection): string {
+  return `${selection.provider}::${selection.modelId}`;
+}
+
+function parseModelSelectionValue(value: string): ModelSelection | null {
+  const [provider, ...rest] = value.split("::");
+  if (!provider) return null;
+  const normalizedProvider = normalizeProvider(provider);
+  if (!normalizedProvider || rest.length === 0) return null;
+  return {
+    provider: normalizedProvider,
+    modelId: rest.join("::"),
+  };
+}
+
+function parseModelInput(
+  currentProvider: SupportedProvider,
+  input: string,
+): ModelSelection {
+  const trimmed = input.trim();
+  const [prefix, ...rest] = trimmed.split("/");
+  const explicitProvider = prefix ? normalizeProvider(prefix) : null;
+  if (explicitProvider && rest.length > 0) {
+    const modelId = explicitProvider === "openrouter" ? trimmed : rest.join("/");
+    return {
+      provider: explicitProvider,
+      modelId: normalizeModelIdForProvider(explicitProvider, modelId),
+    };
+  }
+
+  return {
+    provider: currentProvider,
+    modelId: normalizeModelIdForProvider(currentProvider, trimmed),
+  };
+}
+
+async function promptForModel(
+  tui: Tui,
+  state: SessionState,
+): Promise<ModelSelection | "exit" | "cancel"> {
+  const currentProvider = state.provider ?? "openrouter";
   const currentModel = normalizeModelIdForProvider(
-    provider,
-    state.modelId || defaultModelForProvider(provider),
+    currentProvider,
+    state.modelId || defaultModelForProvider(currentProvider),
   );
-  const choices = MODEL_CHOICES_BY_PROVIDER[provider];
+  const availableProviders = await listAvailableProviders();
+  const providers =
+    availableProviders.length > 0
+      ? Array.from(new Set([currentProvider, ...availableProviders]))
+      : [currentProvider];
+  const catalog = providers.flatMap((provider) =>
+    MODEL_CHOICES_BY_PROVIDER[provider].map((choice) => ({
+      provider,
+      modelId: choice.value,
+      label: choice.label,
+      description: choice.description,
+    })),
+  );
+  const selectedIndex = Math.max(
+    0,
+    catalog.findIndex(
+      (choice) =>
+        choice.provider === currentProvider &&
+        choice.modelId === currentModel,
+    ),
+  );
   const selected = await tui.promptApproval({
     message: "Choose model",
-    details: `Provider: ${provider}  Current: ${currentModel}`,
-    selectedIndex: modelChoiceIndex(provider, currentModel),
-    choices: choices.map((choice) => ({
-      value: choice.value,
-      label: choice.label,
+    details: `Providers: ${providers.map(providerLabel).join(", ")}  Current: ${providerLabel(currentProvider)}/${currentModel}`,
+    selectedIndex,
+    choices: catalog.map((choice) => ({
+      value: modelSelectionValue({
+        provider: choice.provider,
+        modelId: choice.modelId,
+      }),
+      label: `${choice.label}  [${providerLabel(choice.provider)}]`,
       description: choice.description,
     })),
   });
   if (selected === "reject") return "cancel";
 
-  return normalizeModelIdForProvider(provider, selected);
+  return parseModelSelectionValue(selected) ?? "cancel";
 }
 
 async function setModel(
@@ -174,20 +246,36 @@ async function setModel(
   state: SessionState,
   modelId?: string,
 ): Promise<SlashCommandResult> {
-  const provider = state.provider ?? "openrouter";
-  const selectedModel =
+  const currentProvider = state.provider ?? "openrouter";
+  const selection =
     modelId && modelId.trim().length > 0
-      ? normalizeModelIdForProvider(provider, modelId)
+      ? parseModelInput(currentProvider, modelId)
       : await promptForModel(tui, state);
-  if (selectedModel === "exit") return { type: "exit" };
-  if (selectedModel === "cancel") return { type: "continue", message: "Model selection cancelled." };
+  if (selection === "exit") return { type: "exit" };
+  if (selection === "cancel") return { type: "continue", message: "Model selection cancelled." };
 
-  process.env.AGENT_MODEL = selectedModel;
-  state.modelId = selectedModel;
-  tui.setActiveModel(selectedModel);
+  const previousProvider = process.env.XEQ_PROVIDER;
+  const previousModel = process.env.AGENT_MODEL;
+  process.env.XEQ_PROVIDER = selection.provider;
+  process.env.AGENT_MODEL = selection.modelId;
+
+  const resolved = await resolveActiveProvider();
+  if (!resolved || resolved.provider !== selection.provider) {
+    if (previousProvider) process.env.XEQ_PROVIDER = previousProvider;
+    else delete process.env.XEQ_PROVIDER;
+    if (previousModel) process.env.AGENT_MODEL = previousModel;
+    else delete process.env.AGENT_MODEL;
+    return {
+      type: "continue",
+      message: `Provider ${selection.provider} is not connected. Use /connect ${selection.provider} first.`,
+    };
+  }
+
+  updateSessionState(state, resolved);
+  tui.setActiveModel(state.modelId);
   return {
     type: "continue",
-    message: `Model set to ${selectedModel}. ${activeProviderSummary(state)}`,
+    message: `Model set to ${state.provider}/${state.modelId}. ${activeProviderSummary(state)}`,
   };
 }
 

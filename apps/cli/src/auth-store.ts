@@ -93,6 +93,10 @@ function getEnvKey(provider: SupportedProvider, env: NodeJS.ProcessEnv): string 
   return env[providerEnvVar(provider)];
 }
 
+function hasProviderCredential(provider: SupportedProvider, store: AuthStore, env: NodeJS.ProcessEnv): boolean {
+  return Boolean(getEnvKey(provider, env) ?? store.providers[provider]?.key);
+}
+
 function webProviderEnvVar(provider: SupportedWebProvider): string {
   switch (provider) {
     case "exa":
@@ -228,6 +232,13 @@ export async function removeWebProviderAuth(provider: SupportedWebProvider): Pro
 export async function listSavedProviders(): Promise<SupportedProvider[]> {
   const store = await readAuthStore();
   return SUPPORTED_PROVIDERS.filter((provider) => Boolean(store.providers[provider]));
+}
+
+export async function listAvailableProviders(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<SupportedProvider[]> {
+  const store = await readAuthStore();
+  return SUPPORTED_PROVIDERS.filter((provider) => hasProviderCredential(provider, store, env));
 }
 
 export async function listSavedWebProviders(): Promise<SupportedWebProvider[]> {

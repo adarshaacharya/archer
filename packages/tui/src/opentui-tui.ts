@@ -121,6 +121,25 @@ function defaultApprovalChoices(): ApprovalDialogChoice[] {
   ];
 }
 
+function approvalTitle(prompt: ApprovalPromptState): string {
+  const message = normalizeText(prompt.message).toLowerCase();
+  if (message.includes("choose model")) return "model picker";
+  if (message.includes("choose model provider")) return "provider picker";
+  if (message.includes("review")) return "review changes";
+  return "selection";
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function approvalDialogWidth(prompt: ApprovalPromptState, choices: ApprovalDialogChoice[]): number {
+  const labelWidth = Math.max(...choices.map((choice) => choice.label.length), 0);
+  const detailWidth = prompt.details ? normalizeText(prompt.details).length : 0;
+  const messageWidth = normalizeText(prompt.message).length;
+  return clamp(Math.max(labelWidth + 10, detailWidth + 4, messageWidth + 4), 42, 88);
+}
+
 function slashCommandMatches(commands: SlashCommandItem[], input: string): SlashCommandItem[] {
   const v = input.trim();
   if (!v.startsWith("/")) return [];
@@ -538,6 +557,17 @@ export class PiTui implements Tui {
     });
   }
 
+  private syncFooterHeight(): void {
+    const renderer = this.renderer;
+    if (!renderer) return;
+    const modalHeight = this.pendingModal?.box.height ?? 0;
+    const nextHeight = BASE_FOOTER + this.slashLineCount + modalHeight;
+    if (renderer.footerHeight !== nextHeight) {
+      renderer.footerHeight = nextHeight;
+    }
+    renderer.requestRender();
+  }
+
   private updateSlashMenu(value: string): void {
     const menuSelect = this.slashMenuSelect;
     const menuBox = this.slashMenuBox;
@@ -560,8 +590,7 @@ export class PiTui implements Tui {
       menuSelect.height = this.slashLineCount;
       menuBox.height = this.slashLineCount;
     });
-    renderer.footerHeight = BASE_FOOTER + this.slashLineCount + (this.pendingModal ? (this.pendingModal.type === "review" ? 19 : this.pendingModal.box.height) : 0);
-    renderer.requestRender();
+    this.syncFooterHeight();
   }
 
   private handleSlashMenuInput(seq: string): boolean {
@@ -677,6 +706,7 @@ export class PiTui implements Tui {
       this.pendingModal.box.destroyRecursively();
       this.pendingModal = null;
       this.setApprovalRows?.(0);
+      this.syncFooterHeight();
     }
   }
 
@@ -694,11 +724,12 @@ export class PiTui implements Tui {
    * Create a box appended below the composer in the footer column.
    * Footer height is driven by the Solid signal in start().
    */
-  private approvalBox(id: string, innerRows: number, title: string): BoxRenderable {
+  private approvalBox(id: string, innerRows: number, title: string, width: number | "100%" = "100%"): BoxRenderable {
     if (!this.renderer) throw new Error("renderer not ready");
     return new BoxRenderable(this.renderer, {
       id,
-      width: "100%",
+      width,
+      maxWidth: "100%",
       height: innerRows + 2,  // +2 for border-top and border-bottom
       flexShrink: 0,
       flexDirection: "column",
@@ -712,14 +743,26 @@ export class PiTui implements Tui {
     });
   }
 
+  private armSelectAfterMount(callback: () => void): () => boolean {
+    let armed = false;
+    queueMicrotask(() => {
+      armed = true;
+      callback();
+    });
+    return () => armed;
+  }
+
   private showApprovalModal(prompt: ApprovalPromptState, resolve: (value: string) => void): void {
     if (!this.renderer || !this.footerRoot) return;
 
     const choices = prompt.choices ?? defaultApprovalChoices();
+    const selectedIndex = Math.max(0, Math.min(choices.length - 1, prompt.selectedIndex ?? 1));
     const visibleChoices = Math.min(choices.length, 8);
-    // innerRows = message(1) + choices viewport + help(1)
-    const innerRows = 1 + visibleChoices + 1;
-    const box = this.approvalBox("approval-modal", innerRows, "approval");
+    const hasDetails = Boolean(prompt.details?.trim());
+    const showPreview = choices.some((choice) => choice.description?.trim());
+    // innerRows = message(1) + details?(1) + choices viewport + preview?(1) + help(1)
+    const innerRows = 1 + (hasDetails ? 1 : 0) + visibleChoices + (showPreview ? 1 : 0) + 1;
+    const box = this.approvalBox("approval-modal", innerRows, approvalTitle(prompt), "100%");
 
     box.add(new TextRenderable(this.renderer, {
       id: "approval-msg",
@@ -729,23 +772,53 @@ export class PiTui implements Tui {
       fg: col.muted,
     }));
 
+    if (hasDetails) {
+      box.add(new TextRenderable(this.renderer, {
+        id: "approval-details",
+        content: normalizeText(prompt.details!),
+        width: "100%",
+        height: 1,
+        fg: col.step,
+      }));
+    }
+
+    const selectOptions = choices.map((ch, index) => ({
+      name: index === selectedIndex ? `${ch.label}  (current)` : ch.label,
+      description: ch.description ?? "",
+      value: ch.value,
+    }));
+
     const select = new SelectRenderable(this.renderer, {
       id: "approval-select",
-      options: choices.map((ch) => ({
-        name: ch.label,
-        description: ch.description ?? "",
-        value: ch.value,
-      })),
-      selectedIndex: Math.max(0, Math.min(choices.length - 1, prompt.selectedIndex ?? 1)),
+      options: selectOptions,
+      selectedIndex,
       width: "100%",
       height: visibleChoices,
+      backgroundColor: col.userBg,
+      focusedBackgroundColor: col.userBg,
       showScrollIndicator: choices.length > visibleChoices,
       showDescription: false,
       selectedBackgroundColor: col.accent,
       selectedTextColor: "#000000",
+      textColor: col.text,
+      descriptionColor: col.muted,
+      selectedDescriptionColor: "#000000",
     });
 
     box.add(select);
+    const preview = showPreview
+      ? new TextRenderable(this.renderer, {
+          id: "approval-preview",
+          content: selectOptions[selectedIndex]?.description || "",
+          width: "100%",
+          height: 1,
+          truncate: true,
+          fg: col.step,
+        })
+      : null;
+    if (preview) {
+      box.add(preview);
+    }
     box.add(new TextRenderable(this.renderer, {
       id: "approval-help",
       content: "↑↓ move   enter select   esc reject",
@@ -757,9 +830,22 @@ export class PiTui implements Tui {
     this.footerRoot.add(box);
     this.setApprovalRows?.(innerRows + 2);
     this.pendingModal = { type: "approval", resolve, select, box };
+    this.syncFooterHeight();
 
-    select.focus();
+    const isArmed = this.armSelectAfterMount(() => {
+      select.focus();
+      this.syncFooterHeight();
+    });
+
+    if (preview) {
+      select.on(SelectRenderableEvents.SELECTION_CHANGED, (index: number) => {
+        preview.content = selectOptions[index]?.description || "";
+        this.renderer?.requestRender();
+      });
+    }
+
     select.on(SelectRenderableEvents.ITEM_SELECTED, (_i: number, item: { value: string }) => {
+      if (!isArmed()) return;
       this.closePendingModal();
       this.pendingApprovalResolve?.(item.value);
       this.pendingApprovalResolve = null;
@@ -863,7 +949,11 @@ export class PiTui implements Tui {
       focused: "actions",
     };
     this.pendingModal = modal;
-    actionSelect.focus();
+    this.syncFooterHeight();
+    const isArmed = this.armSelectAfterMount(() => {
+      actionSelect.focus();
+      this.syncFooterHeight();
+    });
 
     fileSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () => {
       const sel = fileSelect.getSelectedOption();
@@ -877,6 +967,7 @@ export class PiTui implements Tui {
       this.renderer?.requestRender();
     });
     actionSelect.on(SelectRenderableEvents.ITEM_SELECTED, (_i: number, item: { value: string }) => {
+      if (!isArmed()) return;
       this.closePendingModal();
       this.pendingApprovalResolve?.(item.value);
       this.pendingApprovalResolve = null;
