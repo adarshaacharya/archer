@@ -14,6 +14,7 @@ export {
 } from "./message.js";
 export {
   createSession,
+  deleteSession,
   getSession,
   listSessions,
   touchSession,

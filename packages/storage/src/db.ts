@@ -73,6 +73,20 @@ function initSchema(database: Database): void {
       ON messages(session_id, created_at);
     CREATE UNIQUE INDEX IF NOT EXISTS messages_session_id_seq_idx
       ON messages(session_id, seq);
+
+    CREATE TABLE IF NOT EXISTS model_messages (
+      id TEXT PRIMARY KEY NOT NULL,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS model_messages_session_id_created_at_idx
+      ON model_messages(session_id, created_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS model_messages_session_id_seq_idx
+      ON model_messages(session_id, seq);
   `);
 
   initialized = true;

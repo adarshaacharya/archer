@@ -6,6 +6,7 @@ import type { SupportedProvider } from "@xeq/model-providers";
 import { type ApprovalChoice, type ApprovalRequest, createSandboxEnvironment } from "@xeq/sandbox";
 import { AgentRequestSchema } from "@xeq/shared";
 import {
+  appendMessage,
   createSession,
   getMessages,
   getSession,
@@ -57,6 +58,28 @@ function titleFromTask(task: string): string {
   return task.replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
+function newMessageId(sessionId: string, role: string): string {
+  return `${sessionId}_${role}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function resolveProjectRoot(startDir: string): string {
+  const result = Bun.spawnSync({
+    cmd: ["git", "rev-parse", "--show-toplevel"],
+    cwd: startDir,
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+
+  if (result.exitCode === 0) {
+    const root = new TextDecoder().decode(result.stdout).trim();
+    if (root) {
+      return root;
+    }
+  }
+
+  return startDir;
+}
+
 type SlashCommandResult =
   | {
       type: "continue";
@@ -70,6 +93,7 @@ type SlashCommandResult =
 type SessionState = {
   sessionId: string;
   sessionTitle: string | null;
+  projectRoot: string;
   provider: SupportedProvider | null;
   modelId: string;
   authSource: "env" | "saved" | null;
@@ -391,7 +415,7 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
 
   const request = AgentRequestSchema.parse({
     task,
-    repoRoot: process.cwd(),
+    repoRoot: state.projectRoot,
     approvalMode: "suggest",
     maxSteps: 256,
     maxDurationMs: 120000,
@@ -443,6 +467,13 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
   });
 
   tui.renderUserMessage(request.task);
+  await appendMessage({
+    id: newMessageId(state.sessionId, "user"),
+    session_id: state.sessionId,
+    role: "user",
+    kind: "transcript",
+    content: request.task,
+  });
   const webSearch = createWebSearchProvider(
     async () => {
       promptPending = true;
@@ -542,6 +573,15 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
       onStep: (step) => {
         if (step.action === "model.final") {
           tui.finalizeAssistantStream(step.observation);
+          if (step.observation?.trim()) {
+            void appendMessage({
+              id: newMessageId(state.sessionId, "assistant"),
+              session_id: state.sessionId,
+              role: "assistant",
+              kind: "transcript",
+              content: step.observation,
+            });
+          }
           return;
         }
 
@@ -593,13 +633,9 @@ function sessionLabel(
   index?: number,
 ): string {
   const prefix = index === undefined ? "" : `${index + 1}. `;
-  if (session.title?.trim()) {
-    return `${prefix}${session.title.trim()}`;
-  }
-
   const stamp = formatTimestamp(session.updated_at);
-  const shortId = session.id.replace(/^session_/, "").slice(-8);
-  return `${prefix}Untitled  ${stamp}  ${shortId}`;
+  const title = session.title?.trim() || "Untitled";
+  return `${prefix}${title}  ${stamp}`;
 }
 
 function sessionDescription(session: Awaited<ReturnType<typeof listSessions>>[number]): string {
@@ -609,7 +645,7 @@ function sessionDescription(session: Awaited<ReturnType<typeof listSessions>>[nu
 async function projectSessions() {
   return listSessions({
     limit: 50,
-    project_root: process.cwd(),
+    project_root: resolveProjectRoot(process.cwd()),
   });
 }
 
@@ -639,16 +675,16 @@ function renderStoredContent(content: string): string {
     const record = part as Record<string, unknown>;
     const type = typeof record.type === "string" ? record.type : null;
 
-    if (typeof record.text === "string") {
+    if ((type === "reasoning" || type === "reasoning_text") && typeof record.text === "string") {
+      return [`[reasoning] ${record.text}`];
+    }
+
+    if (type === "text" && typeof record.text === "string") {
       return [record.text];
     }
 
     if (type === "text" && typeof record.value === "string") {
       return [record.value];
-    }
-
-    if ((type === "reasoning" || type === "reasoning_text") && typeof record.text === "string") {
-      return [`[reasoning] ${record.text}`];
     }
 
     if ((type === "tool-call" || type === "tool_call") && typeof record.toolName === "string") {
@@ -675,6 +711,10 @@ function renderStoredContent(content: string): string {
       return [`[${type}]`];
     }
 
+    if (typeof record.text === "string") {
+      return [record.text];
+    }
+
     return [];
   };
 
@@ -686,9 +726,12 @@ function renderStoredContent(content: string): string {
 
     if (Array.isArray(parsed)) {
       const parts = parsed.flatMap((item) => renderPart(item));
+      const visibleParts = parts.some((part) => !part.startsWith("[reasoning]"))
+        ? parts.filter((part) => !part.startsWith("[reasoning]"))
+        : parts;
 
-      if (parts.length > 0) {
-        return parts.join("\n");
+      if (visibleParts.length > 0) {
+        return visibleParts.join("\n");
       }
     }
 
@@ -743,7 +786,7 @@ async function continueSession(
   state.sessionTitle = session.title ?? null;
   return {
     type: "continue",
-    message: `Continuing ${session.title ?? "Untitled session"}. Future prompts will reuse its stored context.`,
+    message: "",
     restoreSessionId: session.id,
   };
 }
@@ -754,7 +797,7 @@ async function startNewSession(state: SessionState): Promise<SlashCommandResult>
     id: sessionId,
     title: null,
     cwd: process.cwd(),
-    project_root: process.cwd(),
+    project_root: state.projectRoot,
     provider: state.provider ?? "unknown",
     model: state.modelId || "unknown",
   });
@@ -1215,9 +1258,12 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
 async function main(): Promise<void> {
   const initialTask = parseInitialTask(process.argv.slice(2));
   const sessionId = newSessionId();
+  const cwd = process.cwd();
+  const projectRoot = resolveProjectRoot(cwd);
   const state: SessionState = {
     sessionId,
     sessionTitle: null,
+    projectRoot,
     provider: null,
     modelId: "",
     authSource: null,
@@ -1225,7 +1271,7 @@ async function main(): Promise<void> {
     webAuthSource: null,
   };
 
-  const tuiConfig = await loadTuiConfig(process.cwd());
+  const tuiConfig = await loadTuiConfig(cwd);
   const keybinds = new KeybindManager(tuiConfig.keybinds);
   const promptOptions = [
     `${keybinds.print("input_submit")}=run`,
@@ -1269,8 +1315,8 @@ async function main(): Promise<void> {
       await createSession({
         id: state.sessionId,
         title: initialTask ? titleFromTask(initialTask) : null,
-        cwd: process.cwd(),
-        project_root: process.cwd(),
+        cwd,
+        project_root: state.projectRoot,
         provider: state.provider ?? "unknown",
         model: state.modelId || "unknown",
       });

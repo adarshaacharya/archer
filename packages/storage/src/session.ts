@@ -37,6 +37,10 @@ export async function getSession(id: string) {
   });
 }
 
+export async function deleteSession(id: string): Promise<void> {
+  await getDb().delete(sessions).where(eq(sessions.id, id));
+}
+
 export async function listSessions(opts?: {
   limit?: number;
   project_root?: string;

@@ -237,7 +237,7 @@ export class PiTui implements Tui {
       exitOnCtrlC: false,
       clearOnShutdown: false,
       autoFocus: true,
-      useMouse: true,
+      useMouse: false,
       targetFps: 30,
     });
 
@@ -510,7 +510,7 @@ export class PiTui implements Tui {
   finalizeAssistantStream(text?: string): void {
     const final = normalizeText(text ?? this.assistantStreamText);
     this.assistantStreamText = "";
-    this.setStatus(this.activeModelLabel);
+    this.setStatus(this.activeModelLabel, col.muted, "", col.muted);
     if (final) {
       this.print(final, col.text);
       this.print("");
@@ -520,7 +520,7 @@ export class PiTui implements Tui {
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
     if (!prompt) {
       this.closePendingModal();
-      this.setStatus(this.activeModelLabel);
+      this.setStatus(this.activeModelLabel, col.muted, "", col.muted);
       this.input?.focus();
       return;
     }

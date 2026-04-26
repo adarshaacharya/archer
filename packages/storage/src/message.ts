@@ -1,7 +1,7 @@
 import type { ModelMessage } from "ai";
 import { asc, eq, max } from "drizzle-orm";
 import { getDb } from "./db.js";
-import { messages } from "./schema.js";
+import { messages, model_messages } from "./schema.js";
 import { touchSession } from "./session.js";
 
 export type AppendMessageInput = {
@@ -48,10 +48,12 @@ export async function appendMessage(input: AppendMessageInput): Promise<void> {
 }
 
 export async function getMessages(sessionId: string) {
-  return getDb().query.messages.findMany({
+  const rows = await getDb().query.messages.findMany({
     where: eq(messages.session_id, sessionId),
     orderBy: [asc(messages.seq)],
   });
+
+  return rows.filter((row) => row.kind !== "model_message");
 }
 
 export async function replaceMessages(
@@ -61,14 +63,13 @@ export async function replaceMessages(
   const createdAt = Date.now();
   const db = getDb();
 
-  await db.delete(messages).where(eq(messages.session_id, sessionId));
+  await db.delete(model_messages).where(eq(model_messages.session_id, sessionId));
   if (nextMessages.length > 0) {
-    await db.insert(messages).values(
+    await db.insert(model_messages).values(
       nextMessages.map((message, index) => ({
         id: `${sessionId}_msg_${index + 1}`,
         session_id: sessionId,
         role: message.role,
-        kind: "model_message",
         content: JSON.stringify(message.content),
         seq: index + 1,
         created_at: createdAt + index,
@@ -84,7 +85,11 @@ export async function replaceMessages(
 }
 
 export async function loadModelMessages(sessionId: string): Promise<ModelMessage[]> {
-  const rows = await getMessages(sessionId);
+  const rows = await getDb().query.model_messages.findMany({
+    where: eq(model_messages.session_id, sessionId),
+    orderBy: [asc(model_messages.seq)],
+  });
+
   return rows.map(
     (row) =>
       ({
