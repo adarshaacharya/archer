@@ -5,8 +5,11 @@ import {
   InputRenderableEvents,
   SelectRenderable,
   SelectRenderableEvents,
+  StyledText,
   TextRenderable,
   createCliRenderer,
+  fg,
+  type TextChunk,
 } from "@opentui/core";
 import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
 import type { AgentStep, RunSummary } from "@xeq/shared";
@@ -653,36 +656,64 @@ export class PiTui implements Tui {
         this.activeModelLabel.replace(/^model=/, ""),
         innerWidth - labelWidth - 3,
       );
-      const row = (content = ""): string => `│${padRight(` ${content}`, innerWidth)}│`;
-      const keyValue = (label: string, value: string): string =>
-        row(`${padRight(label, labelWidth)}${value}`);
-      const actionRow = (command: string, hint: string): string => {
+      const chunks: TextChunk[] = [];
+      const push = (color: string, content: string): void => {
+        chunks.push(fg(color)(content));
+      };
+      const pushLine = (): void => push(col.border, "\n");
+      const borderLine = (left: string, fill: string, right: string): void => {
+        push(col.border, `${left}${fill.repeat(innerWidth)}${right}`);
+        pushLine();
+      };
+      const row = (segments: Array<{ text: string; color?: string }>): void => {
+        const contentLength = segments.reduce((sum, segment) => sum + segment.text.length, 0);
+        push(col.border, "│ ");
+        for (const segment of segments) {
+          push(segment.color ?? col.text, segment.text);
+        }
+        push(col.text, " ".repeat(Math.max(0, innerWidth - contentLength - 1)));
+        push(col.border, "│");
+        pushLine();
+      };
+      const keyValue = (label: string, value: string): void =>
+        row([
+          { text: padRight(label, labelWidth), color: col.muted },
+          { text: value },
+        ]);
+      const actionRow = (command: string, hint: string): void => {
         const content = `${padRight(command, commandWidth)}${hint}`;
-        return row(content);
+        row([
+          { text: padRight(command, commandWidth), color: col.accent },
+          { text: hint },
+        ]);
       };
 
-      const lines = [
-        `┌${"─".repeat(innerWidth)}┐`,
-        row(`>_ xeq  v${Bun.version}`),
-        row("ready for a task"),
-        `├${"─".repeat(innerWidth)}┤`,
-        keyValue("workspace", directory),
-        keyValue("model", modelLine),
-        `├${"─".repeat(innerWidth)}┤`,
-        actionRow("type anything", "start a new turn"),
-        actionRow("/", "browse commands"),
-        actionRow("/resume", "restore a saved session"),
-        actionRow("ctrl+c", "quit"),
-        `└${"─".repeat(innerWidth)}┘`,
-      ];
+      borderLine("┌", "─", "┐");
+      row([
+        { text: ">_ ", color: col.accent },
+        { text: "xeq", color: col.accent },
+        { text: `  v${Bun.version}`, color: col.muted },
+      ]);
+      row([{ text: "ready for a task", color: col.muted }]);
+      borderLine("├", "─", "┤");
+      keyValue("workspace", directory);
+      keyValue("model", modelLine);
+      borderLine("├", "─", "┤");
+      actionRow("type anything", "start a new turn");
+      actionRow("/", "browse commands");
+      actionRow("/resume", "restore a saved session");
+      actionRow("ctrl+c", "quit");
+      borderLine("└", "─", "┘");
+      if (chunks[chunks.length - 1]?.text === "\n") {
+        chunks.pop();
+      }
       const text = new TextRenderable(ctx.renderContext, {
         id: "startup-card-text",
-        content: lines.join("\n"),
+        content: new StyledText(chunks),
         width,
-        height: lines.length,
+        height: 12,
         wrapMode: "none",
         truncate: false,
-        fg: col.text,
       });
       return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
     });
