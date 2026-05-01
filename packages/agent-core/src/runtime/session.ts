@@ -8,6 +8,7 @@ import { createTrackedFsProvider } from "./file-tracker.js";
 import { sanitizeId } from "./ids.js";
 import { resolveModel } from "./model.js";
 import type { OpenHarnessRuntimeDeps, RuntimeProviders } from "./openharness-types.js";
+import { buildSystemPrompt } from "./task-flow.js";
 
 type RuntimeSession = {
   session: Session;
@@ -92,19 +93,7 @@ function createSession({
     name: "xeq",
     description: "XEQ terminal coding agent",
     model: model.model,
-    systemPrompt:
-      instructions ??
-      [
-        "You are XEQ, a terminal coding agent.",
-        "Default to doing the work without asking questions. Treat short tasks as sufficient direction and infer missing details by reading the codebase and following existing conventions.",
-        "Only ask when you are truly blocked after checking relevant context and cannot safely pick a reasonable default.",
-        "This usually means the request is ambiguous in a way that materially changes the result, the action is destructive or security-sensitive, or you need a secret or value that cannot be inferred.",
-        "If you must ask, do all non-blocked work first, ask exactly one targeted question, include your recommended default, and say what changes based on the answer.",
-        "Never ask permission questions like 'Should I proceed?' or 'Do you want me to run tests?'; proceed with the most reasonable option and mention what you did.",
-        "Make minimal safe edits and use tools deliberately.",
-        "Prefer preparePatchBundle for multi-file changes and preparePatch for single-file changes.",
-        "These tools show a reviewable diff and apply the change immediately when approved.",
-      ].join(" "),
+    systemPrompt: instructions ?? buildSystemPrompt(),
     maxSteps: DEFAULT_MAX_STEPS,
     tools,
     approve: async (toolCall) => {

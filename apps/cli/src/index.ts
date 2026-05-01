@@ -1,12 +1,9 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
-import { performance } from "node:perf_hooks";
-import { runOpenHarnessRuntime } from "@xeq/agent-core";
+import { runTask, titleFromTask } from "./task-runner.js";
 import type { SupportedProvider } from "@xeq/model-providers";
-import { createSandboxEnvironment } from "@xeq/sandbox";
 import { type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
 import {
-  appendMessage,
   createSession,
   getMessages,
   getSession,
@@ -14,12 +11,11 @@ import {
   updateSessionTitle,
 } from "@xeq/storage";
 import { PiTui, type SlashCommandItem, type Tui } from "@xeq/tui";
-import { type SupportedWebProvider, createWebSearchProvider } from "@xeq/web";
+import type { SupportedWebProvider } from "@xeq/web";
 import {
   permissionsSummary,
   requestApproval,
   setApprovalMode,
-  withApprovalQueue,
 } from "./approvals.js";
 import {
   clearProviderEnv,
@@ -42,11 +38,8 @@ import {
 import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.js";
 import { KeybindManager } from "./keybinds.js";
 import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
-import {
-  webFetchRuleForUrl,
-} from "./settings-store.js";
-import { createToolApprovalHandler } from "./tool-approval.js";
 import { loadTuiConfig } from "./tui-config.js";
+import type { SessionState } from "./session-state.js";
 
 function parseInitialTask(argv: string[]): string | null {
   const task = argv.join(" ").trim();
@@ -55,14 +48,6 @@ function parseInitialTask(argv: string[]): string | null {
 
 function newSessionId(): string {
   return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function titleFromTask(task: string): string {
-  return task.replace(/\s+/g, " ").trim().slice(0, 80);
-}
-
-function newMessageId(sessionId: string, role: string): string {
-  return `${sessionId}_${role}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function resolveProjectRoot(startDir: string): string {
@@ -92,18 +77,6 @@ type SlashCommandResult =
     }
   | { type: "exit" }
   | { type: "none" };
-
-type SessionState = {
-  sessionId: string;
-  sessionTitle: string | null;
-  projectRoot: string;
-  approvalMode: ApprovalMode;
-  provider: SupportedProvider | null;
-  modelId: string;
-  authSource: "env" | "saved" | null;
-  webProvider: SupportedWebProvider | null;
-  webAuthSource: "env" | "saved" | null;
-};
 
 function activeProviderSummary(state: SessionState): string {
   if (!state.provider || !state.authSource) {
@@ -345,248 +318,6 @@ function updateWebSessionState(
 
   state.webProvider = resolved.provider;
   state.webAuthSource = resolved.authSource;
-}
-
-async function runTask(task: string, tui: Tui, state: SessionState): Promise<void> {
-  const abortController = new AbortController();
-  tui.onCancelRunning(() => {
-    abortController.abort();
-    tui.renderApprovalPrompt({
-      message: "Cancelling current run...",
-      options: ["wait"],
-    });
-  });
-
-  const request = AgentRequestSchema.parse({
-    task,
-    repoRoot: state.projectRoot,
-    approvalMode: state.approvalMode,
-    maxSteps: 256,
-    maxDurationMs: 120000,
-  });
-
-  if (!state.sessionTitle) {
-    state.sessionTitle = titleFromTask(request.task);
-    await updateSessionTitle({
-      id: state.sessionId,
-      title: state.sessionTitle,
-    });
-  }
-
-  tui.renderApprovalPrompt({ message: request.task, options: ["running"] });
-
-  const started = performance.now();
-  const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-  let frameIndex = 0;
-  let promptPending = false;
-  const spinner = setInterval(() => {
-    if (promptPending) {
-      return;
-    }
-
-    const frame = spinnerFrames[frameIndex % spinnerFrames.length];
-    frameIndex += 1;
-    tui.renderApprovalPrompt({
-      message: `${frame} Processing task...`,
-      options: ["esc=abort"],
-    });
-  }, 120);
-
-  const patchApprovedPaths = new Set<string>();
-
-  const env = createSandboxEnvironment({
-    cwd: request.repoRoot,
-    approvals: async (approvalRequest) => {
-      if (approvalRequest.kind === "file-write" && patchApprovedPaths.has(approvalRequest.target)) {
-        patchApprovedPaths.delete(approvalRequest.target);
-        return "once";
-      }
-      promptPending = true;
-      try {
-        return await requestApproval(tui, approvalRequest);
-      } finally {
-        promptPending = false;
-      }
-    },
-  });
-
-  tui.renderUserMessage(request.task);
-  await appendMessage({
-    id: newMessageId(state.sessionId, "user"),
-    session_id: state.sessionId,
-    role: "user",
-    kind: "transcript",
-    content: request.task,
-  });
-  const webSearch = createWebSearchProvider(
-    async () => {
-      promptPending = true;
-      try {
-        const connected = await ensureWebProviderConnected(tui, state);
-        if (!connected) {
-          throw new Error("Web search cancelled: no provider configured");
-        }
-
-        const resolved = await resolveActiveWebProvider();
-        updateWebSessionState(state, resolved);
-        if (!resolved) {
-          throw new Error("Web search is unavailable");
-        }
-
-        return {
-          provider: resolved.provider,
-          apiKey: resolved.apiKey,
-        };
-      } finally {
-        promptPending = false;
-      }
-    },
-    {
-      allowUrl: async (url) => {
-        const rule = webFetchRuleForUrl(url);
-        if (!rule) {
-          throw new Error(`Invalid URL for web fetch: ${url}`);
-        }
-
-        promptPending = true;
-        try {
-          const approval = await requestApproval(tui, {
-            kind: "web-fetch",
-            target: rule,
-          });
-          if (approval === "reject") {
-            throw new Error(`Web fetch denied for ${rule}`);
-          }
-        } finally {
-          promptPending = false;
-        }
-      },
-    },
-  );
-
-  const result = await runOpenHarnessRuntime(
-    {
-      modelId: state.modelId,
-      sessionId: state.sessionId,
-      providers: {
-        ...env,
-        webSearch,
-      },
-      approveToolCall: createToolApprovalHandler({
-        approvalMode: state.approvalMode,
-        patchApprovedPaths,
-        requestApproval: async (approvalRequest) => {
-          promptPending = true;
-          try {
-            return await requestApproval(tui, approvalRequest);
-          } finally {
-            promptPending = false;
-          }
-        },
-      }),
-      approvePatchApply: async (preview) => {
-        if (state.approvalMode === "auto-edit") {
-          if (preview.files) {
-            for (const f of preview.files) {
-              patchApprovedPaths.add(f.filePath);
-            }
-          } else if (preview.filePath) {
-            patchApprovedPaths.add(preview.filePath);
-          }
-          return true;
-        }
-
-        promptPending = true;
-        try {
-          const approval = await withApprovalQueue(() =>
-            tui.promptApproval({
-              message: "Review changes",
-              details: preview.summary ? preview.summary : "Inspect the patch before applying.",
-              review:
-                preview.files && preview.files.length > 0
-                  ? {
-                      summary: preview.summary ?? "Prepared changes",
-                      changedFilesCount: preview.changedFilesCount ?? preview.files.length,
-                      files: preview.files,
-                    }
-                  : undefined,
-              choices: [
-                {
-                  value: "reject",
-                  label: "Reject",
-                  description: "Deny these changes",
-                },
-                {
-                  value: "once",
-                  label: "Approve once",
-                  description: "Apply these changes this time only",
-                },
-                {
-                  value: "always",
-                  label: "Always approve",
-                  description: "Remember this approval choice",
-                },
-              ],
-            }),
-          );
-          if (approval !== "reject" && preview.files) {
-            for (const f of preview.files) {
-              patchApprovedPaths.add(f.filePath);
-            }
-          }
-          return approval !== "reject";
-        } finally {
-          promptPending = false;
-        }
-      },
-      onStep: (step) => {
-        if (step.action === "model.final") {
-          tui.finalizeAssistantStream(step.observation);
-          if (step.observation?.trim()) {
-            void appendMessage({
-              id: newMessageId(state.sessionId, "assistant"),
-              session_id: state.sessionId,
-              role: "assistant",
-              kind: "transcript",
-              content: step.observation,
-            });
-          }
-          return;
-        }
-
-        tui.renderStep({
-          step: step.step,
-          action: step.action,
-          thought: step.thought,
-          observation: step.observation,
-        });
-      },
-      onTextDelta: (delta) => {
-        tui.renderAssistantDelta(delta);
-      },
-    },
-    request.task,
-    {
-      cwd: request.repoRoot,
-      maxSteps: request.maxSteps,
-      timeoutMs: request.maxDurationMs,
-      abortSignal: abortController.signal,
-    },
-  ).finally(() => {
-    clearInterval(spinner);
-    tui.onCancelRunning(null);
-  });
-
-  tui.renderSummary({
-    success: result.status === "completed" || result.status === "cancelled",
-    steps: result.steps,
-    durationMs: Math.round(performance.now() - started),
-    promptTokens: result.usage?.promptTokens ?? 0,
-    completionTokens: result.usage?.completionTokens ?? 0,
-    estimatedCostUsd: result.estimatedCostUsd ?? 0,
-  });
-
-  tui.renderApprovalPrompt(null);
 }
 
 function formatTimestamp(timestamp: number | null | undefined): string {

@@ -1,4 +1,6 @@
 import { classifyCommandRisk } from "@xeq/sandbox";
+import type { ApprovalMode } from "@xeq/shared";
+import type { TaskPhaseController } from "./task-flow.js";
 
 export type ToolApprovalAction = "allow" | "ask" | "deny";
 
@@ -36,6 +38,63 @@ export function classifyToolCall(
   }
 
   return { permission: "unknown", pattern: toolName, action: "ask" };
+}
+
+type ApprovalHandler = (request: {
+  kind: "command" | "file-write" | "web-fetch";
+  target: string;
+  details?: string;
+}) => Promise<"reject" | "once" | "always">;
+
+export function createToolApprovalHandler(opts: {
+  approvalMode: ApprovalMode;
+  phase: TaskPhaseController;
+  patchApprovedPaths: Set<string>;
+  requestApproval: ApprovalHandler;
+}) {
+  return async (toolCall: { toolName: string; input: unknown }): Promise<boolean> => {
+    const decision = classifyToolCall(toolCall.toolName, toolCall.input);
+
+    if (opts.phase.isContextPhase()) {
+      return decision.permission === "read" || decision.permission === "web_fetch";
+    }
+
+    if (decision.action === "deny") {
+      return false;
+    }
+
+    if (decision.permission === "read" || decision.permission === "patch_review") {
+      return true;
+    }
+
+    if (decision.permission === "web_fetch") {
+      return true;
+    }
+
+    if (decision.permission === "edit") {
+      const target = decision.pattern;
+      if (opts.approvalMode === "auto-edit" && opts.patchApprovedPaths.has(target)) {
+        opts.patchApprovedPaths.delete(target);
+        return true;
+      }
+
+      const approval = await opts.requestApproval({
+        kind: "file-write",
+        target,
+      });
+      return approval !== "reject";
+    }
+
+    if (decision.permission === "bash") {
+      const approval = await opts.requestApproval({
+        kind: "command",
+        target: decision.pattern,
+      });
+      return approval !== "reject";
+    }
+
+    return false;
+  };
 }
 
 function filePattern(input: unknown): string {
