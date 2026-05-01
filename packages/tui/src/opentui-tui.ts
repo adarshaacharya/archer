@@ -1,12 +1,11 @@
 import {
   BoxRenderable,
   type CliRenderer,
-  InputRenderable,
-  InputRenderableEvents,
   SelectRenderable,
   SelectRenderableEvents,
   StyledText,
   TextRenderable,
+  TextareaRenderable,
   createCliRenderer,
   fg,
   type TextChunk,
@@ -79,8 +78,8 @@ const col = {
   summary:   "#F0883E",
 };
 
-// Footer sizing: status(2) + border-top(1) + input(1) + border-bottom(1) = 5
-const BASE_FOOTER = 5;
+// Footer sizing: status(2) + composer box(5) = 7 before slash menu or dialogs.
+const BASE_FOOTER = 7;
 const MAX_SLASH_ROWS = 6;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,9 +190,11 @@ function slashCommandMatches(commands: SlashCommandItem[], input: string): Slash
 export class PiTui implements Tui {
   private renderer: CliRenderer | null = null;
   private footerRoot: BoxRenderable | null = null;
+  private composerBox: BoxRenderable | null = null;
+  private inputRow: BoxRenderable | null = null;
   private statusPrimaryText: TextRenderable | null = null;
   private statusSecondaryText: TextRenderable | null = null;
-  private input: InputRenderable | null = null;
+  private input: TextareaRenderable | null = null;
   private slashMenuBox: BoxRenderable | null = null;
   private slashMenuSelect: SelectRenderable | null = null;
   private slashCommands: SlashCommandItem[] = [];
@@ -364,7 +365,7 @@ export class PiTui implements Tui {
     const composerBox = new BoxRenderable(this.renderer, {
       id: "composer",
       width: "100%",
-      height: 3,
+      height: 5,
       flexShrink: 0,
       flexDirection: "column",
       alignItems: "stretch",
@@ -374,14 +375,16 @@ export class PiTui implements Tui {
       paddingLeft: 1,
       paddingRight: 1,
     });
+    this.composerBox = composerBox;
 
     const inputRow = new BoxRenderable(this.renderer, {
       id: "input-row",
       width: "100%",
-      height: 1,
+      height: 3,
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "stretch",
     });
+    this.inputRow = inputRow;
 
     const promptGlyph = new TextRenderable(this.renderer, {
       id: "prompt",
@@ -391,13 +394,35 @@ export class PiTui implements Tui {
       fg: col.accent,
     });
 
-    this.input = new InputRenderable(this.renderer, {
+    this.input = new TextareaRenderable(this.renderer, {
       id: "input",
-      value: "",
+      initialValue: "",
       placeholder: "message xeq…",
+      wrapMode: "word",
       flexGrow: 1,
       flexShrink: 1,
+      minHeight: 3,
+      maxHeight: 3,
       textColor: col.text,
+      keyBindings: [
+        { name: "return", action: "submit" },
+        { name: "linefeed", action: "submit" },
+        { name: "return", shift: true, action: "newline" },
+        { name: "linefeed", shift: true, action: "newline" },
+      ],
+      onContentChange: () => {
+        const value = this.input?.plainText ?? "";
+        this.currentInput = value;
+        this.setInputValue?.(value);
+        this.updateSlashMenu(value);
+        this.syncComposerLayout();
+      },
+      onSubmit: () => {
+        this.submitComposerValue(normalizeText(this.input?.plainText ?? ""));
+      },
+      onSizeChange: () => {
+        this.syncComposerLayout();
+      },
     });
 
     inputRow.add(promptGlyph);
@@ -409,31 +434,7 @@ export class PiTui implements Tui {
     this.footerRoot.add(this.slashMenuBox);
     this.renderer.root.add(this.footerRoot);
     this.renderer.start();
-
-    // ── Input events ──────────────────────────────────────────────────────────
-    this.input.on(InputRenderableEvents.INPUT, (value: string) => {
-      this.currentInput = value;
-      this.setInputValue?.(value);
-      this.updateSlashMenu(value);
-    });
-
-    this.input.on(InputRenderableEvents.ENTER, (value: string) => {
-      const submit = normalizeText(value);
-      this.currentInput = "";
-      if (this.input) this.input.value = "";
-      this.setInputValue?.("");
-      this.updateSlashMenu("");
-
-      if (this.pendingReadResolve) {
-        const resolve = this.pendingReadResolve;
-        this.pendingReadResolve = null;
-        resolve(submit);
-      } else if (submit.startsWith("/")) {
-        const command = submit.slice(1).split(/\s+/)[0];
-        const match = this.slashCommands.find((item) => item.name === `/${command}`);
-        if (match) this.renderUserMessage(submit);
-      }
-    });
+    this.syncComposerLayout();
 
     this.renderer.addInputHandler((seq) => {
       if (seq === "\x03") {
@@ -741,6 +742,51 @@ export class PiTui implements Tui {
     renderer.requestRender();
   }
 
+  private syncComposerLayout(): void {
+    const composerBox = this.composerBox;
+    const inputRow = this.inputRow;
+    const input = this.input;
+    if (!composerBox || !inputRow || !input) return;
+
+    const visibleLines = clamp(Math.max(1, input.virtualLineCount), 1, 5);
+    const nextInputHeight = Math.max(3, visibleLines);
+    const nextComposerHeight = nextInputHeight + 2;
+
+    if (inputRow.height !== nextInputHeight) {
+      inputRow.height = nextInputHeight;
+    }
+    if (input.height !== nextInputHeight) {
+      input.height = nextInputHeight;
+    }
+    if (composerBox.height !== nextComposerHeight) {
+      composerBox.height = nextComposerHeight;
+    }
+
+    this.syncFooterHeight();
+  }
+
+  private submitComposerValue(submit: string): void {
+    this.currentInput = "";
+    if (this.input) {
+      this.input.setText("");
+    }
+    this.setInputValue?.("");
+    this.updateSlashMenu("");
+
+    if (this.pendingReadResolve) {
+      const resolve = this.pendingReadResolve;
+      this.pendingReadResolve = null;
+      resolve(submit);
+      return;
+    }
+
+    if (submit.startsWith("/")) {
+      const command = submit.slice(1).split(/\s+/)[0];
+      const match = this.slashCommands.find((item) => item.name === `/${command}`);
+      if (match) this.renderUserMessage(submit);
+    }
+  }
+
   private updateSlashMenu(value: string): void {
     const menuSelect = this.slashMenuSelect;
     const menuBox = this.slashMenuBox;
@@ -796,7 +842,7 @@ export class PiTui implements Tui {
     if (seq === "\t") {
       const selected = this.slashMenuItems[this.slashMenuIndex];
       if (!selected) return false;
-      input.value = selected.name;
+      input.setText(selected.name);
       this.currentInput = selected.name;
       this.setInputValue?.(selected.name);
       this.updateSlashMenu(selected.name);
@@ -857,20 +903,7 @@ export class PiTui implements Tui {
     const input = this.input;
     if (!selected || !renderer || !input) return;
 
-    input.value = "";
-    this.currentInput = "";
-    this.setInputValue?.("");
-    this.updateSlashMenu("");
-
-    if (this.pendingReadResolve) {
-      const resolve = this.pendingReadResolve;
-      this.pendingReadResolve = null;
-      renderer.requestRender();
-      resolve(selected.name);
-      return;
-    }
-
-    this.renderUserMessage(selected.name);
+    this.submitComposerValue(selected.name);
     renderer.requestRender();
   }
 
