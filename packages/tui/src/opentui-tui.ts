@@ -584,7 +584,11 @@ export class PiTui implements Tui {
       summary.success ? "done" : "failed",
       `steps=${summary.steps}`,
       `${Math.round(summary.durationMs / 1000)}s`,
-    ].join("  ");
+      summary.promptTokens || summary.completionTokens
+        ? `tokens=${summary.promptTokens + summary.completionTokens}`
+        : "",
+      summary.estimatedCostUsd > 0 ? `cost=$${summary.estimatedCostUsd.toFixed(4)}` : "",
+    ].filter(Boolean).join("  ");
     this.print(`◆ ${line}`, col.summary);
     this.print("");
     this.printSeparator();

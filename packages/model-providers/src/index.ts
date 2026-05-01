@@ -6,6 +6,10 @@ import { ProviderError } from "@xeq/shared";
 import { generateText } from "ai";
 import type { LanguageModel, ModelMessage } from "ai";
 import { z } from "zod";
+import { estimateUsageCost, resolveModelPricing, type ModelPricing } from "./model-pricing.js";
+
+export { estimateUsageCost, resolveModelPricing } from "./model-pricing.js";
+export type { ModelPricing } from "./model-pricing.js";
 
 export type SupportedProvider = "openrouter" | "openai" | "anthropic" | "gemini";
 
@@ -20,12 +24,14 @@ export interface ResolvedLanguageModel {
   modelId: string;
   apiKeyEnvVar: string;
   model: LanguageModel;
+  pricing?: ModelPricing;
 }
 
 export interface ModelResponse {
   content: string;
   promptTokens?: number;
   completionTokens?: number;
+  estimatedCostUsd?: number;
 }
 
 export interface ModelDecisionResponse {
@@ -146,28 +152,33 @@ export function resolveLanguageModel(options: ResolveModelOptions = {}): Resolve
   const env = options.env ?? process.env;
   const config = resolveModelConfig(options);
   const { apiKey } = resolveApiKey(config.provider, env);
+  const pricing = resolveModelPricing({ provider: config.provider, modelId: config.modelId });
 
   switch (config.provider) {
     case "openai":
       return {
         ...config,
         model: createOpenAI({ apiKey })(config.modelId),
+        pricing,
       };
     case "anthropic":
       return {
         ...config,
         model: createAnthropic({ apiKey })(config.modelId),
+        pricing,
       };
     case "gemini":
       return {
         ...config,
         model: createGoogleGenerativeAI({ apiKey })(config.modelId),
+        pricing,
       };
     default: {
       const openrouter = createOpenRouter({ apiKey });
       return {
         ...config,
         model: openrouter.chat(config.modelId),
+        pricing,
       };
     }
   }
@@ -196,6 +207,13 @@ export class OpenRouterProvider implements ModelProvider {
         content: response.text,
         promptTokens: response.usage?.inputTokens ?? 0,
         completionTokens: response.usage?.outputTokens ?? 0,
+        estimatedCostUsd: estimateUsageCost({
+          pricing: resolveModelPricing({ provider: "openrouter", modelId: this.model }),
+          usage: {
+            promptTokens: response.usage?.inputTokens ?? 0,
+            completionTokens: response.usage?.outputTokens ?? 0,
+          },
+        }),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

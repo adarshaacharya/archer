@@ -581,9 +581,9 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
     success: result.status === "completed" || result.status === "cancelled",
     steps: result.steps,
     durationMs: Math.round(performance.now() - started),
-    promptTokens: 0,
-    completionTokens: 0,
-    estimatedCostUsd: 0,
+    promptTokens: result.usage?.promptTokens ?? 0,
+    completionTokens: result.usage?.completionTokens ?? 0,
+    estimatedCostUsd: result.estimatedCostUsd ?? 0,
   });
 
   tui.renderApprovalPrompt(null);

@@ -35,6 +35,12 @@ export interface RunResult {
   steps: number;
   outputText: string;
   error?: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  estimatedCostUsd?: number;
 }
 
 export type ModelDecision = { type: "final"; text: string } | { type: "tool_call"; call: ToolCall };

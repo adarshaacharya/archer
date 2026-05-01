@@ -3,10 +3,40 @@ import { newRunId, sanitizeId } from "./runtime/ids.js";
 import type { OpenHarnessRuntimeDeps } from "./runtime/openharness-types.js";
 import { getOrCreateSession } from "./runtime/session.js";
 import { withTimeout } from "./runtime/timeout.js";
+import { estimateUsageCost } from "@xeq/model-providers";
 import { DEFAULT_MAX_STEPS, DEFAULT_TIMEOUT_MS, type RunOptions, type RunResult } from "./types.js";
 
 const CANCELLED_ERROR = "__XEQ_CANCELLED__";
 const MAX_STEPS_ERROR = "__XEQ_MAX_STEPS__";
+
+function addUsage(
+  current:
+    | {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+      }
+    | undefined,
+  next: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  },
+): {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+} {
+  if (!current) {
+    return { ...next };
+  }
+
+  return {
+    promptTokens: current.promptTokens + next.promptTokens,
+    completionTokens: current.completionTokens + next.completionTokens,
+    totalTokens: current.totalTokens + next.totalTokens,
+  };
+}
 
 export async function runOpenHarnessRuntime(
   deps: OpenHarnessRuntimeDeps,
@@ -38,6 +68,23 @@ export async function runOpenHarnessRuntime(
   });
   let stepCounter = 0;
   let finalText = "";
+  let usage:
+    | {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+      }
+    | undefined;
+  const handleUsage = deps.onUsage
+    ? (
+        next: { promptTokens: number; completionTokens: number; totalTokens: number },
+        replace?: boolean,
+      ) => {
+        usage = replace ? { ...next } : addUsage(usage, next);
+        const resolvedUsage = usage ?? next;
+        deps.onUsage?.(resolvedUsage, replace);
+      }
+    : undefined;
 
   const run = async () => {
     if (!runtime.loaded) {
@@ -61,15 +108,27 @@ export async function runOpenHarnessRuntime(
         throw new Error(MAX_STEPS_ERROR);
       }
 
-      mapEvent(event, deps.onStep, deps.onTextDelta, ++stepCounter, (text) => {
-        finalText += text;
-      });
+      mapEvent(
+        event,
+        deps.onStep,
+        deps.onTextDelta,
+        handleUsage,
+        ++stepCounter,
+        (text) => {
+          finalText += text;
+        },
+      );
     }
   };
 
   try {
     await withTimeout(run(), timeoutMs);
     const text = finalText.trim() || "Task complete";
+    const resolvedUsage = usage ?? {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    };
     deps.onStep?.({
       step: Math.max(1, stepCounter + 1),
       action: "model.final",
@@ -81,32 +140,55 @@ export async function runOpenHarnessRuntime(
       status: "completed",
       steps: Math.max(1, Math.min(stepCounter + 1, maxSteps + 2)),
       outputText: text,
+      usage: resolvedUsage,
+      estimatedCostUsd: estimateUsageCost({ pricing: runtime.pricing, usage: resolvedUsage }),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message === CANCELLED_ERROR || isAborted()) {
+      const resolvedUsage = usage ?? {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      };
       return {
         status: "cancelled",
         steps: Math.max(1, stepCounter),
         outputText: "",
         error: "Run cancelled",
+        usage: resolvedUsage,
+        estimatedCostUsd: estimateUsageCost({ pricing: runtime.pricing, usage: resolvedUsage }),
       };
     }
 
     if (message === MAX_STEPS_ERROR) {
+      const resolvedUsage = usage ?? {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      };
       return {
         status: "failed",
         steps: Math.max(1, stepCounter),
         outputText: finalText.trim(),
         error: `Run exceeded maxSteps=${maxSteps}`,
+        usage: resolvedUsage,
+        estimatedCostUsd: estimateUsageCost({ pricing: runtime.pricing, usage: resolvedUsage }),
       };
     }
 
+    const resolvedUsage = usage ?? {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    };
     return {
       status: "failed",
       steps: Math.max(1, stepCounter),
       outputText: "",
       error: message,
+      usage: resolvedUsage,
+      estimatedCostUsd: estimateUsageCost({ pricing: runtime.pricing, usage: resolvedUsage }),
     };
   }
 }

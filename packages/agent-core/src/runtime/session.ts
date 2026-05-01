@@ -14,6 +14,7 @@ type RuntimeSession = {
   cwd: string;
   provider: string;
   modelId: string;
+  pricing?: ReturnType<typeof resolveModel>["pricing"];
   loaded: boolean;
 };
 
@@ -123,7 +124,14 @@ function createSession({
     },
   });
 
-  return { session, cwd, provider: model.provider, modelId: model.modelId, loaded: false };
+  return {
+    session,
+    cwd,
+    provider: model.provider,
+    modelId: model.modelId,
+    pricing: model.pricing,
+    loaded: false,
+  };
 }
 
 export function getOrCreateSession({

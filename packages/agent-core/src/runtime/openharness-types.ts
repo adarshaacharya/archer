@@ -8,6 +8,12 @@ export interface OpenHarnessRuntimeStepEvent {
   observation?: string;
 }
 
+export type OpenHarnessUsageEvent = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
+
 export type RuntimeProviders = {
   fs: FsProvider;
   shell: ShellProvider;
@@ -35,6 +41,7 @@ export interface OpenHarnessRuntimeDeps {
   onTextDelta?: (delta: string) => void;
   approveToolCall?: (toolCall: ToolCallInfo) => Promise<boolean> | boolean;
   approvePatchApply?: (preview: PatchPreview) => Promise<boolean> | boolean;
+  onUsage?: (usage: OpenHarnessUsageEvent, replace?: boolean) => void;
   sessionId?: string;
   providers: RuntimeProviders;
 }

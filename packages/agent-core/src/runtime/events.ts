@@ -45,6 +45,7 @@ export function mapEvent(
   event: SessionEvent,
   onStep: OpenHarnessRuntimeDeps["onStep"],
   onTextDelta: OpenHarnessRuntimeDeps["onTextDelta"],
+  onUsage: OpenHarnessRuntimeDeps["onUsage"],
   step: number,
   onText: (delta: string) => void,
 ): void {
@@ -73,9 +74,29 @@ export function mapEvent(
       if (!onStep) return;
       onStep({ step, action: `tool.${event.toolName}`, observation: event.error });
       break;
+    case "step.done":
+      onUsage?.(
+        {
+          promptTokens: event.usage.inputTokens ?? 0,
+          completionTokens: event.usage.outputTokens ?? 0,
+          totalTokens: event.usage.totalTokens ?? 0,
+        },
+        false,
+      );
+      break;
     case "error":
       if (!onStep) return;
       onStep({ step, action: "run.error", observation: event.error.message });
+      break;
+    case "done":
+      onUsage?.(
+        {
+          promptTokens: event.totalUsage.inputTokens ?? 0,
+          completionTokens: event.totalUsage.outputTokens ?? 0,
+          totalTokens: event.totalUsage.totalTokens ?? 0,
+        },
+        true,
+      );
       break;
     default:
       break;
