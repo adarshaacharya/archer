@@ -54,6 +54,20 @@ type PatchPreview = NonNullable<OpenHarnessRuntimeDeps["approvePatchApply"]> ext
   ? T
   : never;
 
+function isContextBudgetResult(
+  result: { status: string; error?: string } | null | undefined,
+): boolean {
+  if (!result || result.status !== "failed" || !result.error) {
+    return false;
+  }
+
+  return (
+    result.error.startsWith("Run exceeded maxSteps=") ||
+    result.error === "Run cancelled" ||
+    result.error.toLowerCase().includes("timeout")
+  );
+}
+
 function updateWebSessionState(
   state: SessionState,
   resolved: Awaited<ReturnType<typeof resolveActiveWebProvider>>,
@@ -274,7 +288,9 @@ export async function runTask(
     }
   };
 
-  const runPhase = async (prompt: string, persistTranscript: boolean) =>
+  const contextMaxSteps = Math.min(16, Math.max(8, Math.floor(request.maxSteps / 8)));
+
+  const runPhase = async (prompt: string, persistTranscript: boolean, maxSteps: number) =>
     runOpenHarnessRuntime(
       {
         modelId: state.modelId,
@@ -314,17 +330,17 @@ export async function runTask(
       prompt,
       {
         cwd: request.repoRoot,
-        maxSteps: request.maxSteps,
+        maxSteps,
         timeoutMs: request.maxDurationMs,
         abortSignal: activeAbortController.signal,
       },
     );
 
   try {
-    const contextResult = await runPhase(buildContextGatheringPrompt(request.task), false);
-    if (contextResult.status !== "completed") {
+    const contextResult = await runPhase(buildContextGatheringPrompt(request.task), false, contextMaxSteps);
+    if (contextResult.status === "cancelled") {
       tui.renderSummary({
-        success: contextResult.status === "cancelled",
+        success: false,
         steps: contextResult.steps,
         durationMs: Math.round(performance.now() - started),
         promptTokens: contextResult.usage?.promptTokens ?? 0,
@@ -334,12 +350,32 @@ export async function runTask(
       return;
     }
 
+    if (contextResult.status !== "completed") {
+      if (isContextBudgetResult(contextResult)) {
+        tui.renderInfoMessage("Context pass hit its budget. Continuing into implementation.");
+      } else {
+        tui.renderSummary({
+          success: false,
+          steps: contextResult.steps,
+          durationMs: Math.round(performance.now() - started),
+          promptTokens: contextResult.usage?.promptTokens ?? 0,
+          completionTokens: contextResult.usage?.completionTokens ?? 0,
+          estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
+        });
+        return;
+      }
+    }
+
     tui.renderApprovalPrompt({
       message: "Context gathered. Starting implementation...",
       options: ["running"],
     });
     phase.beginImplementation();
-    const implementationResult = await runPhase(buildImplementationPrompt(request.task), true);
+    const implementationResult = await runPhase(
+      buildImplementationPrompt(request.task),
+      true,
+      request.maxSteps,
+    );
 
     const usage = mergeUsage(contextResult.usage, implementationResult.usage);
     tui.renderSummary({

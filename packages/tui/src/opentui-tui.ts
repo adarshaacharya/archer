@@ -489,6 +489,7 @@ export class PiTui implements Tui {
         id: "user-msg-text",
         content: `› ${text}`,
         width: ctx.width - 4,
+        height: "auto",
         wrapMode: "word",
         truncate: false,
         fg: col.text,
