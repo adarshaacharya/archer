@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
 import { performance } from "node:perf_hooks";
-import { classifyToolCall, runOpenHarnessRuntime } from "@xeq/agent-core";
+import { runOpenHarnessRuntime } from "@xeq/agent-core";
 import type { SupportedProvider } from "@xeq/model-providers";
-import { type ApprovalChoice, type ApprovalRequest, createSandboxEnvironment } from "@xeq/sandbox";
-import { AgentRequestSchema } from "@xeq/shared";
+import { createSandboxEnvironment } from "@xeq/sandbox";
+import { type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
 import {
   appendMessage,
   createSession,
@@ -15,6 +15,12 @@ import {
 } from "@xeq/storage";
 import { PiTui, type SlashCommandItem, type Tui } from "@xeq/tui";
 import { type SupportedWebProvider, createWebSearchProvider } from "@xeq/web";
+import {
+  permissionsSummary,
+  requestApproval,
+  setApprovalMode,
+  withApprovalQueue,
+} from "./approvals.js";
 import {
   clearProviderEnv,
   clearWebProviderEnv,
@@ -37,13 +43,9 @@ import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.
 import { KeybindManager } from "./keybinds.js";
 import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
 import {
-  type PermissionRequest,
-  applyApprovalChoice,
-  getSettingsFilePath,
-  hasStoredPermission,
-  readSettings,
   webFetchRuleForUrl,
 } from "./settings-store.js";
+import { createToolApprovalHandler } from "./tool-approval.js";
 import { loadTuiConfig } from "./tui-config.js";
 
 function parseInitialTask(argv: string[]): string | null {
@@ -95,83 +97,13 @@ type SessionState = {
   sessionId: string;
   sessionTitle: string | null;
   projectRoot: string;
+  approvalMode: ApprovalMode;
   provider: SupportedProvider | null;
   modelId: string;
   authSource: "env" | "saved" | null;
   webProvider: SupportedWebProvider | null;
   webAuthSource: "env" | "saved" | null;
 };
-
-type LocalApprovalRequest = ApprovalRequest | PermissionRequest;
-
-let approvalQueueTail: Promise<void> = Promise.resolve();
-
-function withApprovalQueue<T>(task: () => Promise<T>): Promise<T> {
-  const run = approvalQueueTail.then(task, task);
-  approvalQueueTail = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
-}
-
-function describeApprovalRequest(request: LocalApprovalRequest): string {
-  switch (request.kind) {
-    case "command":
-      return "Allow bash command?";
-    case "file-write":
-      return request.details ? "Review patch before applying?" : "Allow file write?";
-    case "web-fetch":
-      return "Allow web fetch?";
-  }
-}
-
-async function requestApproval(tui: Tui, request: LocalApprovalRequest): Promise<ApprovalChoice> {
-  const settings = await readSettings();
-  if (hasStoredPermission(settings, request)) {
-    return "always";
-  }
-
-  const result = await withApprovalQueue(() =>
-    tui.promptApproval({
-      message: describeApprovalRequest(request),
-      details: [request.target, request.details].filter(Boolean).join("\n"),
-      choices: [
-        {
-          value: "reject",
-          label: "Reject",
-          description: "Deny this action",
-        },
-        {
-          value: "once",
-          label: "Approve once",
-          description: "Allow this action this time only",
-        },
-        {
-          value: "always",
-          label: "Always approve",
-          description: "Remember this rule for next time",
-        },
-      ],
-    }),
-  );
-
-  if (result === "always") {
-    await applyApprovalChoice(request, "always");
-  }
-
-  return result as ApprovalChoice;
-}
-
-async function permissionsSummary(): Promise<string> {
-  const settings = await readSettings();
-  return [
-    `file_writes=${settings.permissions.fileWriteAllowRules.length}`,
-    `commands=${settings.permissions.commandAllowRules.length}`,
-    `web_fetch=${settings.permissions.webFetchAllowRules.length}`,
-    `store=${getSettingsFilePath()}`,
-  ].join("  ");
-}
 
 function activeProviderSummary(state: SessionState): string {
   if (!state.provider || !state.authSource) {
@@ -428,7 +360,7 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
   const request = AgentRequestSchema.parse({
     task,
     repoRoot: state.projectRoot,
-    approvalMode: "suggest",
+    approvalMode: state.approvalMode,
     maxSteps: 256,
     maxDurationMs: 120000,
   });
@@ -540,28 +472,30 @@ async function runTask(task: string, tui: Tui, state: SessionState): Promise<voi
         ...env,
         webSearch,
       },
-      approveToolCall: async (toolCall) => {
-        const decision = classifyToolCall(toolCall.toolName, toolCall.input);
-
-        if (decision.action === "deny") {
-          return false;
-        }
-
-        if (decision.permission === "read" || decision.permission === "patch_review") {
-          return true;
-        }
-
-        if (decision.permission === "web_fetch") {
-          return true;
-        }
-
-        if (decision.permission === "bash") {
-          return true;
-        }
-
-        return true;
-      },
+      approveToolCall: createToolApprovalHandler({
+        approvalMode: state.approvalMode,
+        patchApprovedPaths,
+        requestApproval: async (approvalRequest) => {
+          promptPending = true;
+          try {
+            return await requestApproval(tui, approvalRequest);
+          } finally {
+            promptPending = false;
+          }
+        },
+      }),
       approvePatchApply: async (preview) => {
+        if (state.approvalMode === "auto-edit") {
+          if (preview.files) {
+            for (const f of preview.files) {
+              patchApprovedPaths.add(f.filePath);
+            }
+          } else if (preview.filePath) {
+            patchApprovedPaths.add(preview.filePath);
+          }
+          return true;
+        }
+
         promptPending = true;
         try {
           const approval = await withApprovalQueue(() =>
@@ -1120,6 +1054,11 @@ async function handleSlashCommand(
     };
   }
 
+  if (command === "mode" || command === "approval") {
+    const args = trimmed.slice(command.length + 1).trim();
+    return setApprovalMode(tui, state, args);
+  }
+
   if (command === "connect") {
     const args = trimmed.slice(command.length + 1).trim();
     if (args) {
@@ -1307,6 +1246,7 @@ async function main(): Promise<void> {
     sessionId,
     sessionTitle: null,
     projectRoot,
+    approvalMode: "suggest",
     provider: null,
     modelId: "",
     authSource: null,
@@ -1331,6 +1271,7 @@ async function main(): Promise<void> {
     { name: "/disconnect", description: "remove a saved provider key" },
     { name: "/provider", description: "show the active model provider" },
     { name: "/model", description: "choose the active model" },
+    { name: "/mode", description: "choose the approval mode" },
     { name: "/web", description: "connect a web search provider" },
     { name: "/web-provider", description: "show the active web search provider" },
     { name: "/web-logout", description: "remove the saved web provider key" },

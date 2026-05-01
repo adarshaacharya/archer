@@ -19,7 +19,7 @@ export function classifyToolCall(
   }
 
   if (["writeFile", "editFile", "deleteFile"].includes(toolName)) {
-    return { permission: "edit", pattern: filePattern(input), action: "allow" };
+    return { permission: "edit", pattern: filePattern(input), action: "ask" };
   }
 
   if (toolName === "bash") {
