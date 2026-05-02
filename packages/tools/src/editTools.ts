@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import type { FsProvider } from "@openharness/core";
 import { tool } from "ai";
 import { createTwoFilesPatch } from "diff";
@@ -70,6 +71,7 @@ export function createEditTools(fs: FsProvider, options: EditToolsOptions = {}) 
   const appliedBundles = new Map<string, AppliedPatchBundle>();
 
   async function commitPatch(patch: PreparedPatch): Promise<AppliedPatch> {
+    await fs.mkdir(dirname(patch.filePath), { recursive: true });
     await fs.writeFile(patch.filePath, patch.newContent);
     const applied: AppliedPatch = {
       patchId: patch.patchId,

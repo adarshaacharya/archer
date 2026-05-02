@@ -83,7 +83,6 @@ export function buildQuestionStrategy(
         : "start from repository manifest and README-like files, then follow relevant references",
       "Choose the search path from the user's wording instead of relying on fixed question categories.",
       "Check package.json, README, AGENTS.md, or equivalent root docs when the question is broad.",
-      "Do not special-case temporary planning docs such as PLAN.md or STEPS.md unless the user mentions them.",
     ],
     explorationBudget: {
       maxToolCalls: mode === "research" ? 24 : 12,

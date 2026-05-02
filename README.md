@@ -15,8 +15,6 @@ Early V1 scaffolding is in progress:
 - migration direction set: OpenHarness-first runtime with XEQ-specific CLI/TUI behavior preserved
 
 See:
-- `PLAN.md` for architecture decisions
-- `STEPS.md` for V1 implementation order
 - `AGENTS.md` for repo agent instructions
 
 ## Workspace Packages

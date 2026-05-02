@@ -22,15 +22,11 @@ Primary goal for V1:
 
 ## Source of Truth
 
-- Architecture and decisions: `PLAN.md`
-- V1 execution order: `STEPS.md`
 - Turborepo guidance: `.agents/skills/turborepo/SKILL.md`
 - AI SDK guidance : `.agents/skills/ai-sdk/SKILL.md`
 
 If there is a conflict:
 1. Latest user instruction
-2. `PLAN.md` and `STEPS.md`
-3. This file
 
 ## Dev Commands
 
@@ -70,7 +66,6 @@ Before marking work complete:
 2. Loop controls exist (`maxSteps`, `maxDurationMs`, retry guard).
 3. Tool policy enforcement is active (path + command checks).
 4. Type checks pass (`bun run check-types`).
-5. Changes align with `PLAN.md` and `STEPS.md`.
 
 
 Please check the skills folder for turborepo, openharness, or ai-sdk skills.
