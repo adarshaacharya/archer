@@ -17,6 +17,10 @@ type RuntimeSession = {
   modelId: string;
   pricing?: ReturnType<typeof resolveModel>["pricing"];
   loaded: boolean;
+  approvalState: {
+    approveToolCall?: OpenHarnessRuntimeDeps["approveToolCall"];
+    approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
+  };
 };
 
 const SESSIONS = new Map<string, RuntimeSession>();
@@ -40,13 +44,17 @@ function createSession({
 }): RuntimeSession {
   const model = resolveModel(modelId);
   const trackedFs = createTrackedFsProvider(providers.fs, sessionId ?? `${cwd}:${model.modelId}`);
+  const approvalState: RuntimeSession["approvalState"] = {
+    approveToolCall,
+    approvePatchApply,
+  };
   const editTools = createEditTools(trackedFs, {
     onPatchPreview: async (preview) => {
-      if (!approvePatchApply) {
+      if (!approvalState.approvePatchApply) {
         return true;
       }
 
-      return approvePatchApply(
+      return approvalState.approvePatchApply(
         "files" in preview
           ? {
               bundleId: preview.bundleId,
@@ -97,7 +105,7 @@ function createSession({
     maxSteps: DEFAULT_MAX_STEPS,
     tools,
     approve: async (toolCall) => {
-      return approveToolCall ? approveToolCall(toolCall) : true;
+      return approvalState.approveToolCall ? approvalState.approveToolCall(toolCall) : true;
     },
   });
 
@@ -120,6 +128,7 @@ function createSession({
     modelId: model.modelId,
     pricing: model.pricing,
     loaded: false,
+    approvalState,
   };
 }
 
@@ -149,6 +158,8 @@ export function getOrCreateSession({
     existing.provider === resolved.provider &&
     existing.modelId === resolved.modelId
   ) {
+    existing.approvalState.approveToolCall = approveToolCall;
+    existing.approvalState.approvePatchApply = approvePatchApply;
     return existing;
   }
 

@@ -1,5 +1,25 @@
 import { describe, expect, it } from "bun:test";
-import { buildPriorTurnPlanningGuidance } from "./task-runner.js";
+import { buildQuestionStrategy } from "@xeq/agent-core";
+import {
+  type QuestionExplorationState,
+  buildPriorTurnPlanningGuidance,
+  evaluateQuestionAnswerReadiness,
+  shouldInspectRepositoryForQuestion,
+} from "./task-runner.js";
+
+function exploration(overrides: Partial<QuestionExplorationState> = {}): QuestionExplorationState {
+  return {
+    filesRead: new Set(),
+    manifestsDocsCovered: new Set(),
+    searchHits: 0,
+    misses: new Set(),
+    repeatedAttempts: new Map(),
+    repeatedDirectoryScans: 0,
+    toolCalls: 0,
+    stepsSinceNewRelevance: 0,
+    ...overrides,
+  };
+}
 
 describe("buildPriorTurnPlanningGuidance", () => {
   it("summarizes recent failed turns for planning", () => {
@@ -33,5 +53,69 @@ describe("buildPriorTurnPlanningGuidance", () => {
     ]);
 
     expect(guidance).toContain("Recent turns were step-heavy");
+  });
+});
+
+describe("evaluateQuestionAnswerReadiness", () => {
+  it("keeps a new question exploring before evidence is gathered", () => {
+    const strategy = buildQuestionStrategy("what is the project about", "question");
+    const decision = evaluateQuestionAnswerReadiness(strategy, exploration());
+
+    expect(decision.ready).toBe(false);
+  });
+
+  it("does not force-stop just because root evidence is covered", () => {
+    const strategy = buildQuestionStrategy("what is the project about", "question");
+    const decision = evaluateQuestionAnswerReadiness(
+      strategy,
+      exploration({
+        manifestsDocsCovered: new Set(["package.json"]),
+        filesRead: new Set(["package.json"]),
+        toolCalls: 3,
+      }),
+    );
+
+    expect(decision.ready).toBe(false);
+  });
+
+  it("does not force-stop just because search found and read a match", () => {
+    const strategy = buildQuestionStrategy("where is turn routing implemented", "question");
+    const decision = evaluateQuestionAnswerReadiness(
+      strategy,
+      exploration({
+        searchHits: 1,
+        filesRead: new Set(["apps/cli/src/turn-runner.ts"]),
+        toolCalls: 2,
+      }),
+    );
+
+    expect(decision.ready).toBe(false);
+  });
+
+  it("cuts off speculative misses at the exploration limit", () => {
+    const strategy = buildQuestionStrategy("what is the project about", "question");
+    const decision = evaluateQuestionAnswerReadiness(
+      strategy,
+      exploration({
+        misses: new Set(["SCHEMA.md", "PLAN.md", "STEPS.md"]),
+        toolCalls: 3,
+      }),
+    );
+
+    expect(decision.ready).toBe(true);
+    expect(decision.reason).toContain("misses");
+  });
+});
+
+describe("shouldInspectRepositoryForQuestion", () => {
+  it("does not inspect the repo for casual questions", () => {
+    expect(shouldInspectRepositoryForQuestion("how are you", "question")).toBe(false);
+  });
+
+  it("inspects the repo for workspace questions", () => {
+    expect(shouldInspectRepositoryForQuestion("what is this project about", "question")).toBe(true);
+    expect(
+      shouldInspectRepositoryForQuestion("where is turn routing implemented", "question"),
+    ).toBe(true);
   });
 });

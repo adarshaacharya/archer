@@ -56,18 +56,84 @@ export function buildContextGatheringPrompt(task: string): string {
   ].join("\n");
 }
 
-export function buildResearchAnswerPrompt(task: string, mode: "question" | "research"): string {
+export type QuestionStrategy = {
+  initialDiscoveryPlan: string[];
+  explorationBudget: {
+    maxToolCalls: number;
+    maxSpeculativeMisses: number;
+    maxRepeatedScans: number;
+  };
+};
+
+export function buildQuestionStrategy(
+  task: string,
+  mode: "question" | "research",
+): QuestionStrategy {
+  const normalized = task.trim().toLowerCase();
+  const implementationQuestion =
+    /\b(where|how|what|which)\b/.test(normalized) &&
+    /\b(implemented|implementation|defined|code|file|function|class|route|handler|flow|cli|command)\b/.test(
+      normalized,
+    );
+
+  return {
+    initialDiscoveryPlan: [
+      implementationQuestion
+        ? "search first for likely symbols, filenames, commands, or routes from the user's wording"
+        : "start from repository manifest and README-like files, then follow relevant references",
+      "Choose the search path from the user's wording instead of relying on fixed question categories.",
+      "Check package.json, README, AGENTS.md, or equivalent root docs when the question is broad.",
+      "Do not special-case temporary planning docs such as PLAN.md or STEPS.md unless the user mentions them.",
+    ],
+    explorationBudget: {
+      maxToolCalls: mode === "research" ? 24 : 12,
+      maxSpeculativeMisses: 3,
+      maxRepeatedScans: 2,
+    },
+  };
+}
+
+export function buildResearchAnswerPrompt(
+  task: string,
+  mode: "question" | "research",
+  strategy?: QuestionStrategy,
+): string {
   return [
     mode === "question"
       ? "Answer the user's question by first inspecting the current repository state."
       : "Research the current repository state before responding.",
     "Read the relevant code, configuration, and docs before answering.",
+    strategy ? `Initial discovery plan:\n- ${strategy.initialDiscoveryPlan.join("\n- ")}` : "",
     "Do not write, patch, or delete files in this phase.",
+    "missing files must not fail the question turn; record them as misses and continue.",
     "If repository context is insufficient, say exactly what remains uncertain.",
     "Return a direct answer grounded in what you inspected.",
     "Task:",
     task.trim(),
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export function buildDirectAnswerPrompt(task: string): string {
+  return [
+    "Answer the user's question directly.",
+    "Do not inspect the repository and do not call any tools.",
+    "If the question is casual or general, respond naturally and briefly.",
+    "If the question actually needs repository context, say what context would be needed instead of guessing.",
+    "Task:",
+    task.trim(),
   ].join("\n");
+}
+
+export function buildDirectAnswerSystemPrompt(): string {
+  return [
+    "You are XEQ, a terminal coding agent.",
+    "Answer the user's direct question in plain text.",
+    "Do not inspect files, search, run commands, or call tools.",
+    "For casual questions, respond naturally and briefly.",
+    "For coding or repository questions that need local context, say that repository inspection is needed.",
+  ].join(" ");
 }
 
 export function prependContinuationBrief(

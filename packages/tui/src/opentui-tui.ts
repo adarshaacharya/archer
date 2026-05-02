@@ -118,6 +118,12 @@ function padRight(value: string, width: number): string {
   return value.length >= width ? value : `${value}${" ".repeat(width - value.length)}`;
 }
 
+function wrappedLineCount(value: string, width: number): number {
+  const safeWidth = Math.max(1, width);
+  const lines = value.length === 0 ? [""] : value.split("\n");
+  return lines.reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / safeWidth)), 0);
+}
+
 function compactDiff(diff: string, maxLines = 16): string {
   const lines: string[] = [];
   let inHunk = false;
@@ -647,15 +653,17 @@ export class PiTui implements Tui {
   /** Write a styled line to the scrollback area above the footer. */
   private print(content: string, fg: string = col.text): void {
     this.writeScrollback((ctx) => {
+      const height = wrappedLineCount(content, ctx.width);
       const text = new TextRenderable(ctx.renderContext, {
         id: "sb-line",
         content,
         width: ctx.width,
+        height,
         wrapMode: "word",
         truncate: false,
         fg,
       });
-      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      return { root: text, width: ctx.width, height, startOnNewLine: true, trailingNewline: true };
     });
   }
 
@@ -673,41 +681,53 @@ export class PiTui implements Tui {
     },
   ): void {
     this.writeScrollback((ctx) => {
+      const messageContent = `${opts.prefix}${content}`;
+      const paddingLeft = opts.paddingLeft ?? 0;
+      const paddingRight = opts.paddingRight ?? 0;
+      const paddingTop = opts.paddingTop ?? 0;
+      const paddingBottom = opts.paddingBottom ?? 0;
+      const contentWidth = Math.max(1, ctx.width - paddingLeft - paddingRight);
+      const contentHeight = wrappedLineCount(messageContent, contentWidth);
+      const height = contentHeight + paddingTop + paddingBottom;
+
       if (opts.backgroundColor && opts.fullWidthBackground) {
         const box = new BoxRenderable(ctx.renderContext, {
           id: "sb-message-block-bg",
           width: ctx.width,
+          height,
           backgroundColor: opts.backgroundColor,
-          paddingLeft: opts.paddingLeft ?? 0,
-          paddingRight: opts.paddingRight ?? 0,
-          paddingTop: opts.paddingTop ?? 0,
-          paddingBottom: opts.paddingBottom ?? 0,
+          paddingLeft,
+          paddingRight,
+          paddingTop,
+          paddingBottom,
         });
         box.add(new TextRenderable(ctx.renderContext, {
           id: "sb-message-block",
-          content: `${opts.prefix}${content}`,
-          width: Math.max(1, ctx.width - (opts.paddingLeft ?? 0) - (opts.paddingRight ?? 0)),
+          content: messageContent,
+          width: contentWidth,
+          height: contentHeight,
           wrapMode: "word",
           truncate: false,
           fg: opts.textColor,
         }));
-        return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+        return { root: box, width: ctx.width, height, startOnNewLine: true, trailingNewline: true };
       }
 
       const text = new TextRenderable(ctx.renderContext, {
         id: "sb-message-block",
-        content: `${opts.prefix}${content}`,
+        content: messageContent,
         width: ctx.width,
+        height,
         wrapMode: "word",
         truncate: false,
         fg: opts.textColor,
         bg: opts.backgroundColor,
-        paddingLeft: opts.paddingLeft ?? 0,
-        paddingRight: opts.paddingRight ?? 0,
-        paddingTop: opts.paddingTop ?? 0,
-        paddingBottom: opts.paddingBottom ?? 0,
+        paddingLeft,
+        paddingRight,
+        paddingTop,
+        paddingBottom,
       });
-      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      return { root: text, width: ctx.width, height, startOnNewLine: true, trailingNewline: true };
     });
   }
 
@@ -718,11 +738,12 @@ export class PiTui implements Tui {
         id: "sb-message-separator",
         content: line,
         width: ctx.width,
-        wrapMode: "truncate",
+        height: 1,
+        wrapMode: "none",
         truncate: true,
         fg: col.border,
       });
-      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      return { root: text, width: ctx.width, height: 1, startOnNewLine: true, trailingNewline: true };
     });
   }
 
@@ -738,9 +759,12 @@ export class PiTui implements Tui {
   ): void {
     this.writeScrollback((ctx) => {
       const contentWidth = Math.max(1, ctx.width - 5);
+      const contentHeight = wrappedLineCount(content, contentWidth);
+      const height = contentHeight + 2;
       const box = new BoxRenderable(ctx.renderContext, {
         id: opts.boxId,
         width: ctx.width,
+        height,
         border: ["left"],
         borderColor: opts.borderColor,
         backgroundColor: opts.backgroundColor,
@@ -754,21 +778,25 @@ export class PiTui implements Tui {
           id: opts.textId,
           content,
           width: contentWidth,
+          height: contentHeight,
           wrapMode: "word",
           truncate: false,
           fg: opts.textColor ?? col.text,
         }),
       );
-      return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      return { root: box, width: ctx.width, height, startOnNewLine: true, trailingNewline: true };
     });
   }
 
   private renderInfoCard(content: string, textColor: string = col.muted): void {
     this.writeScrollback((ctx) => {
       const contentWidth = Math.max(1, ctx.width - 5);
+      const contentHeight = wrappedLineCount(content, contentWidth);
+      const height = contentHeight + 2;
       const box = new BoxRenderable(ctx.renderContext, {
         id: "info-msg-box",
         width: ctx.width,
+        height,
         border: ["left"],
         borderColor: col.border,
         backgroundColor: "#0b1016",
@@ -782,12 +810,13 @@ export class PiTui implements Tui {
           id: "info-msg-text",
           content,
           width: contentWidth,
+          height: contentHeight,
           wrapMode: "word",
           truncate: false,
           fg: textColor,
         }),
       );
-      return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      return { root: box, width: ctx.width, height, startOnNewLine: true, trailingNewline: true };
     });
   }
 
