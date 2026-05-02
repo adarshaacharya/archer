@@ -72,6 +72,26 @@ type PatchPreview = NonNullable<OpenHarnessRuntimeDeps["approvePatchApply"]> ext
 
 type RuntimeToolCall = Parameters<NonNullable<OpenHarnessRuntimeDeps["approveToolCall"]>>[0];
 
+function shellOutputText(output: unknown): string {
+  if (!output || typeof output !== "object") {
+    return typeof output === "string" ? output : "";
+  }
+
+  const stdout = typeof (output as { stdout?: unknown }).stdout === "string"
+    ? (output as { stdout: string }).stdout
+    : "";
+  const stderr = typeof (output as { stderr?: unknown }).stderr === "string"
+    ? (output as { stderr: string }).stderr
+    : "";
+
+  return [stdout, stderr].filter(Boolean).join("\n");
+}
+
+function isSuccessfulGitCommitOutput(output: unknown): boolean {
+  const text = shellOutputText(output);
+  return /^\[[^\]]+\s+[0-9a-f]{7,}\]/m.test(text);
+}
+
 function updateWebSessionState(
   state: SessionState,
   resolved: Awaited<ReturnType<typeof resolveActiveWebProvider>>,
@@ -127,7 +147,7 @@ export async function runTask(
   state: SessionState,
   abortController?: AbortController,
   intent: TurnContext["intent"] = "change",
-  options?: {
+  taskOptions?: {
     workflowKind?: "default" | "commit" | "compact";
     displayTask?: string;
   },
@@ -142,14 +162,14 @@ export async function runTask(
   });
 
   if (!state.sessionTitle) {
-    state.sessionTitle = titleFromTask(options?.displayTask ?? request.task);
+    state.sessionTitle = titleFromTask(taskOptions?.displayTask ?? request.task);
     await updateSessionTitle({
       id: state.sessionId,
       title: state.sessionTitle,
     });
   }
 
-  tui.renderApprovalPrompt({ message: options?.displayTask ?? request.task, options: ["running"] });
+  tui.renderApprovalPrompt({ message: taskOptions?.displayTask ?? request.task, options: ["running"] });
 
   const started = performance.now();
   const continuationArtifact = await loadLatestCompactContinuationArtifact(state.sessionId);
@@ -168,6 +188,8 @@ export async function runTask(
   const patchApprovedPaths = new Set<string>();
   const evalMetrics = createEvalMetricsCollector();
   let compactionMetadata = createCompactionMetadata(compactionPolicy);
+  let commitWorkflowCompleted = false;
+  let commitWorkflowOutput = "";
   const phase = createTaskPhaseController();
   const turn = createTurnStateMachine(intent);
   turn.transition("routing");
@@ -205,13 +227,13 @@ export async function runTask(
     },
   });
 
-  tui.renderUserMessage(options?.displayTask ?? request.task);
+  tui.renderUserMessage(taskOptions?.displayTask ?? request.task);
   await appendMessage({
     id: newMessageId(state.sessionId, "user"),
     session_id: state.sessionId,
     role: "user",
     kind: "transcript",
-    content: options?.displayTask ?? request.task,
+    content: taskOptions?.displayTask ?? request.task,
   });
 
   const webSearch = createWebSearchProvider(
@@ -287,7 +309,7 @@ export async function runTask(
     phase,
     patchApprovedPaths,
     requestApproval: requestApprovalForTool,
-    allowBashInContext: options?.workflowKind === "commit",
+    allowBashInContext: taskOptions?.workflowKind === "commit",
   });
 
   const approvePatchApply = async (preview: PatchPreview) => {
@@ -436,6 +458,15 @@ export async function runTask(
         },
         onToolEvent: (event) => {
           evalMetrics.onToolEvent(event);
+          if (
+            taskOptions?.workflowKind === "commit" &&
+            event.phase === "done" &&
+            event.toolName === "bash" &&
+            isSuccessfulGitCommitOutput(event.output)
+          ) {
+            commitWorkflowCompleted = true;
+            commitWorkflowOutput = shellOutputText(event.output).trim();
+          }
         },
         onTextDelta: persistTranscript
           ? (delta) => {
@@ -484,6 +515,27 @@ export async function runTask(
     if (intent === "change" && isContextBudgetResult(contextResult)) {
       const retrySteps = expandedContextSteps(request.maxSteps, contextMaxSteps);
       contextResult = await runPhase(researchPrompt, false, retrySteps);
+    }
+
+    if (taskOptions?.workflowKind === "commit" && commitWorkflowCompleted) {
+      turn.finish();
+      const summary = buildSummary({
+        success: true,
+        steps: contextResult.steps,
+        durationMs: Math.round(performance.now() - started),
+        promptTokens: contextResult.usage?.promptTokens ?? 0,
+        completionTokens: contextResult.usage?.completionTokens ?? 0,
+        estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
+      });
+      tui.renderSummary(summary);
+      void pruneSessionAfterTurn(state.sessionId);
+      return {
+        status: "completed",
+        intent: turnContext.intent,
+        task: turnContext.task,
+        summary,
+        message: commitWorkflowOutput || "Created the git commit successfully.",
+      };
     }
 
     if (intent !== "change") {
