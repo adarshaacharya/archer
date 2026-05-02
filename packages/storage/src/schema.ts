@@ -64,6 +64,7 @@ export const turn_results = sqliteTable(
     session_id: text("session_id")
       .notNull()
       .references(() => sessions.id, { onDelete: "cascade" }),
+    turn_kind: text("turn_kind").notNull().default("user"),
     intent: text("intent").notNull(),
     status: text("status").notNull(),
     task: text("task").notNull(),

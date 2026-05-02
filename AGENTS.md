@@ -21,7 +21,6 @@ Primary goal for V1:
 - `packages/shared`: shared types, zod schemas, error contracts
 
 ## Source of Truth
-
 - Turborepo guidance: `.agents/skills/turborepo/SKILL.md`
 - AI SDK guidance : `.agents/skills/ai-sdk/SKILL.md`
 
@@ -59,13 +58,20 @@ If there is a conflict:
    - environment variables
    - local auth store (`~/.local/share/xeq/auth.json`)
 
-## V1 Delivery Checklist
 
-Before marking work complete:
-1. `suggest` and `auto-edit` modes are functional.
-2. Loop controls exist (`maxSteps`, `maxDurationMs`, retry guard).
-3. Tool policy enforcement is active (path + command checks).
-4. Type checks pass (`bun run check-types`).
+## Database
+
+We use sqlite + drizzle for the database.
+
+For generation :
+```bash
+bun run db:generate
+```
+For migration:
+```bash
+bun run db:migrate
+```
+
 
 
 Please check the skills folder for turborepo, openharness, or ai-sdk skills.
