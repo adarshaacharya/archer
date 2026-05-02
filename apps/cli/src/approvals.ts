@@ -8,6 +8,7 @@ import {
   hasStoredPermission,
   readSettings,
 } from "./settings-store.js";
+import path from "node:path";
 
 export type LocalApprovalRequest = ApprovalRequest | PermissionRequest;
 
@@ -15,7 +16,95 @@ type ApprovalState = {
   approvalMode: ApprovalMode;
 };
 
+type SessionApprovalCacheEntry =
+  | {
+      kind: "command" | "web-fetch";
+      target: string;
+    }
+  | {
+      kind: "file-write";
+      target: string;
+      scope: "directory";
+    };
+
+const sessionApprovalCaches = new Map<string, SessionApprovalCacheEntry[]>();
+
 let approvalQueueTail: Promise<void> = Promise.resolve();
+
+function normalizeTarget(target: string): string {
+  return path.resolve(target);
+}
+
+function fileWriteCacheEntry(target: string): SessionApprovalCacheEntry {
+  return {
+    kind: "file-write",
+    target: path.dirname(normalizeTarget(target)),
+    scope: "directory",
+  };
+}
+
+function matchesSessionApproval(
+  entry: SessionApprovalCacheEntry,
+  request: LocalApprovalRequest,
+): boolean {
+  if (entry.kind !== request.kind) {
+    return false;
+  }
+
+  if (entry.kind === "file-write" && request.kind === "file-write") {
+    const root = normalizeTarget(entry.target);
+    const target = normalizeTarget(request.target);
+    const relative = path.relative(root, target);
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  }
+
+  return entry.target === request.target;
+}
+
+function getSessionApprovalCache(sessionId: string): SessionApprovalCacheEntry[] {
+  let cache = sessionApprovalCaches.get(sessionId);
+  if (!cache) {
+    cache = [];
+    sessionApprovalCaches.set(sessionId, cache);
+  }
+  return cache;
+}
+
+export function clearSessionApprovalCache(sessionId?: string): void {
+  if (sessionId) {
+    sessionApprovalCaches.delete(sessionId);
+    return;
+  }
+
+  sessionApprovalCaches.clear();
+}
+
+export function hasSessionApproval(
+  sessionId: string,
+  request: LocalApprovalRequest,
+): boolean {
+  return getSessionApprovalCache(sessionId).some((entry) =>
+    matchesSessionApproval(entry, request),
+  );
+}
+
+export function rememberSessionApproval(
+  sessionId: string,
+  request: LocalApprovalRequest,
+): void {
+  const cache = getSessionApprovalCache(sessionId);
+  const entry =
+    request.kind === "file-write"
+      ? fileWriteCacheEntry(request.target)
+      : {
+          kind: request.kind,
+          target: request.target,
+        };
+
+  if (!cache.some((existing) => matchesSessionApproval(existing, request))) {
+    cache.push(entry);
+  }
+}
 
 export function withApprovalQueue<T>(task: () => Promise<T>): Promise<T> {
   const run = approvalQueueTail.then(task, task);
@@ -40,9 +129,19 @@ function describeApprovalRequest(request: LocalApprovalRequest): string {
 export async function requestApproval(
   tui: Tui,
   request: LocalApprovalRequest,
+  sessionId?: string,
 ): Promise<ApprovalChoice> {
+  if (sessionId) {
+    if (hasSessionApproval(sessionId, request)) {
+      return "once";
+    }
+  }
+
   const settings = await readSettings();
   if (hasStoredPermission(settings, request)) {
+    if (sessionId) {
+      rememberSessionApproval(sessionId, request);
+    }
     return "always";
   }
 
@@ -72,6 +171,10 @@ export async function requestApproval(
 
   if (result === "always") {
     await applyApprovalChoice(request, "always");
+  }
+
+  if (result === "once" && sessionId) {
+    rememberSessionApproval(sessionId, request);
   }
 
   return result as ApprovalChoice;

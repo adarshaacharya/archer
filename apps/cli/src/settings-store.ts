@@ -122,11 +122,50 @@ export function webFetchRuleForUrl(url: string): string | null {
   }
 }
 
+function normalizeFilePath(value: string): string {
+  return path.resolve(value);
+}
+
+function isDirectoryRule(rule: string): boolean {
+  return rule.endsWith(`${path.sep}**`);
+}
+
+function directoryRuleForTarget(target: string): string {
+  return `${path.dirname(normalizeFilePath(target))}${path.sep}**`;
+}
+
+function pathMatchesDirectoryRule(target: string, rule: string): boolean {
+  const root = rule.slice(0, -3);
+  const normalizedTarget = normalizeFilePath(target);
+  const relative = path.relative(root, normalizedTarget);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+export function storedPermissionMatchesRequest(
+  rule: string,
+  request: PermissionRequest,
+): boolean {
+  switch (request.kind) {
+    case "command":
+      return rule === request.target;
+    case "web-fetch":
+      return rule === request.target;
+    case "file-write":
+      if (isDirectoryRule(rule)) {
+        return pathMatchesDirectoryRule(request.target, rule);
+      }
+
+      return normalizeFilePath(rule) === normalizeFilePath(request.target);
+  }
+}
+
 export function hasStoredPermission(
   settings: PermissionSettings,
   request: PermissionRequest,
 ): boolean {
-  return getRuleList(settings, request).includes(request.target);
+  return getRuleList(settings, request).some((rule) =>
+    storedPermissionMatchesRequest(rule, request),
+  );
 }
 
 export async function applyApprovalChoice(
@@ -139,8 +178,13 @@ export async function applyApprovalChoice(
 
   const settings = await readSettings();
   const rules = getRuleList(settings, request);
-  if (!rules.includes(request.target)) {
-    setRuleList(settings, request, [...rules, request.target]);
-    await writeSettings(settings);
+  const nextRule =
+    request.kind === "file-write" ? directoryRuleForTarget(request.target) : request.target;
+
+  if (!rules.some((rule) => storedPermissionMatchesRequest(rule, request))) {
+    if (!rules.includes(nextRule)) {
+      setRuleList(settings, request, [...rules, nextRule]);
+      await writeSettings(settings);
+    }
   }
 }

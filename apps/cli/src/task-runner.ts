@@ -150,7 +150,7 @@ export async function runTask(
       }
       promptPending = true;
       try {
-        return await requestApproval(tui, approvalRequest);
+        return await requestApproval(tui, approvalRequest, state.sessionId);
       } finally {
         promptPending = false;
       }
@@ -198,10 +198,10 @@ export async function runTask(
 
         promptPending = true;
         try {
-          const approval = await requestApproval(tui, {
-            kind: "web-fetch",
-            target: rule,
-          });
+        const approval = await requestApproval(tui, {
+          kind: "web-fetch",
+          target: rule,
+        }, state.sessionId);
           if (approval === "reject") {
             throw new Error(`Web fetch denied for ${rule}`);
           }
@@ -215,7 +215,7 @@ export async function runTask(
   const requestApprovalForTool = async (approvalRequest: Parameters<typeof requestApproval>[1]) => {
     promptPending = true;
     try {
-      return await requestApproval(tui, approvalRequest);
+      return await requestApproval(tui, approvalRequest, state.sessionId);
     } finally {
       promptPending = false;
     }
