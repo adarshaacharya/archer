@@ -1,7 +1,9 @@
 import { performance } from "node:perf_hooks";
 import {
   buildContextGatheringPrompt,
+  buildPlanningPrompt,
   buildImplementationPrompt,
+  buildVerificationPrompt,
   createTaskPhaseController,
   createToolApprovalHandler,
   type OpenHarnessRuntimeDeps,
@@ -71,6 +73,196 @@ function isContextBudgetResult(
 function expandedContextSteps(maxSteps: number, initialContextSteps: number): number {
   const cap = Math.min(64, Math.max(24, Math.floor(maxSteps / 3)));
   return Math.max(initialContextSteps + 8, cap);
+}
+
+type ExecutionPlan = {
+  goal: string;
+  steps: Array<{
+    id: string;
+    title: string;
+    targets: string[];
+    rationale: string;
+    verification: string;
+  }>;
+};
+
+type VerificationReport = {
+  passed: boolean;
+  commands: string[];
+  findings: string[];
+};
+
+function extractJsonObject(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const directStart = trimmed.indexOf("{");
+  if (directStart === -1) {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let start = -1;
+
+  for (let i = directStart; i < trimmed.length; i += 1) {
+    const ch = trimmed[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === "\"") {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (ch === "{") {
+      if (depth === 0) {
+        start = i;
+      }
+      depth += 1;
+      continue;
+    }
+
+    if (ch === "}") {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        return trimmed.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
+function parseVerificationReport(raw: string): VerificationReport | null {
+  const jsonText = extractJsonObject(raw);
+  if (!jsonText) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(jsonText) as {
+      passed?: unknown;
+      commands?: unknown;
+      findings?: unknown;
+    };
+    if (
+      typeof parsed.passed !== "boolean" ||
+      !Array.isArray(parsed.commands) ||
+      !Array.isArray(parsed.findings)
+    ) {
+      return null;
+    }
+
+    const commands = parsed.commands.filter((item): item is string => typeof item === "string");
+    const findings = parsed.findings.filter((item): item is string => typeof item === "string");
+    if (commands.length !== parsed.commands.length || findings.length !== parsed.findings.length) {
+      return null;
+    }
+
+    return {
+      passed: parsed.passed,
+      commands,
+      findings,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function validateExecutionPlan(value: unknown): ExecutionPlan | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const data = value as {
+    goal?: unknown;
+    steps?: unknown;
+  };
+
+  if (typeof data.goal !== "string" || data.goal.trim() === "") {
+    return null;
+  }
+
+  if (!Array.isArray(data.steps) || data.steps.length === 0) {
+    return null;
+  }
+
+  const steps = data.steps
+    .map((step) => {
+      if (!step || typeof step !== "object") {
+        return null;
+      }
+
+      const s = step as {
+        id?: unknown;
+        title?: unknown;
+        targets?: unknown;
+        rationale?: unknown;
+        verification?: unknown;
+      };
+
+      if (
+        typeof s.id !== "string" ||
+        typeof s.title !== "string" ||
+        typeof s.rationale !== "string" ||
+        typeof s.verification !== "string" ||
+        !Array.isArray(s.targets)
+      ) {
+        return null;
+      }
+
+      const targets = s.targets.filter((target): target is string => typeof target === "string");
+      if (targets.length !== s.targets.length) {
+        return null;
+      }
+
+      return {
+        id: s.id.trim(),
+        title: s.title.trim(),
+        targets: targets.map((target) => target.trim()).filter(Boolean),
+        rationale: s.rationale.trim(),
+        verification: s.verification.trim(),
+      };
+    })
+    .filter((step): step is NonNullable<typeof step> => !!step);
+
+  if (steps.length === 0 || steps.length !== data.steps.length) {
+    return null;
+  }
+
+  return {
+    goal: data.goal.trim(),
+    steps,
+  };
+}
+
+function parseExecutionPlan(raw: string): ExecutionPlan | null {
+  const jsonText = extractJsonObject(raw);
+  if (!jsonText) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(jsonText) as unknown;
+    return validateExecutionPlan(parsed);
+  } catch {
+    return null;
+  }
 }
 
 function updateWebSessionState(
@@ -294,6 +486,8 @@ export async function runTask(
   };
 
   const contextMaxSteps = Math.min(16, Math.max(8, Math.floor(request.maxSteps / 8)));
+  const planningMaxSteps = Math.min(24, Math.max(10, Math.floor(request.maxSteps / 6)));
+  const verificationMaxSteps = Math.min(24, Math.max(8, Math.floor(request.maxSteps / 6)));
 
   const runPhase = async (prompt: string, persistTranscript: boolean, maxSteps: number) =>
     runOpenHarnessRuntime(
@@ -383,28 +577,195 @@ export async function runTask(
       }
     }
 
+    const planningPrompt = buildPlanningPrompt(request.task, contextResult.outputText);
+    let planningResult = await runPhase(planningPrompt, false, planningMaxSteps);
+    if (planningResult.status === "cancelled") {
+      tui.renderSummary({
+        success: false,
+        steps: planningResult.steps,
+        durationMs: Math.round(performance.now() - started),
+        promptTokens: planningResult.usage?.promptTokens ?? 0,
+        completionTokens: planningResult.usage?.completionTokens ?? 0,
+        estimatedCostUsd: planningResult.estimatedCostUsd ?? 0,
+      });
+      return;
+    }
+
+    if (planningResult.status !== "completed") {
+      tui.renderSummary({
+        success: false,
+        steps: planningResult.steps,
+        durationMs: Math.round(performance.now() - started),
+        promptTokens: planningResult.usage?.promptTokens ?? 0,
+        completionTokens: planningResult.usage?.completionTokens ?? 0,
+        estimatedCostUsd: planningResult.estimatedCostUsd ?? 0,
+      });
+      return;
+    }
+
+    let plan = parseExecutionPlan(planningResult.outputText);
+    if (!plan) {
+      planningResult = await runPhase(
+        [
+          "Your previous output was invalid.",
+          "Return only valid JSON in this exact shape:",
+          '{ "goal": string, "steps": [{ "id": string, "title": string, "targets": string[], "rationale": string, "verification": string }] }',
+          "No markdown fences and no extra text.",
+          "Original task:",
+          request.task,
+          "Previous invalid output:",
+          planningResult.outputText || "(empty)",
+        ].join("\n"),
+        false,
+        Math.max(8, Math.floor(planningMaxSteps / 2)),
+      );
+      plan = parseExecutionPlan(planningResult.outputText);
+    }
+
+    if (!plan) {
+      tui.renderSummary({
+        success: false,
+        steps: Math.max(1, planningResult.steps),
+        durationMs: Math.round(performance.now() - started),
+        promptTokens:
+          (contextResult.usage?.promptTokens ?? 0) + (planningResult.usage?.promptTokens ?? 0),
+        completionTokens:
+          (contextResult.usage?.completionTokens ?? 0) +
+          (planningResult.usage?.completionTokens ?? 0),
+        estimatedCostUsd:
+          (contextResult.estimatedCostUsd ?? 0) + (planningResult.estimatedCostUsd ?? 0),
+      });
+      return;
+    }
+
     tui.renderApprovalPrompt({
-      message: "Context gathered. Starting implementation...",
+      message: "Plan prepared. Starting implementation...",
       options: ["running"],
     });
-    phase.beginImplementation();
-    const implementationResult = await runPhase(
-      buildImplementationPrompt(request.task),
-      true,
-      request.maxSteps,
+    const attemptImplementationAndVerification = async (implementationPrompt: string) => {
+      phase.beginImplementation();
+      const implementationResult = await runPhase(implementationPrompt, true, request.maxSteps);
+
+      let verificationResult:
+        | {
+            status: string;
+            steps: number;
+            outputText: string;
+            usage?: {
+              promptTokens: number;
+              completionTokens: number;
+              totalTokens: number;
+            };
+            estimatedCostUsd?: number;
+          }
+        | null = null;
+      let verificationReport: VerificationReport | null = null;
+
+      if (implementationResult.status === "completed") {
+        phase.beginVerification();
+        tui.renderApprovalPrompt({
+          message: "Implementation completed. Running verification...",
+          options: ["running"],
+        });
+        verificationResult = await runPhase(
+          buildVerificationPrompt(request.task, JSON.stringify(plan, null, 2)),
+          false,
+          verificationMaxSteps,
+        );
+        if (verificationResult.status === "completed") {
+          verificationReport = parseVerificationReport(verificationResult.outputText);
+        }
+      }
+
+      return {
+        implementationResult,
+        verificationResult,
+        verificationReport,
+      };
+    };
+
+    let runOutcome = await attemptImplementationAndVerification(
+      buildImplementationPrompt(request.task, JSON.stringify(plan, null, 2)),
     );
 
-    const usage = mergeUsage(contextResult.usage, implementationResult.usage);
+    const shouldRepair =
+      runOutcome.implementationResult.status === "completed" &&
+      runOutcome.verificationResult?.status === "completed" &&
+      runOutcome.verificationReport?.passed === false;
+
+    if (shouldRepair) {
+      const report = runOutcome.verificationReport!;
+      const repairPlanning = await runPhase(
+        [
+          "Create a repair plan from the failed verification report.",
+          "Return strict JSON only:",
+          '{ "goal": string, "steps": [{ "id": string, "title": string, "targets": string[], "rationale": string, "verification": string }] }',
+          "Original task:",
+          request.task,
+          "Current plan:",
+          JSON.stringify(plan),
+          "Verification report:",
+          JSON.stringify(report),
+        ].join("\n"),
+        false,
+        Math.max(8, Math.floor(planningMaxSteps / 2)),
+      );
+      const repairedPlan = parseExecutionPlan(repairPlanning.outputText);
+      if (repairPlanning.status === "completed" && repairedPlan) {
+        plan = repairedPlan;
+        tui.renderApprovalPrompt({
+          message: "Verification failed. Applying repair plan...",
+          options: ["running"],
+        });
+        const repairedOutcome = await attemptImplementationAndVerification(
+          buildImplementationPrompt(
+            request.task,
+            JSON.stringify(plan, null, 2) +
+              "\n\nApply this as a targeted repair pass using verification findings from the previous attempt.",
+          ),
+        );
+        runOutcome = {
+          implementationResult: repairedOutcome.implementationResult,
+          verificationResult: repairedOutcome.verificationResult,
+          verificationReport: repairedOutcome.verificationReport,
+        };
+        // Merge repair planning usage into context/planning bucket by shadowing planningResult usage later.
+        planningResult = {
+          ...planningResult,
+          usage: mergeUsage(planningResult.usage, repairPlanning.usage),
+          estimatedCostUsd:
+            (planningResult.estimatedCostUsd ?? 0) + (repairPlanning.estimatedCostUsd ?? 0),
+          steps: planningResult.steps + repairPlanning.steps,
+        };
+      }
+    }
+
+    const usage = mergeUsage(
+      mergeUsage(
+        mergeUsage(contextResult.usage, planningResult.usage),
+        runOutcome.implementationResult.usage,
+      ),
+      runOutcome.verificationResult?.usage,
+    );
+    const verificationPassed =
+      runOutcome.verificationResult == null
+        ? true
+        : runOutcome.verificationResult.status === "completed" &&
+          (runOutcome.verificationReport?.passed ?? false);
     tui.renderSummary({
       success:
-        implementationResult.status === "completed" ||
-        implementationResult.status === "cancelled",
-      steps: implementationResult.steps,
+        (runOutcome.implementationResult.status === "completed" ||
+          runOutcome.implementationResult.status === "cancelled") &&
+        verificationPassed,
+      steps: runOutcome.implementationResult.steps + (runOutcome.verificationResult?.steps ?? 0),
       durationMs: Math.round(performance.now() - started),
       promptTokens: usage.promptTokens,
       completionTokens: usage.completionTokens,
       estimatedCostUsd:
-        (contextResult.estimatedCostUsd ?? 0) + (implementationResult.estimatedCostUsd ?? 0),
+        (contextResult.estimatedCostUsd ?? 0) +
+        (planningResult.estimatedCostUsd ?? 0) +
+        (runOutcome.implementationResult.estimatedCostUsd ?? 0) +
+        (runOutcome.verificationResult?.estimatedCostUsd ?? 0),
     });
   } finally {
     clearInterval(spinner);

@@ -1,9 +1,11 @@
-export type TaskPhase = "context" | "implementation";
+export type TaskPhase = "context" | "implementation" | "verification";
 
 export interface TaskPhaseController {
   phase: TaskPhase;
   beginImplementation(): void;
+  beginVerification(): void;
   isContextPhase(): boolean;
+  isVerificationPhase(): boolean;
 }
 
 export function createTaskPhaseController(initialPhase: TaskPhase = "context"): TaskPhaseController {
@@ -16,8 +18,14 @@ export function createTaskPhaseController(initialPhase: TaskPhase = "context"): 
     beginImplementation() {
       phase = "implementation";
     },
+    beginVerification() {
+      phase = "verification";
+    },
     isContextPhase() {
       return phase === "context";
+    },
+    isVerificationPhase() {
+      return phase === "verification";
     },
   };
 }
@@ -48,10 +56,45 @@ export function buildContextGatheringPrompt(task: string): string {
   ].join("\n");
 }
 
-export function buildImplementationPrompt(task: string): string {
+export function buildPlanningPrompt(task: string, contextSummary: string): string {
+  return [
+    "Produce an execution plan for the task below.",
+    "Use the gathered repository context and output strict JSON only.",
+    "Do not include markdown fences, commentary, or extra text.",
+    "Do not write, patch, or delete files in this phase.",
+    "Return this exact shape:",
+    '{ "goal": string, "steps": [{ "id": string, "title": string, "targets": string[], "rationale": string, "verification": string }] }',
+    "Keep steps concrete and minimal.",
+    "Task:",
+    task.trim(),
+    "Context summary:",
+    contextSummary.trim() || "(none)",
+  ].join("\n");
+}
+
+export function buildImplementationPrompt(task: string, planJson: string): string {
   return [
     "Implement the task below using the context gathered in the previous phase.",
+    "Follow the execution plan strictly and complete steps in order unless a dependency forces reordering.",
     "If anything is still unclear, inspect the relevant files again before editing.",
+    "After completing the work, ensure the final response references what was changed for each step.",
+    "Execution plan (JSON):",
+    planJson.trim(),
+    "Task:",
+    task.trim(),
+  ].join("\n");
+}
+
+export function buildVerificationPrompt(task: string, planJson: string): string {
+  return [
+    "Verify the implementation changes for the task below.",
+    "Do not edit, patch, or delete files in this phase.",
+    "Inspect changed files and run relevant checks/tests/lint commands.",
+    "If checks fail, report concrete failures and likely root causes.",
+    "Return strict JSON only (no markdown, no extra text) in this exact shape:",
+    '{ "passed": boolean, "commands": string[], "findings": string[] }',
+    "Execution plan (JSON):",
+    planJson.trim(),
     "Task:",
     task.trim(),
   ].join("\n");

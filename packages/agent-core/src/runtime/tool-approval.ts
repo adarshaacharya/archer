@@ -85,6 +85,13 @@ export function createToolApprovalHandler(opts: {
       return decision.permission === "read" || decision.permission === "web_fetch";
     }
 
+    if (opts.phase.isVerificationPhase()) {
+      if (decision.permission === "read" || decision.permission === "bash") {
+        return true;
+      }
+      return false;
+    }
+
     if (decision.action === "deny") {
       return false;
     }
