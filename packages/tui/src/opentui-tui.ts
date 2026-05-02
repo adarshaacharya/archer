@@ -494,6 +494,12 @@ export class PiTui implements Tui {
     this.renderMessageBlock(text, {
       textColor: col.text,
       prefix: "› ",
+      backgroundColor: "#1b1f24",
+      fullWidthBackground: true,
+      paddingLeft: 2,
+      paddingRight: 2,
+      paddingTop: 0,
+      paddingBottom: 0,
     });
     this.print("");
   }
@@ -658,9 +664,36 @@ export class PiTui implements Tui {
     opts: {
       textColor: string;
       prefix: string;
+      backgroundColor?: string;
+      fullWidthBackground?: boolean;
+      paddingLeft?: number;
+      paddingRight?: number;
+      paddingTop?: number;
+      paddingBottom?: number;
     },
   ): void {
     this.writeScrollback((ctx) => {
+      if (opts.backgroundColor && opts.fullWidthBackground) {
+        const box = new BoxRenderable(ctx.renderContext, {
+          id: "sb-message-block-bg",
+          width: ctx.width,
+          backgroundColor: opts.backgroundColor,
+          paddingLeft: opts.paddingLeft ?? 0,
+          paddingRight: opts.paddingRight ?? 0,
+          paddingTop: opts.paddingTop ?? 0,
+          paddingBottom: opts.paddingBottom ?? 0,
+        });
+        box.add(new TextRenderable(ctx.renderContext, {
+          id: "sb-message-block",
+          content: `${opts.prefix}${content}`,
+          width: Math.max(1, ctx.width - (opts.paddingLeft ?? 0) - (opts.paddingRight ?? 0)),
+          wrapMode: "word",
+          truncate: false,
+          fg: opts.textColor,
+        }));
+        return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      }
+
       const text = new TextRenderable(ctx.renderContext, {
         id: "sb-message-block",
         content: `${opts.prefix}${content}`,
@@ -668,6 +701,11 @@ export class PiTui implements Tui {
         wrapMode: "word",
         truncate: false,
         fg: opts.textColor,
+        bg: opts.backgroundColor,
+        paddingLeft: opts.paddingLeft ?? 0,
+        paddingRight: opts.paddingRight ?? 0,
+        paddingTop: opts.paddingTop ?? 0,
+        paddingBottom: opts.paddingBottom ?? 0,
       });
       return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
     });
