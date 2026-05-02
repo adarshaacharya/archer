@@ -246,6 +246,22 @@ export class PiTui implements Tui {
     this.submitSlashMenuSelection();
   }
 
+  private syncScrollbackViewport(): void {
+    const renderer = this.renderer as CliRenderer | null;
+    if (!renderer) return;
+
+    const sync = (renderer as unknown as { syncSplitScrollback?: () => void }).syncSplitScrollback;
+    if (typeof sync === "function") {
+      sync.call(renderer);
+    }
+  }
+
+  private writeScrollback(write: Parameters<CliRenderer["writeToScrollback"]>[0]): void {
+    if (!this.renderer) return;
+    this.renderer.writeToScrollback(write);
+    this.syncScrollbackViewport();
+  }
+
   async start(): Promise<void> {
     this.renderer = await createCliRenderer({
       screenMode: "split-footer",
@@ -474,27 +490,11 @@ export class PiTui implements Tui {
   renderUserMessage(message: string): void {
     const text = normalizeText(message);
     if (!text) return;
-    if (!this.renderer) return;
-    this.renderer.writeToScrollback((ctx) => {
-      const box = new BoxRenderable(ctx.renderContext, {
-        id: "user-msg-box",
-        width: ctx.width,
-        backgroundColor: col.userBg,
-        paddingLeft: 2,
-        paddingRight: 2,
-        paddingTop: 0,
-        paddingBottom: 0,
-      });
-      box.add(new TextRenderable(ctx.renderContext, {
-        id: "user-msg-text",
-        content: `› ${text}`,
-        width: ctx.width - 4,
-        height: "auto",
-        wrapMode: "word",
-        truncate: false,
-        fg: col.text,
-      }));
-      return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    this.renderTranscriptCard(text, {
+      boxId: "user-msg-box",
+      textId: "user-msg-text",
+      borderColor: col.user,
+      backgroundColor: col.userBg,
     });
     this.print("");
   }
@@ -502,27 +502,27 @@ export class PiTui implements Tui {
   renderInfoMessage(message: string): void {
     const text = normalizeText(message);
     if (!text) return;
-    for (const line of text.split("\n")) {
-      this.print(line, col.muted);
-    }
-    this.print("");
+    this.renderInfoCard(text);
   }
 
   renderInfoLines(lines: Array<{ text: string; color?: string }>): void {
-    for (const line of lines) {
-      this.print(line.text, line.color ?? col.muted);
-    }
-    this.print("");
+    const content = lines.map((line) => line.text).join("\n");
+    if (!content) return;
+    this.renderInfoCard(content, lines.map((line) => line.color ?? col.muted)[0]);
   }
 
   renderStep(step: AgentStep): void {
-    this.print(`● ${step.action}  step ${step.step}`, col.step);
-    if (!step.observation) return;
-
-    const lines = normalizeText(step.observation).split("\n").slice(0, 3);
-    for (const line of lines) {
-      this.print(`  ${line}`, col.step);
-    }
+    const observation = step.observation ? normalizeText(step.observation).split("\n").slice(0, 3).join("\n") : "";
+    const content = observation
+      ? `● ${step.action}  step ${step.step}\n${observation}`
+      : `● ${step.action}  step ${step.step}`;
+    this.renderTranscriptCard(content, {
+      boxId: `step-${step.step}`,
+      textId: `step-text-${step.step}`,
+      borderColor: col.step,
+      backgroundColor: "#0f141b",
+      textColor: col.step,
+    });
   }
 
   renderAssistantDelta(delta: string): void {
@@ -538,7 +538,12 @@ export class PiTui implements Tui {
     this.assistantStreamText = "";
     this.setStatus("", col.muted, "", col.muted);
     if (final) {
-      this.print(final, col.text);
+      this.renderTranscriptCard(final, {
+        boxId: "assistant-msg-box",
+        textId: "assistant-msg-text",
+        borderColor: col.accent,
+        backgroundColor: "#11161d",
+      });
       this.print("");
     }
   }
@@ -591,9 +596,13 @@ export class PiTui implements Tui {
         : "",
       summary.estimatedCostUsd > 0 ? `cost=$${summary.estimatedCostUsd.toFixed(4)}` : "",
     ].filter(Boolean).join("  ");
-    this.print(`◆ ${line}`, col.summary);
-    this.print("");
-    this.printSeparator();
+    this.renderTranscriptCard(`◆ ${line}`, {
+      boxId: "run-summary-box",
+      textId: "run-summary-text",
+      borderColor: col.summary,
+      backgroundColor: "#1a120c",
+      textColor: col.summary,
+    });
     this.print("");
   }
 
@@ -623,25 +632,9 @@ export class PiTui implements Tui {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
-  private printSeparator(): void {
-    if (!this.renderer) return;
-    this.renderer.writeToScrollback((ctx) => {
-      const text = new TextRenderable(ctx.renderContext, {
-        id: "sb-sep",
-        content: "─".repeat(ctx.width),
-        width: ctx.width,
-        wrapMode: "none",
-        truncate: true,
-        fg: col.border,
-      });
-      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
-    });
-  }
-
   /** Write a styled line to the scrollback area above the footer. */
   private print(content: string, fg: string = col.text): void {
-    if (!this.renderer) return;
-    this.renderer.writeToScrollback((ctx) => {
+    this.writeScrollback((ctx) => {
       const text = new TextRenderable(ctx.renderContext, {
         id: "sb-line",
         content,
@@ -654,9 +647,75 @@ export class PiTui implements Tui {
     });
   }
 
+  private renderTranscriptCard(
+    content: string,
+    opts: {
+      boxId: string;
+      textId: string;
+      borderColor: string;
+      backgroundColor: string;
+      textColor?: string;
+    },
+  ): void {
+    this.writeScrollback((ctx) => {
+      const contentWidth = Math.max(1, ctx.width - 5);
+      const box = new BoxRenderable(ctx.renderContext, {
+        id: opts.boxId,
+        width: ctx.width,
+        border: ["left"],
+        borderColor: opts.borderColor,
+        backgroundColor: opts.backgroundColor,
+        paddingLeft: 2,
+        paddingRight: 2,
+        paddingTop: 1,
+        paddingBottom: 1,
+      });
+      box.add(
+        new TextRenderable(ctx.renderContext, {
+          id: opts.textId,
+          content,
+          width: contentWidth,
+          height: "auto",
+          wrapMode: "word",
+          truncate: false,
+          fg: opts.textColor ?? col.text,
+        }),
+      );
+      return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
+  }
+
+  private renderInfoCard(content: string, textColor: string = col.muted): void {
+    this.writeScrollback((ctx) => {
+      const contentWidth = Math.max(1, ctx.width - 5);
+      const box = new BoxRenderable(ctx.renderContext, {
+        id: "info-msg-box",
+        width: ctx.width,
+        border: ["left"],
+        borderColor: col.border,
+        backgroundColor: "#0b1016",
+        paddingLeft: 2,
+        paddingRight: 2,
+        paddingTop: 1,
+        paddingBottom: 1,
+      });
+      box.add(
+        new TextRenderable(ctx.renderContext, {
+          id: "info-msg-text",
+          content,
+          width: contentWidth,
+          height: "auto",
+          wrapMode: "word",
+          truncate: false,
+          fg: textColor,
+        }),
+      );
+      return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
+  }
+
   private renderStartupCard(): void {
-    if (!this.renderer) return;
-    this.renderer.writeToScrollback((ctx) => {
+    this.writeScrollback((ctx) => {
       const width = clamp(ctx.width - 8, 68, 86);
       const innerWidth = width - 2;
       const labelWidth = 10;
@@ -941,11 +1000,13 @@ export class PiTui implements Tui {
       flexShrink: 0,
       flexDirection: "column",
       alignItems: "stretch",
-      border: true,
-      borderStyle: "single",
+      border: ["left"],
       borderColor: col.accent,
-      paddingLeft: 1,
-      paddingRight: 1,
+      backgroundColor: "#0b1016",
+      paddingLeft: 2,
+      paddingRight: 2,
+      paddingTop: 1,
+      paddingBottom: 1,
       title: ` ${title} `,
     });
   }
