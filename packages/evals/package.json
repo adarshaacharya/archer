@@ -19,6 +19,7 @@
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@xeq/storage": "workspace:*",
     "zod": "^4.3.6"
   }
 }

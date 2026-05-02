@@ -2,9 +2,36 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runEvalCli } from "./run.js";
+import { persistedTurnToEvalRunSummary, runEvalCli } from "./run.js";
 
 describe("runEvalCli", () => {
+  test("maps persisted turn summaries into eval run summaries", () => {
+    const summary = persistedTurnToEvalRunSummary({
+      status: "completed",
+      message: "fallback",
+      summary: {
+        steps: 9,
+        evalMetrics: {
+          approvalCount: 2,
+          fileReadCount: 3,
+          changedPaths: ["lib/date.ts"],
+          toolNames: ["createDirectory", "preparePatch"],
+          finalMessage: "Created lib/date.ts",
+        },
+      },
+    });
+
+    expect(summary).toEqual({
+      status: "completed",
+      steps: 9,
+      approvalCount: 2,
+      fileReadCount: 3,
+      changedPaths: ["lib/date.ts"],
+      toolNames: ["createDirectory", "preparePatch"],
+      finalMessage: "Created lib/date.ts",
+    });
+  });
+
   test("returns success for starter fixtures", async () => {
     const exitCode = await runEvalCli([]);
     expect(exitCode).toBe(0);

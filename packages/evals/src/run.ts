@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { getTurnResults } from "@xeq/storage";
 import { starterEvalScenarios } from "./scenarios.js";
 import {
   type EvalRunSummary,
@@ -14,6 +15,13 @@ type EvalFixture = {
   run: EvalRunSummary;
 };
 
+type PersistedTurnLike = {
+  status?: unknown;
+  task?: unknown;
+  message?: unknown;
+  summary?: unknown;
+};
+
 type EvalResult = {
   scenarioId: string;
   title: string;
@@ -26,6 +34,7 @@ function parseArgs(argv: string[]) {
   const args = new Set<string>();
   let fixturePath: string | null = null;
   let scenarioId: string | null = null;
+  let sessionId: string | null = null;
 
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -42,12 +51,18 @@ function parseArgs(argv: string[]) {
       index += 1;
       continue;
     }
+    if (value === "--session") {
+      sessionId = argv[index + 1] ?? null;
+      index += 1;
+      continue;
+    }
     args.add(value);
   }
 
   return {
     fixturePath,
     scenarioId,
+    sessionId,
     help: args.has("--help") || args.has("-h"),
   };
 }
@@ -56,6 +71,7 @@ function printHelp() {
   console.log("Usage: bun run --filter @xeq/evals evals [--fixture path] [--scenario id]");
   console.log("");
   console.log("Without --fixture, runs starter scenarios against built-in example summaries.");
+  console.log("With --session, loads persisted turn results from xeq storage for a session id.");
   console.log("With --fixture, expects a JSON object or array of objects shaped like:");
   console.log('{ "scenario": { ... }, "run": { ... } }');
 }
@@ -130,6 +146,59 @@ async function loadFixturesFromFile(
     .filter((fixture) => (scenarioId ? fixture.scenario.id === scenarioId : true));
 }
 
+export function persistedTurnToEvalRunSummary(turn: PersistedTurnLike): EvalRunSummary {
+  const summary =
+    typeof turn.summary === "object" && turn.summary !== null
+      ? (turn.summary as {
+          steps?: unknown;
+          evalMetrics?: {
+            approvalCount?: unknown;
+            fileReadCount?: unknown;
+            changedPaths?: unknown;
+            toolNames?: unknown;
+            finalMessage?: unknown;
+          };
+        })
+      : null;
+  const evalMetrics = summary?.evalMetrics;
+
+  return EvalRunSummarySchema.parse({
+    status: typeof turn.status === "string" ? turn.status : "unknown",
+    steps: typeof summary?.steps === "number" ? summary.steps : 0,
+    approvalCount: typeof evalMetrics?.approvalCount === "number" ? evalMetrics.approvalCount : 0,
+    fileReadCount: typeof evalMetrics?.fileReadCount === "number" ? evalMetrics.fileReadCount : 0,
+    changedPaths: Array.isArray(evalMetrics?.changedPaths) ? evalMetrics.changedPaths : [],
+    toolNames: Array.isArray(evalMetrics?.toolNames) ? evalMetrics.toolNames : [],
+    finalMessage:
+      typeof evalMetrics?.finalMessage === "string"
+        ? evalMetrics.finalMessage
+        : typeof turn.message === "string"
+          ? turn.message
+          : "",
+  });
+}
+
+async function loadFixturesFromSession(
+  sessionId: string,
+  scenarioId: string | null,
+): Promise<EvalFixture[]> {
+  const turns = await getTurnResults(sessionId);
+  return turns
+    .map((turn) => {
+      const matchingScenario = starterEvalScenarios.find((scenario) => scenario.task === turn.task);
+      if (!matchingScenario) {
+        return null;
+      }
+
+      return {
+        scenario: matchingScenario,
+        run: persistedTurnToEvalRunSummary(turn),
+      };
+    })
+    .filter((fixture): fixture is EvalFixture => fixture !== null)
+    .filter((fixture) => (scenarioId ? fixture.scenario.id === scenarioId : true));
+}
+
 function formatFindings(findings: string[]): string {
   if (findings.length === 0) {
     return "none";
@@ -164,10 +233,16 @@ export async function runEvalCli(argv: string[] = process.argv.slice(2)): Promis
 
   const fixtures = options.fixturePath
     ? await loadFixturesFromFile(options.fixturePath, options.scenarioId)
-    : createStarterFixtures(options.scenarioId);
+    : options.sessionId
+      ? await loadFixturesFromSession(options.sessionId, options.scenarioId)
+      : createStarterFixtures(options.scenarioId);
 
   if (fixtures.length === 0) {
-    const source = options.fixturePath ? basename(options.fixturePath) : "starter scenarios";
+    const source = options.fixturePath
+      ? basename(options.fixturePath)
+      : options.sessionId
+        ? `session ${options.sessionId}`
+        : "starter scenarios";
     console.error(`No eval fixtures found for source: ${source}`);
     return 1;
   }
@@ -185,7 +260,9 @@ export async function runEvalCli(argv: string[] = process.argv.slice(2)): Promis
 
   const sourceLabel = options.fixturePath
     ? basename(options.fixturePath)
-    : "built-in starter fixtures";
+    : options.sessionId
+      ? `session ${options.sessionId}`
+      : "built-in starter fixtures";
   printResults(sourceLabel, results);
 
   return results.every((result) => result.passed) ? 0 : 1;

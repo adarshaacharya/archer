@@ -4,4 +4,4 @@ export * from "./runtime/tool-approval.js";
 export * from "./runtime/task-flow.js";
 export * from "./runtime/question-exploration.js";
 export { resetSessionById } from "./runtime/session.js";
-export type { OpenHarnessRuntimeDeps } from "./runtime/openharness-types.js";
+export type { OpenHarnessRuntimeDeps, OpenHarnessToolEvent } from "./runtime/openharness-types.js";
