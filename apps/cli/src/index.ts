@@ -1063,7 +1063,7 @@ async function main(): Promise<void> {
     sessionId,
     sessionTitle: null,
     projectRoot,
-    approvalMode: "suggest",
+    approvalMode: "workspace-write",
     provider: null,
     modelId: "",
     authSource: null,

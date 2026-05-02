@@ -1,5 +1,10 @@
 import { classifyCommandRisk } from "@xeq/sandbox";
-import type { ApprovalMode } from "@xeq/shared";
+import {
+  autoApproveCommandsInApprovalMode,
+  autoApproveEditsInApprovalMode,
+  canWriteInApprovalMode,
+  type ApprovalMode,
+} from "@xeq/shared";
 import type { TaskPhaseController } from "./task-flow.js";
 
 export type ToolApprovalAction = "allow" | "ask" | "deny";
@@ -109,8 +114,15 @@ export function createToolApprovalHandler(opts: {
     }
 
     if (decision.permission === "edit") {
+      if (!canWriteInApprovalMode(opts.approvalMode)) {
+        return false;
+      }
+
       const target = decision.pattern;
-      if (opts.approvalMode === "auto-edit" && opts.patchApprovedPaths.has(target)) {
+      if (autoApproveEditsInApprovalMode(opts.approvalMode)) {
+        return true;
+      }
+      if (opts.patchApprovedPaths.has(target)) {
         opts.patchApprovedPaths.delete(target);
         return true;
       }
@@ -123,6 +135,9 @@ export function createToolApprovalHandler(opts: {
     }
 
     if (decision.permission === "bash") {
+      if (autoApproveCommandsInApprovalMode(opts.approvalMode)) {
+        return true;
+      }
       const approval = await opts.requestApproval({
         kind: "command",
         target: decision.pattern,

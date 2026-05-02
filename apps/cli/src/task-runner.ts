@@ -20,7 +20,7 @@ import {
   summarizeQuestionExploration,
 } from "@xeq/agent-core";
 import { createSandboxEnvironment } from "@xeq/sandbox";
-import { AgentRequestSchema } from "@xeq/shared";
+import { AgentRequestSchema, autoApproveEditsInApprovalMode } from "@xeq/shared";
 import {
   appendMessage,
   getTurnResults,
@@ -482,6 +482,7 @@ export async function runTask(
 
   const env = createSandboxEnvironment({
     cwd: request.repoRoot,
+    approvalMode: state.approvalMode,
     approvals: async (approvalRequest) => {
       if (approvalRequest.kind === "file-write" && patchApprovedPaths.has(approvalRequest.target)) {
         patchApprovedPaths.delete(approvalRequest.target);
@@ -582,7 +583,7 @@ export async function runTask(
       return false;
     }
 
-    if (state.approvalMode === "auto-edit") {
+    if (autoApproveEditsInApprovalMode(state.approvalMode)) {
       if (preview.files) {
         for (const f of preview.files) {
           patchApprovedPaths.add(f.filePath);

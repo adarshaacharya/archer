@@ -1,5 +1,11 @@
 import { type ApprovalChoice, type ApprovalRequest } from "@xeq/sandbox";
-import { type ApprovalMode } from "@xeq/shared";
+import {
+  autoApproveCommandsInApprovalMode,
+  autoApproveEditsInApprovalMode,
+  canWriteInApprovalMode,
+  normalizeApprovalMode,
+  type ApprovalMode,
+} from "@xeq/shared";
 import { type Tui } from "@xeq/tui";
 import {
   type PermissionRequest,
@@ -192,17 +198,22 @@ export async function permissionsSummary(): Promise<string> {
 
 export async function promptForApprovalMode(tui: Tui): Promise<ApprovalMode | "cancel"> {
   const selected = await tui.promptApproval({
-    message: "Choose approval mode",
+    message: "Choose permission profile",
     choices: [
       {
-        value: "suggest",
-        label: "suggest",
-        description: "Review patch changes before they are applied",
+        value: "read-only",
+        label: "read-only",
+        description: "No file writes; read and inspect only",
       },
       {
-        value: "auto-edit",
-        label: "auto-edit",
-        description: "Apply patch-based edits automatically",
+        value: "workspace-write",
+        label: "workspace-write",
+        description: "Allow workspace edits with approval prompts",
+      },
+      {
+        value: "danger-full-access",
+        label: "danger-full-access",
+        description: "Allow edits and commands without prompts",
       },
     ],
   });
@@ -216,19 +227,28 @@ export async function setApprovalMode(
   state: ApprovalState,
   mode?: string,
 ): Promise<{ type: "continue"; message: string }> {
-  const normalized = mode?.trim().toLowerCase();
-  const next =
-    normalized === "suggest" || normalized === "auto-edit"
-      ? (normalized as ApprovalMode)
-      : await promptForApprovalMode(tui);
+  const next = mode ? normalizeApprovalMode(mode) : await promptForApprovalMode(tui);
 
   if (next === "cancel") {
     return { type: "continue", message: "Approval mode selection cancelled." };
   }
 
+  if (!next) {
+    return {
+      type: "continue",
+      message:
+        "Unknown permission profile. Use read-only, workspace-write, or danger-full-access.",
+    };
+  }
+
   state.approvalMode = next;
+  const capabilities = [
+    canWriteInApprovalMode(next) ? "writes-enabled" : "writes-disabled",
+    autoApproveEditsInApprovalMode(next) ? "auto-edit" : "review-edits",
+    autoApproveCommandsInApprovalMode(next) ? "auto-command" : "review-commands",
+  ].join(", ");
   return {
     type: "continue",
-    message: `Approval mode set to ${state.approvalMode}.`,
+    message: `Permission profile set to ${state.approvalMode} (${capabilities}).`,
   };
 }

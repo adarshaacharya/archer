@@ -30,7 +30,7 @@ function createState(): SessionState {
     sessionId: "session_test",
     sessionTitle: "test",
     projectRoot: "/tmp/project",
-    approvalMode: "suggest",
+    approvalMode: "workspace-write",
     provider: "openai",
     modelId: "gpt-4o-mini",
     authSource: null,
