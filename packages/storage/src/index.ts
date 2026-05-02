@@ -14,15 +14,17 @@ export {
   estimateSessionTranscriptPressure,
   getMessages,
   getNextSequence,
+  loadCompactionEvents,
   loadEffectiveModelMessages,
   loadLatestCompactContinuationArtifact,
   loadModelMessages,
   pruneModelMessagesWithArtifact,
   pruneSessionTranscripts,
   replaceMessages,
+  saveCompactionEvent,
   saveCompactContinuationArtifact,
 } from "./message.js";
-export type { CompactContinuationArtifact } from "./message.js";
+export type { CompactContinuationArtifact, CompactionEventRecord } from "./message.js";
 export {
   createSession,
   deleteSession,

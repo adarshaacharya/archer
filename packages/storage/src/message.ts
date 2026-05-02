@@ -139,12 +139,22 @@ const DEFAULT_PRUNE_MINIMUM_TOKENS = 5_000;
 const DEFAULT_RECENT_ASSISTANT_MESSAGES_TO_KEEP = 2;
 const PRUNED_TRANSCRIPT_PREFIX = "[pruned-transcript]";
 const COMPACT_ARTIFACT_KIND = "compact_artifact";
+const COMPACTION_EVENT_KIND = "compaction_event";
 
 export type CompactContinuationArtifact = {
   summary: string;
   criticalFiles: string[];
   openRisks: string[];
   source: "preturn-prune" | "manual";
+  createdAt: number;
+};
+
+export type CompactionEventRecord = {
+  trigger: "context-pressure" | "manual" | "preturn-prune";
+  status: "started" | "succeeded" | "failed";
+  summary: string | null;
+  criticalFiles: string[];
+  openRisks: string[];
   createdAt: number;
 };
 
@@ -228,6 +238,51 @@ export async function saveCompactContinuationArtifact(input: {
     kind: COMPACT_ARTIFACT_KIND,
     content: JSON.stringify(input.artifact),
     created_at: input.artifact.createdAt,
+  });
+}
+
+export async function saveCompactionEvent(input: {
+  sessionId: string;
+  event: CompactionEventRecord;
+}): Promise<void> {
+  await appendMessage({
+    id: `${input.sessionId}_compaction_event_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    session_id: input.sessionId,
+    role: "system",
+    kind: COMPACTION_EVENT_KIND,
+    content: JSON.stringify(input.event),
+    created_at: input.event.createdAt,
+  });
+}
+
+export async function loadCompactionEvents(sessionId: string): Promise<CompactionEventRecord[]> {
+  const rows = await getDb().query.messages.findMany({
+    where: eq(messages.session_id, sessionId),
+    orderBy: [asc(messages.seq)],
+  });
+
+  return rows.flatMap((row) => {
+    if (row.kind !== COMPACTION_EVENT_KIND) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(row.content) as CompactionEventRecord;
+      if (
+        typeof parsed.trigger === "string" &&
+        typeof parsed.status === "string" &&
+        (typeof parsed.summary === "string" || parsed.summary === null) &&
+        Array.isArray(parsed.criticalFiles) &&
+        Array.isArray(parsed.openRisks) &&
+        typeof parsed.createdAt === "number"
+      ) {
+        return [parsed];
+      }
+    } catch {
+      return [];
+    }
+
+    return [];
   });
 }
 

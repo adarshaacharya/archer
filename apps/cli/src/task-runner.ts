@@ -45,6 +45,7 @@ import {
   appendMessage,
   getTurnResults,
   loadLatestCompactContinuationArtifact,
+  saveCompactionEvent,
   updateSessionTitle,
 } from "@xeq/storage";
 import type { Tui } from "@xeq/tui";
@@ -798,6 +799,17 @@ export async function runTask(
 
     if (isContextPressureFailure(runOutcome.implementationResult)) {
       turn.beginCompaction();
+      await saveCompactionEvent({
+        sessionId: state.sessionId,
+        event: {
+          trigger: "context-pressure",
+          status: "started",
+          summary: null,
+          criticalFiles: [],
+          openRisks: [],
+          createdAt: Date.now(),
+        },
+      });
       const compactRun = await runPhase(
         buildCompactionPrompt(
           request.task,
@@ -813,6 +825,17 @@ export async function runTask(
         trigger: "context-pressure",
         completed: compactRun.status === "completed",
         report: compacted,
+      });
+      await saveCompactionEvent({
+        sessionId: state.sessionId,
+        event: {
+          trigger: "context-pressure",
+          status: compacted ? "succeeded" : "failed",
+          summary: compacted?.summary ?? null,
+          criticalFiles: compacted?.criticalFiles ?? [],
+          openRisks: compacted?.openRisks ?? [],
+          createdAt: Date.now(),
+        },
       });
 
       if (compacted) {
