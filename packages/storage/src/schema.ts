@@ -57,9 +57,30 @@ export const model_messages = sqliteTable(
   ],
 );
 
+export const turn_results = sqliteTable(
+  "turn_results",
+  {
+    id: text("id").primaryKey(),
+    session_id: text("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    intent: text("intent").notNull(),
+    status: text("status").notNull(),
+    task: text("task").notNull(),
+    summary_json: text("summary_json"),
+    message: text("message"),
+    created_at: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    index("turn_results_session_id_created_at_idx").on(table.session_id, table.created_at),
+  ],
+);
+
 export type SessionRow = typeof sessions.$inferSelect;
 export type NewSessionRow = typeof sessions.$inferInsert;
 export type MessageRow = typeof messages.$inferSelect;
 export type NewMessageRow = typeof messages.$inferInsert;
 export type ModelMessageRow = typeof model_messages.$inferSelect;
 export type NewModelMessageRow = typeof model_messages.$inferInsert;
+export type TurnResultRow = typeof turn_results.$inferSelect;
+export type NewTurnResultRow = typeof turn_results.$inferInsert;

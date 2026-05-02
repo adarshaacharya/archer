@@ -7,12 +7,13 @@ import {
   buildCompactionPrompt,
   createTaskPhaseController,
   createToolApprovalHandler,
+  prependContinuationBrief,
   type OpenHarnessRuntimeDeps,
   runOpenHarnessRuntime,
 } from "@xeq/agent-core";
 import { createSandboxEnvironment } from "@xeq/sandbox";
 import { AgentRequestSchema } from "@xeq/shared";
-import { appendMessage, updateSessionTitle } from "@xeq/storage";
+import { appendMessage, loadLatestCompactContinuationArtifact, updateSessionTitle } from "@xeq/storage";
 import { createWebSearchProvider } from "@xeq/web";
 import { requestApproval, withApprovalQueue } from "./approvals.js";
 import { webFetchRuleForUrl } from "./settings-store.js";
@@ -23,10 +24,10 @@ import {
   isContextPressureFailure,
   parseCompactionReport,
 } from "./recovery/compaction.js";
-
-export function titleFromTask(task: string): string {
-  return task.replace(/\s+/g, " ").trim().slice(0, 80);
-}
+import { createTurnStateMachine } from "./turn-state-machine.js";
+import { titleFromTask } from "./task-title.js";
+import { pruneSessionAfterTurn } from "./recovery/prune.js";
+import type { TurnContext, TurnResult } from "./turn-types.js";
 
 function newMessageId(sessionId: string, role: string): string {
   return `${sessionId}_${role}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -303,7 +304,7 @@ export async function runTask(
   tui: Tui,
   state: SessionState,
   abortController?: AbortController,
-): Promise<void> {
+): Promise<TurnResult> {
   const activeAbortController = abortController ?? new AbortController();
   const request = AgentRequestSchema.parse({
     task,
@@ -324,6 +325,16 @@ export async function runTask(
   tui.renderApprovalPrompt({ message: request.task, options: ["running"] });
 
   const started = performance.now();
+  const continuationArtifact = await loadLatestCompactContinuationArtifact(state.sessionId);
+  const turnContext: TurnContext = {
+    sessionId: state.sessionId,
+    task: request.task,
+    intent: "change",
+    projectRoot: state.projectRoot,
+    approvalMode: state.approvalMode,
+    modelId: state.modelId,
+    startedAt: started,
+  };
   const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   let frameIndex = 0;
   let promptPending = false;
@@ -342,6 +353,8 @@ export async function runTask(
 
   const patchApprovedPaths = new Set<string>();
   const phase = createTaskPhaseController();
+  const turn = createTurnStateMachine("change");
+  turn.transition("routing");
 
   const env = createSandboxEnvironment({
     cwd: request.repoRoot,
@@ -542,8 +555,9 @@ export async function runTask(
     );
 
   try {
+    turn.beginResearch();
     let contextResult = await runPhase(
-      buildContextGatheringPrompt(request.task),
+      prependContinuationBrief(buildContextGatheringPrompt(request.task), continuationArtifact),
       false,
       contextMaxSteps,
     );
@@ -551,62 +565,71 @@ export async function runTask(
     if (isContextBudgetResult(contextResult)) {
       const retrySteps = expandedContextSteps(request.maxSteps, contextMaxSteps);
       contextResult = await runPhase(
-        buildContextGatheringPrompt(request.task),
+        prependContinuationBrief(buildContextGatheringPrompt(request.task), continuationArtifact),
         false,
         retrySteps,
       );
     }
 
     if (contextResult.status === "cancelled") {
-      tui.renderSummary({
+      turn.cancel();
+      const summary = {
         success: false,
         steps: contextResult.steps,
         durationMs: Math.round(performance.now() - started),
         promptTokens: contextResult.usage?.promptTokens ?? 0,
         completionTokens: contextResult.usage?.completionTokens ?? 0,
         estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
-      });
-      return;
+      };
+      tui.renderSummary(summary);
+      return { status: "cancelled", intent: turnContext.intent, task: turnContext.task, summary };
     }
 
     if (contextResult.status !== "completed") {
       if (!isContextBudgetResult(contextResult)) {
-        tui.renderSummary({
+        turn.fail();
+        const summary = {
           success: false,
           steps: contextResult.steps,
           durationMs: Math.round(performance.now() - started),
           promptTokens: contextResult.usage?.promptTokens ?? 0,
           completionTokens: contextResult.usage?.completionTokens ?? 0,
           estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
-        });
-        return;
+        };
+        tui.renderSummary(summary);
+        return { status: "failed", intent: turnContext.intent, task: turnContext.task, summary };
       }
     }
 
+    turn.beginPlanning();
     const planningPrompt = buildPlanningPrompt(request.task, contextResult.outputText);
     let planningResult = await runPhase(planningPrompt, false, planningMaxSteps);
     if (planningResult.status === "cancelled") {
-      tui.renderSummary({
+      turn.cancel();
+      const summary = {
         success: false,
         steps: planningResult.steps,
         durationMs: Math.round(performance.now() - started),
         promptTokens: planningResult.usage?.promptTokens ?? 0,
         completionTokens: planningResult.usage?.completionTokens ?? 0,
         estimatedCostUsd: planningResult.estimatedCostUsd ?? 0,
-      });
-      return;
+      };
+      tui.renderSummary(summary);
+      return { status: "cancelled", intent: turnContext.intent, task: turnContext.task, summary };
     }
 
     if (planningResult.status !== "completed") {
-      tui.renderSummary({
+      turn.fail();
+      const summary = {
         success: false,
         steps: planningResult.steps,
         durationMs: Math.round(performance.now() - started),
         promptTokens: planningResult.usage?.promptTokens ?? 0,
         completionTokens: planningResult.usage?.completionTokens ?? 0,
         estimatedCostUsd: planningResult.estimatedCostUsd ?? 0,
-      });
-      return;
+      };
+      tui.renderSummary(summary);
+      return { status: "failed", intent: turnContext.intent, task: turnContext.task, summary };
     }
 
     let plan = parseExecutionPlan(planningResult.outputText);
@@ -629,7 +652,8 @@ export async function runTask(
     }
 
     if (!plan) {
-      tui.renderSummary({
+      turn.fail();
+      const summary = {
         success: false,
         steps: Math.max(1, planningResult.steps),
         durationMs: Math.round(performance.now() - started),
@@ -640,8 +664,9 @@ export async function runTask(
           (planningResult.usage?.completionTokens ?? 0),
         estimatedCostUsd:
           (contextResult.estimatedCostUsd ?? 0) + (planningResult.estimatedCostUsd ?? 0),
-      });
-      return;
+      };
+      tui.renderSummary(summary);
+      return { status: "failed", intent: turnContext.intent, task: turnContext.task, summary };
     }
 
     tui.renderApprovalPrompt({
@@ -649,6 +674,7 @@ export async function runTask(
       options: ["running"],
     });
     const attemptImplementationAndVerification = async (implementationPrompt: string) => {
+      turn.beginImplementation();
       phase.beginImplementation();
       const implementationResult = await runPhase(implementationPrompt, true, request.maxSteps);
 
@@ -668,6 +694,7 @@ export async function runTask(
       let verificationReport: VerificationReport | null = null;
 
       if (implementationResult.status === "completed") {
+        turn.beginVerification();
         phase.beginVerification();
         tui.renderApprovalPrompt({
           message: "Implementation completed. Running verification...",
@@ -695,6 +722,7 @@ export async function runTask(
     );
 
     if (isContextPressureFailure(runOutcome.implementationResult)) {
+      turn.beginCompaction();
       const compactRun = await runPhase(
         buildCompactionPrompt(
           request.task,
@@ -737,6 +765,7 @@ export async function runTask(
       runOutcome.verificationReport?.passed === false;
 
     if (shouldRepair) {
+      turn.beginRepair();
       const report = runOutcome.verificationReport!;
       const repairPlanning = await runPhase(
         [
@@ -795,11 +824,19 @@ export async function runTask(
         ? true
         : runOutcome.verificationResult.status === "completed" &&
           (runOutcome.verificationReport?.passed ?? false);
-    tui.renderSummary({
-      success:
-        (runOutcome.implementationResult.status === "completed" ||
-          runOutcome.implementationResult.status === "cancelled") &&
-        verificationPassed,
+    if (
+      (runOutcome.implementationResult.status === "completed" ||
+        runOutcome.implementationResult.status === "cancelled") &&
+      verificationPassed
+    ) {
+      turn.finish();
+    } else if (runOutcome.implementationResult.status === "cancelled") {
+      turn.cancel();
+    } else {
+      turn.fail();
+    }
+    const summary = {
+      success: turn.state === "done",
       steps: runOutcome.implementationResult.steps + (runOutcome.verificationResult?.steps ?? 0),
       durationMs: Math.round(performance.now() - started),
       promptTokens: usage.promptTokens,
@@ -809,7 +846,16 @@ export async function runTask(
         (planningResult.estimatedCostUsd ?? 0) +
         (runOutcome.implementationResult.estimatedCostUsd ?? 0) +
         (runOutcome.verificationResult?.estimatedCostUsd ?? 0),
-    });
+    };
+    tui.renderSummary(summary);
+    void pruneSessionAfterTurn(state.sessionId);
+    return {
+      status:
+        turn.state === "done" ? "completed" : turn.state === "cancelled" ? "cancelled" : "failed",
+      intent: turnContext.intent,
+      task: turnContext.task,
+      summary,
+    };
   } finally {
     clearInterval(spinner);
     tui.onCancelRunning(null);

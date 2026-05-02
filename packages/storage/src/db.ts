@@ -87,6 +87,20 @@ function initSchema(database: Database): void {
       ON model_messages(session_id, created_at);
     CREATE UNIQUE INDEX IF NOT EXISTS model_messages_session_id_seq_idx
       ON model_messages(session_id, seq);
+
+    CREATE TABLE IF NOT EXISTS turn_results (
+      id TEXT PRIMARY KEY NOT NULL,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      intent TEXT NOT NULL,
+      status TEXT NOT NULL,
+      task TEXT NOT NULL,
+      summary_json TEXT,
+      message TEXT,
+      created_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS turn_results_session_id_created_at_idx
+      ON turn_results(session_id, created_at);
   `);
 
   initialized = true;

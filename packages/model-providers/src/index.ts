@@ -7,6 +7,7 @@ import { generateText } from "ai";
 import type { LanguageModel, ModelMessage } from "ai";
 import { z } from "zod";
 import { estimateUsageCost, resolveModelPricing, type ModelPricing } from "./model-pricing.js";
+export { estimateModelMessageTokens, estimateTextTokens } from "./token-estimation.js";
 
 export { estimateUsageCost, resolveModelPricing } from "./model-pricing.js";
 export type { ModelPricing } from "./model-pricing.js";

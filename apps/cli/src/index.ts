@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
-import { runTask, titleFromTask } from "./task-runner.js";
 import type { SupportedProvider } from "@xeq/model-providers";
 import { type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
 import {
@@ -39,6 +38,8 @@ import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.
 import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compact.js";
 import { KeybindManager } from "./keybinds.js";
 import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
+import { titleFromTask } from "./task-title.js";
+import { runTurn } from "./turn-runner.js";
 import { loadTuiConfig } from "./tui-config.js";
 import type { SessionState } from "./session-state.js";
 
@@ -995,7 +996,7 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
     }
 
     try {
-      await runTask(line, tui, state);
+      await runTurn(line, tui, state);
     } catch (error) {
       tui.renderApprovalPrompt({
         message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -1086,7 +1087,7 @@ async function main(): Promise<void> {
       if (isCasualGreeting(initialTask)) {
         renderGreetingReply(tui, initialTask);
       } else {
-        await runTask(initialTask, tui, state);
+        await runTurn(initialTask, tui, state);
       }
     }
 

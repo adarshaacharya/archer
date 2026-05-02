@@ -56,6 +56,50 @@ export function buildContextGatheringPrompt(task: string): string {
   ].join("\n");
 }
 
+export function buildResearchAnswerPrompt(task: string, mode: "question" | "research"): string {
+  return [
+    mode === "question"
+      ? "Answer the user's question by first inspecting the current repository state."
+      : "Research the current repository state before responding.",
+    "Read the relevant code, configuration, and docs before answering.",
+    "Do not write, patch, or delete files in this phase.",
+    "If repository context is insufficient, say exactly what remains uncertain.",
+    "Return a direct answer grounded in what you inspected.",
+    "Task:",
+    task.trim(),
+  ].join("\n");
+}
+
+export function prependContinuationBrief(
+  prompt: string,
+  continuation:
+    | {
+        summary: string;
+        criticalFiles: string[];
+        openRisks: string[];
+      }
+    | null
+    | undefined,
+): string {
+  if (!continuation) {
+    return prompt;
+  }
+
+  const criticalFiles =
+    continuation.criticalFiles.length > 0 ? continuation.criticalFiles.join(", ") : "(none)";
+  const openRisks =
+    continuation.openRisks.length > 0 ? continuation.openRisks.join(" | ") : "(none)";
+
+  return [
+    "Continuation brief from prior compacted session context:",
+    `Summary: ${continuation.summary.trim() || "(none)"}`,
+    `Critical files: ${criticalFiles}`,
+    `Open risks: ${openRisks}`,
+    "",
+    prompt,
+  ].join("\n");
+}
+
 export function buildPlanningPrompt(task: string, contextSummary: string): string {
   return [
     "Produce an execution plan for the task below.",
