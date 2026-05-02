@@ -8,7 +8,9 @@ export interface TaskPhaseController {
   isVerificationPhase(): boolean;
 }
 
-export function createTaskPhaseController(initialPhase: TaskPhase = "context"): TaskPhaseController {
+export function createTaskPhaseController(
+  initialPhase: TaskPhase = "context",
+): TaskPhaseController {
   let phase = initialPhase;
 
   return {
@@ -40,6 +42,8 @@ export function buildSystemPrompt(): string {
     "If you must ask, do all non-blocked work first, ask exactly one targeted question, include your recommended default, and say what changes based on the answer.",
     "Never ask permission questions like 'Should I proceed?' or 'Do you want me to run tests?'; proceed with the most reasonable option and mention what you did.",
     "Make minimal safe edits and use tools deliberately.",
+    "If the user asks you to add a file in a missing folder inside the workspace, create the parent directory as part of the implementation instead of treating it as a blocker.",
+    "Use createDirectory for explicit folder creation when needed, then use preparePatch or preparePatchBundle for file contents.",
     "Prefer preparePatchBundle for multi-file changes and preparePatch for single-file changes.",
     "These tools show a reviewable diff and apply the change immediately when approved.",
   ].join(" ");
@@ -216,7 +220,11 @@ export function buildVerificationPrompt(task: string, planJson: string): string 
   ].join("\n");
 }
 
-export function buildCompactionPrompt(task: string, planJson: string, latestContext: string): string {
+export function buildCompactionPrompt(
+  task: string,
+  planJson: string,
+  latestContext: string,
+): string {
   return [
     "Create a compact continuation brief for the current task.",
     "Do not call tools in this phase.",

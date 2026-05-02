@@ -16,6 +16,10 @@ export function classifyToolCall(
     return { permission: "read", pattern: "*", action: "allow" };
   }
 
+  if (toolName === "createDirectory") {
+    return { permission: "edit", pattern: directoryPattern(input), action: "ask" };
+  }
+
   if (["preparePatch", "preparePatchBundle"].includes(toolName)) {
     return { permission: "patch_review", pattern: "*", action: "allow" };
   }
@@ -136,6 +140,14 @@ function filePattern(input: unknown): string {
   if (typeof filePath !== "string" || filePath.trim() === "") return "*";
 
   return filePath;
+}
+
+function directoryPattern(input: unknown): string {
+  if (!input || typeof input !== "object") return "*";
+  const dirPath = (input as { dirPath?: unknown }).dirPath;
+  if (typeof dirPath !== "string" || dirPath.trim() === "") return "*";
+
+  return dirPath;
 }
 
 function commandPattern(input: unknown): string {

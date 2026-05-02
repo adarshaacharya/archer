@@ -239,7 +239,26 @@ export function createEditTools(fs: FsProvider, options: EditToolsOptions = {}) 
     },
   });
 
+  const createDirectory = tool({
+    description:
+      "Create a directory on the local filesystem. Creates parent directories by default.",
+    inputSchema: z.object({
+      dirPath: z.string().min(1),
+      recursive: z.boolean().optional().default(true),
+    }),
+    execute: async (input) => {
+      const resolvedPath = fs.resolvePath(input.dirPath);
+      await fs.mkdir(input.dirPath, { recursive: input.recursive });
+      return {
+        dirPath: resolvedPath,
+        created: true,
+        recursive: input.recursive,
+      };
+    },
+  });
+
   return {
+    createDirectory,
     preparePatchBundle,
     preparePatch,
   };

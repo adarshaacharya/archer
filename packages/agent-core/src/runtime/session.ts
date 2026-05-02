@@ -87,6 +87,7 @@ function createSession({
   });
   const tools = {
     ...createLocalTools({ fs: trackedFs, shell: providers.shell }),
+    createDirectory: editTools.createDirectory,
     preparePatchBundle: editTools.preparePatchBundle,
     preparePatch: editTools.preparePatch,
     ...(providers.webSearch
