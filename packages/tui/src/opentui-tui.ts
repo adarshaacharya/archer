@@ -490,39 +490,30 @@ export class PiTui implements Tui {
   renderUserMessage(message: string): void {
     const text = normalizeText(message);
     if (!text) return;
-    this.renderTranscriptCard(text, {
-      boxId: "user-msg-box",
-      textId: "user-msg-text",
-      borderColor: col.user,
-      backgroundColor: col.userBg,
-    });
-    this.print("");
+    this.print(`› ${text}`, col.text);
   }
 
   renderInfoMessage(message: string): void {
     const text = normalizeText(message);
     if (!text) return;
-    this.renderInfoCard(text);
+    for (const line of text.split("\n")) {
+      this.print(line, col.muted);
+    }
   }
 
   renderInfoLines(lines: Array<{ text: string; color?: string }>): void {
-    const content = lines.map((line) => line.text).join("\n");
-    if (!content) return;
-    this.renderInfoCard(content, lines.map((line) => line.color ?? col.muted)[0]);
+    for (const line of lines) {
+      this.print(line.text, line.color ?? col.muted);
+    }
   }
 
   renderStep(step: AgentStep): void {
     const observation = step.observation ? normalizeText(step.observation).split("\n").slice(0, 3).join("\n") : "";
-    const content = observation
-      ? `● ${step.action}  step ${step.step}\n${observation}`
-      : `● ${step.action}  step ${step.step}`;
-    this.renderTranscriptCard(content, {
-      boxId: `step-${step.step}`,
-      textId: `step-text-${step.step}`,
-      borderColor: col.step,
-      backgroundColor: "#0f141b",
-      textColor: col.step,
-    });
+    this.print(`● ${step.action}  step ${step.step}`, col.step);
+    if (!observation) return;
+    for (const line of observation.split("\n")) {
+      this.print(`  ${line}`, col.step);
+    }
   }
 
   renderAssistantDelta(delta: string): void {
@@ -675,7 +666,6 @@ export class PiTui implements Tui {
           id: opts.textId,
           content,
           width: contentWidth,
-          height: "auto",
           wrapMode: "word",
           truncate: false,
           fg: opts.textColor ?? col.text,
@@ -704,7 +694,6 @@ export class PiTui implements Tui {
           id: "info-msg-text",
           content,
           width: contentWidth,
-          height: "auto",
           wrapMode: "word",
           truncate: false,
           fg: textColor,
