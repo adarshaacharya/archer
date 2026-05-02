@@ -171,8 +171,7 @@ export async function pruneSessionTranscripts(input: {
   let prunedTokens = 0;
   const rowsToPrune: Array<{ id: string; nextContent: string }> = [];
 
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const row = rows[index];
+  for (const row of [...rows].reverse()) {
     if (row.role !== "assistant" || row.kind !== "transcript") {
       continue;
     }
@@ -240,8 +239,7 @@ export async function loadLatestCompactContinuationArtifact(
     orderBy: [asc(messages.seq)],
   });
 
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const row = rows[index];
+  for (const row of [...rows].reverse()) {
     if (row.kind !== COMPACT_ARTIFACT_KIND) {
       continue;
     }
@@ -287,8 +285,7 @@ export async function estimateSessionTranscriptPressure(input: {
   let retainedTokens = 0;
   let prunableTokens = 0;
 
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const row = rows[index];
+  for (const row of [...rows].reverse()) {
     if (row.role !== "assistant" || row.kind !== "transcript") {
       continue;
     }
@@ -332,8 +329,7 @@ export async function buildCompactContinuationArtifact(input: {
   let seenAssistantMessages = 0;
   const prunableSegments: string[] = [];
 
-  for (let index = rows.length - 1; index >= 0; index -= 1) {
-    const row = rows[index];
+  for (const row of [...rows].reverse()) {
     if (row.role !== "assistant" || row.kind !== "transcript") {
       continue;
     }

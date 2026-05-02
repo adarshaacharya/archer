@@ -76,11 +76,13 @@ describe("runTurn integration", () => {
     );
 
     expect(runTaskMock).toHaveBeenCalledTimes(1);
-    expect(runTaskMock.mock.calls[0]?.[0]).toBe("what is the code doing right now");
-    expect(runTaskMock.mock.calls[0]?.[4]).toBe("question");
+    const runTaskCalls = runTaskMock.mock.calls as unknown[][];
+    expect(runTaskCalls[0]?.[0]).toBe("what is the code doing right now");
+    expect(runTaskCalls[0]?.[4]).toBe("question");
     expect(result.status).toBe("completed");
     expect(appendTurnResultMock).toHaveBeenCalledTimes(1);
-    expect(appendTurnResultMock.mock.calls[0]?.[0]).toMatchObject({
+    const appendTurnResultCalls = appendTurnResultMock.mock.calls as unknown[][];
+    expect(appendTurnResultCalls[0]?.[0]).toMatchObject({
       sessionId: "session_test",
       intent: "question",
       status: "completed",
@@ -155,7 +157,8 @@ describe("runTurn integration", () => {
       state,
     );
 
-    expect(appendTurnResultMock.mock.calls[0]?.[0]).toMatchObject({
+    const appendTurnResultCalls = appendTurnResultMock.mock.calls as unknown[][];
+    expect(appendTurnResultCalls[0]?.[0]).toMatchObject({
       sessionId: "session_test",
       intent: "ambiguous",
       status: "clarify",

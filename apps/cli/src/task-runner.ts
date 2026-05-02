@@ -516,10 +516,6 @@ function turnStatusLabel(stateName: string, intent: TurnContext["intent"]): stri
       return "Routing turn";
     case "researching":
       return intent === "change" ? "Gathering context" : "Researching";
-    case "summarizing":
-      return "Summarizing findings";
-    case "answering":
-      return "Answering";
     case "planning":
       return "Planning";
     case "implementing":
@@ -809,9 +805,6 @@ export async function runTask(
       const decision = evaluateQuestionAnswerReadiness(questionStrategy, questionExploration);
       if (decision.ready) {
         questionAnswerReadyReason ??= decision.reason;
-        if (turn.state === "researching") {
-          turn.beginSummarizing();
-        }
         tui.renderApprovalPrompt({
           message: `Answer-ready: ${questionAnswerReadyReason}. Synthesizing...`,
           options: ["esc=abort"],
@@ -848,9 +841,6 @@ export async function runTask(
 
           if (step.action === "model.final") {
             if (persistTranscript) {
-              if (turn.state === "researching") {
-                turn.beginSummarizing();
-              }
               tui.finalizeAssistantStream(step.observation);
               if (step.observation?.trim()) {
                 void appendMessage({
@@ -874,9 +864,6 @@ export async function runTask(
         },
         onTextDelta: persistTranscript
           ? (delta) => {
-              if (turn.state === "researching" || turn.state === "summarizing") {
-                turn.beginAnswering();
-              }
               tui.renderAssistantDelta(delta);
             }
           : undefined,

@@ -4,7 +4,30 @@ import {
   buildDirectAnswerSystemPrompt,
   buildQuestionStrategy,
   buildResearchAnswerPrompt,
+  createTaskPhaseController,
 } from "./task-flow.js";
+
+describe("task phase controller", () => {
+  it("starts in context phase", () => {
+    const controller = createTaskPhaseController();
+
+    expect(controller.phase).toBe("context");
+    expect(controller.isContextPhase()).toBe(true);
+    expect(controller.isVerificationPhase()).toBe(false);
+  });
+
+  it("tracks implementation and verification transitions", () => {
+    const controller = createTaskPhaseController("context");
+
+    controller.beginImplementation();
+    expect(controller.phase).toBe("implementation");
+    expect(controller.isContextPhase()).toBe(false);
+
+    controller.beginVerification();
+    expect(controller.phase).toBe("verification");
+    expect(controller.isVerificationPhase()).toBe(true);
+  });
+});
 
 describe("question strategy", () => {
   it("uses generic discovery without semantic question buckets", () => {
