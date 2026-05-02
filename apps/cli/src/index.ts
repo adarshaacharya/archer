@@ -36,6 +36,7 @@ import {
   saveWebProviderAuth,
 } from "./auth-store.js";
 import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.js";
+import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compact.js";
 import { KeybindManager } from "./keybinds.js";
 import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
 import { loadTuiConfig } from "./tui-config.js";
@@ -739,7 +740,7 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message:
-        "Commands: /help, /new, /resume, /commit, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+        "Commands: /help, /new, /resume, /commit, /compact, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
     };
   }
 
@@ -752,6 +753,14 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message: "Commit workflow finished.",
+    };
+  }
+
+  if (command === "compact") {
+    await runTask(compactWorkflowPrompt(), tui, state);
+    return {
+      type: "continue",
+      message: "Compaction workflow finished.",
     };
   }
 
@@ -1025,6 +1034,7 @@ async function main(): Promise<void> {
     { name: "/new", description: "start a fresh session" },
     { name: "/resume", description: "pick and resume a saved session" },
     commitSlashCommandItem,
+    compactSlashCommandItem,
     { name: "/connect", description: "connect a model provider" },
     { name: "/change-key", description: "update a provider API key" },
     { name: "/disconnect", description: "remove a saved provider key" },

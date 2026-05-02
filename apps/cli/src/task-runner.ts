@@ -4,6 +4,7 @@ import {
   buildPlanningPrompt,
   buildImplementationPrompt,
   buildVerificationPrompt,
+  buildCompactionPrompt,
   createTaskPhaseController,
   createToolApprovalHandler,
   type OpenHarnessRuntimeDeps,
@@ -18,6 +19,10 @@ import { webFetchRuleForUrl } from "./settings-store.js";
 import type { SessionState } from "./session-state.js";
 import type { Tui } from "@xeq/tui";
 import { resolveActiveWebProvider } from "./auth-store.js";
+import {
+  isContextPressureFailure,
+  parseCompactionReport,
+} from "./recovery/compaction.js";
 
 export function titleFromTask(task: string): string {
   return task.replace(/\s+/g, " ").trim().slice(0, 80);
@@ -488,6 +493,7 @@ export async function runTask(
   const contextMaxSteps = Math.min(16, Math.max(8, Math.floor(request.maxSteps / 8)));
   const planningMaxSteps = Math.min(24, Math.max(10, Math.floor(request.maxSteps / 6)));
   const verificationMaxSteps = Math.min(24, Math.max(8, Math.floor(request.maxSteps / 6)));
+  const compactionMaxSteps = Math.min(18, Math.max(8, Math.floor(request.maxSteps / 10)));
 
   const runPhase = async (prompt: string, persistTranscript: boolean, maxSteps: number) =>
     runOpenHarnessRuntime(
@@ -687,6 +693,43 @@ export async function runTask(
     let runOutcome = await attemptImplementationAndVerification(
       buildImplementationPrompt(request.task, JSON.stringify(plan, null, 2)),
     );
+
+    if (isContextPressureFailure(runOutcome.implementationResult)) {
+      const compactRun = await runPhase(
+        buildCompactionPrompt(
+          request.task,
+          JSON.stringify(plan, null, 2),
+          runOutcome.implementationResult.outputText,
+        ),
+        false,
+        compactionMaxSteps,
+      );
+      const compacted = compactRun.status === "completed" ? parseCompactionReport(compactRun.outputText) : null;
+
+      if (compacted) {
+        tui.renderApprovalPrompt({
+          message: "Context pressure detected. Retrying with compacted context...",
+          options: ["running"],
+        });
+        runOutcome = await attemptImplementationAndVerification(
+          buildImplementationPrompt(
+            request.task,
+            [
+              JSON.stringify(plan, null, 2),
+              "Compacted continuation brief:",
+              JSON.stringify(compacted, null, 2),
+            ].join("\n\n"),
+          ),
+        );
+      }
+
+      planningResult = {
+        ...planningResult,
+        usage: mergeUsage(planningResult.usage, compactRun.usage),
+        estimatedCostUsd: (planningResult.estimatedCostUsd ?? 0) + (compactRun.estimatedCostUsd ?? 0),
+        steps: planningResult.steps + compactRun.steps,
+      };
+    }
 
     const shouldRepair =
       runOutcome.implementationResult.status === "completed" &&

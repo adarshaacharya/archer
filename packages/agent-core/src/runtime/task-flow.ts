@@ -99,3 +99,19 @@ export function buildVerificationPrompt(task: string, planJson: string): string 
     task.trim(),
   ].join("\n");
 }
+
+export function buildCompactionPrompt(task: string, planJson: string, latestContext: string): string {
+  return [
+    "Create a compact continuation brief for the current task.",
+    "Do not call tools in this phase.",
+    "Return strict JSON only (no markdown, no extra text) in this exact shape:",
+    '{ "summary": string, "criticalFiles": string[], "openRisks": string[] }',
+    "Keep summary dense and implementation-focused.",
+    "Execution plan (JSON):",
+    planJson.trim(),
+    "Latest context/output:",
+    latestContext.trim() || "(none)",
+    "Task:",
+    task.trim(),
+  ].join("\n");
+}
