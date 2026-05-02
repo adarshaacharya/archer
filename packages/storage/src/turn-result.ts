@@ -6,7 +6,7 @@ import { turn_results } from "./schema.js";
 export type PersistedTurnResult = {
   id: string;
   sessionId: string;
-  turnKind?: "user" | "compact";
+  turnKind?: "user" | "compact" | "commit";
   intent: string;
   status: string;
   task: string;

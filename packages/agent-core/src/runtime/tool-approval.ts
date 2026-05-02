@@ -60,6 +60,7 @@ export function createToolApprovalHandler(opts: {
   phase: TaskPhaseController;
   patchApprovedPaths: Set<string>;
   requestApproval: ApprovalHandler;
+  allowBashInContext?: boolean;
 }) {
   let lastToolSignature: string | null = null;
   let repeatedToolCount = 0;
@@ -91,7 +92,11 @@ export function createToolApprovalHandler(opts: {
     }
 
     if (opts.phase.isContextPhase()) {
-      return decision.permission === "read" || decision.permission === "web_fetch";
+      return (
+        decision.permission === "read" ||
+        decision.permission === "web_fetch" ||
+        (opts.allowBashInContext === true && decision.permission === "bash")
+      );
     }
 
     if (opts.phase.isVerificationPhase()) {

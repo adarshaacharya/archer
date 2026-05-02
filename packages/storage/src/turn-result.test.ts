@@ -40,7 +40,7 @@ describe("turn result storage", () => {
     await appendTurnResult({
       id: `${sessionId}-t1`,
       sessionId,
-      turnKind: "user",
+      turnKind: "commit",
       intent: "research",
       status: "completed",
       task: "Inspect current compaction state",
@@ -63,7 +63,7 @@ describe("turn result storage", () => {
 
     const all = await getTurnResults(sessionId);
     expect(all).toHaveLength(2);
-    expect(all[0]?.turnKind).toBe("user");
+    expect(all[0]?.turnKind).toBe("commit");
     expect(all[0]?.intent).toBe("research");
     expect(all[0]?.summary).toEqual({ steps: 3, durationMs: 1200 });
     expect(all[1]?.status).toBe("failed");

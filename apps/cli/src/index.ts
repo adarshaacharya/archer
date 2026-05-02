@@ -3,6 +3,7 @@ import "./ai-sdk-warnings.js";
 import type { SupportedProvider } from "@xeq/model-providers";
 import { type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
 import {
+  appendTurnResult,
   createSession,
   getMessages,
   getSession,
@@ -44,6 +45,7 @@ import { runTask } from "./task-runner.js";
 import { runTurn } from "./turn-runner.js";
 import { loadTuiConfig } from "./tui-config.js";
 import type { SessionState } from "./session-state.js";
+import type { TurnResult } from "./turn-types.js";
 
 function parseInitialTask(argv: string[]): string | null {
   const task = argv.join(" ").trim();
@@ -104,6 +106,23 @@ type SlashCommandResult =
     }
   | { type: "exit" }
   | { type: "none" };
+
+async function persistSlashTurnResult(
+  sessionId: string,
+  result: TurnResult,
+  turnKind: "user" | "compact" | "commit",
+): Promise<void> {
+  await appendTurnResult({
+    id: `${sessionId}_turn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    sessionId,
+    turnKind,
+    intent: result.intent,
+    status: result.status,
+    task: result.task,
+    summary: result.summary,
+    message: result.message,
+  });
+}
 
 function activeProviderSummary(state: SessionState): string {
   if (!state.provider || !state.authSource) {
@@ -798,7 +817,18 @@ async function handleSlashCommand(
   }
 
   if (command === "commit") {
-    await runTask(commitWorkflowPrompt(state.projectRoot), tui, state);
+    const result = await runTask(
+      commitWorkflowPrompt(state.projectRoot),
+      tui,
+      state,
+      undefined,
+      "change",
+      {
+        workflowKind: "commit",
+        displayTask: "Create a single git commit for the current repository state.",
+      },
+    );
+    await persistSlashTurnResult(state.sessionId, result, "commit");
     return {
       type: "continue",
       message: "Commit workflow finished.",
@@ -806,7 +836,8 @@ async function handleSlashCommand(
   }
 
   if (command === "compact") {
-    await runTask(compactWorkflowPrompt(), tui, state);
+    const result = await runTask(compactWorkflowPrompt(), tui, state);
+    await persistSlashTurnResult(state.sessionId, result, "compact");
     return {
       type: "continue",
       message: "Compaction workflow finished.",

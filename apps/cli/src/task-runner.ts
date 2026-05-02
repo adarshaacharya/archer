@@ -127,6 +127,10 @@ export async function runTask(
   state: SessionState,
   abortController?: AbortController,
   intent: TurnContext["intent"] = "change",
+  options?: {
+    workflowKind?: "default" | "commit" | "compact";
+    displayTask?: string;
+  },
 ): Promise<TurnResult> {
   const activeAbortController = abortController ?? new AbortController();
   const request = AgentRequestSchema.parse({
@@ -138,14 +142,14 @@ export async function runTask(
   });
 
   if (!state.sessionTitle) {
-    state.sessionTitle = titleFromTask(request.task);
+    state.sessionTitle = titleFromTask(options?.displayTask ?? request.task);
     await updateSessionTitle({
       id: state.sessionId,
       title: state.sessionTitle,
     });
   }
 
-  tui.renderApprovalPrompt({ message: request.task, options: ["running"] });
+  tui.renderApprovalPrompt({ message: options?.displayTask ?? request.task, options: ["running"] });
 
   const started = performance.now();
   const continuationArtifact = await loadLatestCompactContinuationArtifact(state.sessionId);
@@ -201,13 +205,13 @@ export async function runTask(
     },
   });
 
-  tui.renderUserMessage(request.task);
+  tui.renderUserMessage(options?.displayTask ?? request.task);
   await appendMessage({
     id: newMessageId(state.sessionId, "user"),
     session_id: state.sessionId,
     role: "user",
     kind: "transcript",
-    content: request.task,
+    content: options?.displayTask ?? request.task,
   });
 
   const webSearch = createWebSearchProvider(
@@ -283,6 +287,7 @@ export async function runTask(
     phase,
     patchApprovedPaths,
     requestApproval: requestApprovalForTool,
+    allowBashInContext: options?.workflowKind === "commit",
   });
 
   const approvePatchApply = async (preview: PatchPreview) => {
