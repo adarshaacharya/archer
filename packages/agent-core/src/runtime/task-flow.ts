@@ -205,11 +205,15 @@ export function buildImplementationPrompt(task: string, planJson: string): strin
   ].join("\n");
 }
 
-export function buildVerificationPrompt(task: string, planJson: string): string {
+export function buildVerificationPrompt(
+  task: string,
+  planJson: string,
+  validationInstruction?: string,
+): string {
   return [
     "Verify the implementation changes for the task below.",
     "Do not edit, patch, or delete files in this phase.",
-    "Inspect changed files and run relevant checks/tests/lint commands.",
+    validationInstruction ?? "Inspect changed files and run relevant checks/tests/lint commands.",
     "If checks fail, report concrete failures and likely root causes.",
     "Return strict JSON only (no markdown, no extra text) in this exact shape:",
     '{ "passed": boolean, "commands": string[], "findings": string[] }',

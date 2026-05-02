@@ -88,6 +88,9 @@ export function createEvalMetricsCollector() {
         collectChangedPaths(changedPaths, event.output);
       }
     },
+    currentChangedPaths(): string[] {
+      return [...changedPaths].sort();
+    },
     summarize(): EvalMetricsSummary {
       return {
         approvalCount,

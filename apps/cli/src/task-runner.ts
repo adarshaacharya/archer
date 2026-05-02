@@ -5,6 +5,13 @@ import {
   createCompactionMetadata,
   buildRepairPlanningPrompt,
   buildQuestionLimitFinalAnswerPrompt,
+  buildVerificationScopeInstruction,
+  shouldAttemptVerification,
+  shouldAttemptRepair,
+  shouldRetryWithCompactedContext,
+  shouldContinueAfterContextFailure,
+  shouldStopCommitWorkflowAfterContext,
+  deriveValidationScope,
   didVerificationPass,
   deriveCompactionPolicy,
   type ImplementationRunOutcome,
@@ -512,12 +519,23 @@ export async function runTask(
         : {},
     );
 
-    if (intent === "change" && isContextBudgetResult(contextResult)) {
+    if (
+      shouldContinueAfterContextFailure({
+        intent,
+        status: contextResult.status,
+        isContextBudgetResult: isContextBudgetResult(contextResult),
+      })
+    ) {
       const retrySteps = expandedContextSteps(request.maxSteps, contextMaxSteps);
       contextResult = await runPhase(researchPrompt, false, retrySteps);
     }
 
-    if (taskOptions?.workflowKind === "commit" && commitWorkflowCompleted) {
+    if (
+      shouldStopCommitWorkflowAfterContext({
+        workflowKind: taskOptions?.workflowKind,
+        commitWorkflowCompleted,
+      })
+    ) {
       turn.finish();
       const summary = buildSummary({
         success: true,
@@ -826,7 +844,16 @@ export async function runTask(
       } | null = null;
       let verificationReport: VerificationReport | null = null;
 
-      if (implementationResult.status === "completed") {
+      if (
+        shouldAttemptVerification({
+          workflowKind: taskOptions?.workflowKind,
+          implementationStatus: implementationResult.status,
+        })
+      ) {
+        const validationScope = deriveValidationScope({
+          workflowKind: taskOptions?.workflowKind,
+          changedPaths: evalMetrics.currentChangedPaths(),
+        });
         turn.beginVerification();
         phase.beginVerification();
         tui.renderApprovalPrompt({
@@ -834,7 +861,11 @@ export async function runTask(
           options: ["running"],
         });
         verificationResult = await runPhase(
-          buildVerificationPrompt(request.task, JSON.stringify(plan, null, 2)),
+          buildVerificationPrompt(
+            request.task,
+            JSON.stringify(plan, null, 2),
+            buildVerificationScopeInstruction(validationScope),
+          ),
           false,
           verificationMaxSteps,
         );
@@ -895,7 +926,12 @@ export async function runTask(
         },
       });
 
-      if (compacted) {
+      if (
+        shouldRetryWithCompactedContext({
+          implementationStatus: runOutcome.implementationResult.status,
+          hasCompactionReport: compacted !== null,
+        })
+      ) {
         tui.renderApprovalPrompt({
           message: "Context pressure detected. Retrying with compacted context...",
           options: ["running"],
@@ -915,7 +951,14 @@ export async function runTask(
       planningResult = accumulatePlanningResult(planningResult, compactRun);
     }
 
-    const shouldRepair = shouldRepairImplementationOutcome(runOutcome);
+    const shouldRepair =
+      shouldRepairImplementationOutcome(runOutcome) &&
+      shouldAttemptRepair({
+        workflowKind: taskOptions?.workflowKind,
+        implementationStatus: runOutcome.implementationResult.status,
+        verificationStatus: runOutcome.verificationResult?.status ?? null,
+        verificationPassed: runOutcome.verificationReport?.passed ?? null,
+      });
 
     if (shouldRepair) {
       turn.beginRepair();
