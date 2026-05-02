@@ -315,6 +315,11 @@ export async function estimateSessionTranscriptPressure(input: {
 export async function buildCompactContinuationArtifact(input: {
   sessionId: string;
   keepRecentAssistantMessages?: number;
+  builder?: (content: string) => Promise<{
+    summary: string;
+    criticalFiles: string[];
+    openRisks: string[];
+  } | null>;
 }): Promise<CompactContinuationArtifact | null> {
   const keepRecentAssistantMessages =
     input.keepRecentAssistantMessages ?? DEFAULT_RECENT_ASSISTANT_MESSAGES_TO_KEEP;
@@ -350,14 +355,16 @@ export async function buildCompactContinuationArtifact(input: {
   }
 
   const combined = prunableSegments.reverse().join("\n\n");
-  const summary = summarizeTranscript(combined);
-  const criticalFiles = extractLikelyFiles(combined).slice(0, 12);
-  const openRisks = extractLikelyRisks(combined).slice(0, 8);
+  const built = (await input.builder?.(combined)) ?? {
+    summary: summarizeTranscript(combined),
+    criticalFiles: extractLikelyFiles(combined).slice(0, 12),
+    openRisks: extractLikelyRisks(combined).slice(0, 8),
+  };
 
   return {
-    summary,
-    criticalFiles,
-    openRisks,
+    summary: built.summary,
+    criticalFiles: built.criticalFiles,
+    openRisks: built.openRisks,
     source: "preturn-prune",
     createdAt: Date.now(),
   };

@@ -6,6 +6,7 @@ import {
   createSession,
   getMessages,
   getSession,
+  getTurnResults,
   listSessions,
   updateSessionTitle,
 } from "@xeq/storage";
@@ -381,10 +382,20 @@ async function historySummary(): Promise<Array<{ text: string; color?: string }>
     return [{ text: "No stored sessions for this project yet.", color: "#6E7681" }];
   }
 
-  return sessions.map((session, index) => ({
-    text: `${sessionLabel(session, index)}  ${sessionDescription(session)}`,
-    color: session.id.startsWith("session_") ? "#E6EDF3" : "#6E7681",
-  }));
+  const turnCounts = await Promise.all(
+    sessions.map(async (session) => ({
+      id: session.id,
+      turns: (await getTurnResults(session.id, 3)).length,
+    })),
+  );
+
+  return sessions.map((session, index) => {
+    const turnCount = turnCounts.find((item) => item.id === session.id)?.turns ?? 0;
+    return {
+      text: `${sessionLabel(session, index)}  ${sessionDescription(session)}  turns=${turnCount}`,
+      color: session.id.startsWith("session_") ? "#E6EDF3" : "#6E7681",
+    };
+  });
 }
 
 function renderStoredContent(content: string): string {
@@ -694,7 +705,10 @@ async function ensureWebProviderConnected(tui: Tui, state: SessionState): Promis
 }
 
 async function replaySessionTranscript(tui: Tui, sessionId: string): Promise<void> {
-  const messages = await getMessages(sessionId);
+  const [messages, turnResults] = await Promise.all([
+    getMessages(sessionId),
+    getTurnResults(sessionId, 10),
+  ]);
   if (messages.length === 0) {
     tui.renderInfoMessage(`No stored messages for ${sessionId}.`);
     return;
@@ -703,6 +717,13 @@ async function replaySessionTranscript(tui: Tui, sessionId: string): Promise<voi
   tui.renderInfoMessage(
     `Restored ${messages.length} stored message${messages.length === 1 ? "" : "s"} from ${sessionId}.`,
   );
+
+  if (turnResults.length > 0) {
+    tui.renderInfoMessage("Recent turn results:");
+    for (const turn of turnResults.slice(-5)) {
+      tui.renderInfoMessage(formatTurnResultLine(turn));
+    }
+  }
 
   for (const message of messages) {
     const content = renderStoredContent(message.content);
@@ -722,6 +743,32 @@ async function replaySessionTranscript(tui: Tui, sessionId: string): Promise<voi
 
     tui.renderInfoMessage(`[${message.role}] ${content}`);
   }
+}
+
+function formatTurnResultLine(turn: {
+  intent: string;
+  status: string;
+  task: string;
+  summary?: unknown;
+  created_at: number;
+}): string {
+  const summary = turn.summary as
+    | {
+        steps?: unknown;
+        durationMs?: unknown;
+        estimatedCostUsd?: unknown;
+      }
+    | null
+    | undefined;
+  const steps = typeof summary?.steps === "number" ? ` steps=${summary.steps}` : "";
+  const duration =
+    typeof summary?.durationMs === "number" ? ` dur=${Math.round(summary.durationMs)}ms` : "";
+  const cost =
+    typeof summary?.estimatedCostUsd === "number"
+      ? ` cost=$${summary.estimatedCostUsd.toFixed(4)}`
+      : "";
+  const task = turn.task.replace(/\s+/g, " ").trim().slice(0, 80);
+  return `[turn ${formatTimestamp(turn.created_at)}] ${turn.intent}/${turn.status}${steps}${duration}${cost}  ${task}`;
 }
 
 async function handleSlashCommand(

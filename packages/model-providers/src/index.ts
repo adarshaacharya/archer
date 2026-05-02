@@ -6,6 +6,7 @@ import { ProviderError } from "@xeq/shared";
 import { generateText } from "ai";
 import type { LanguageModel, ModelMessage } from "ai";
 import { z } from "zod";
+export { generateCompactContinuationArtifact } from "./compaction-artifact.js";
 import { estimateUsageCost, resolveModelPricing, type ModelPricing } from "./model-pricing.js";
 export { estimateModelMessageTokens, estimateTextTokens } from "./token-estimation.js";
 
@@ -26,6 +27,10 @@ export interface ResolvedLanguageModel {
   apiKeyEnvVar: string;
   model: LanguageModel;
   pricing?: ModelPricing;
+}
+
+export interface ResolvedCompactionModel extends ResolvedLanguageModel {
+  strategy: "dedicated" | "fallback-active";
 }
 
 export interface ModelResponse {
@@ -92,6 +97,21 @@ function normalizeModelId(provider: SupportedProvider, modelId: string): string 
       return trimmed.replace(/^(google|gemini)\//, "");
     default:
       return trimmed;
+  }
+}
+
+function compactionModelId(provider: SupportedProvider, activeModelId: string): string {
+  switch (provider) {
+    case "openai":
+      return "gpt-4o-mini";
+    case "gemini":
+      return "gemini-2.0-flash";
+    case "openrouter":
+      return "openai/gpt-4o-mini";
+    case "anthropic":
+      return activeModelId.includes("haiku") ? activeModelId : "claude-3-5-sonnet-latest";
+    default:
+      return activeModelId;
   }
 }
 
@@ -183,6 +203,27 @@ export function resolveLanguageModel(options: ResolveModelOptions = {}): Resolve
       };
     }
   }
+}
+
+export function resolveCompactionModel(options: ResolveModelOptions = {}): ResolvedCompactionModel {
+  const env = options.env ?? process.env;
+  const provider = normalizeProvider(options.provider ?? env[PROVIDER_ENV_VAR]);
+  const activeModelId = normalizeModelId(
+    provider,
+    options.modelId ?? env.AGENT_MODEL ?? defaultModelId(provider),
+  );
+  const dedicatedModelId = compactionModelId(provider, activeModelId);
+  const resolved = resolveLanguageModel({
+    ...options,
+    provider,
+    modelId: dedicatedModelId,
+    env,
+  });
+
+  return {
+    ...resolved,
+    strategy: dedicatedModelId === activeModelId ? "fallback-active" : "dedicated",
+  };
 }
 
 export class OpenRouterProvider implements ModelProvider {

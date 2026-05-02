@@ -1,8 +1,8 @@
 import type { SessionState } from "./session-state.js";
 import type { Tui } from "@xeq/tui";
 import { resetSessionById } from "@xeq/agent-core";
-import { appendTurnResult } from "@xeq/storage";
-import { routeInput } from "./intent-router.js";
+import { appendTurnResult, getTurnResults } from "@xeq/storage";
+import { routeInput, type InputIntent, type RoutedInput } from "./intent-router.js";
 import { runResearchTask } from "./research-runner.js";
 import { runTask } from "./task-runner.js";
 import { maybePruneSessionBeforeTurn } from "./recovery/prune.js";
@@ -14,9 +14,13 @@ export async function runTurn(
   state: SessionState,
   abortController?: AbortController,
 ): Promise<TurnResult> {
+  const recentTurns = await getTurnResults(state.sessionId, 5);
+  const compactionPolicy = deriveCompactionPolicy(recentTurns);
   const preturnPrune = await maybePruneSessionBeforeTurn(state.sessionId, {
     provider: state.provider,
     modelId: state.modelId,
+    protectTokens: compactionPolicy.protectTokens,
+    prunableTokens: compactionPolicy.prunableTokens,
   });
   if (
     preturnPrune.prunedCount > 0 ||
@@ -35,7 +39,7 @@ export async function runTurn(
     });
   }
 
-  const routed = routeInput(input);
+  const routed = routeInputWithHistory(input, recentTurns);
   if (routed.intent === "ambiguous") {
     const message = `Please ask a concrete question, a research request, or a code change task. ${routed.reason}`;
     tui.renderAssistantMessage(message);
@@ -68,4 +72,60 @@ async function persistTurnResult(sessionId: string, result: TurnResult): Promise
     summary: result.summary,
     message: result.message,
   });
+}
+
+export function routeInputWithHistory(
+  input: string,
+  recentTurns: Array<{ intent: string; status: string; task: string }>,
+): RoutedInput {
+  const routed = routeInput(input);
+  if (routed.intent !== "ambiguous") {
+    return routed;
+  }
+
+  const normalized = input.trim().toLowerCase();
+  const continuationCue = /^(also|and|then|now|next|continue|continue with|do that|fix that|same|again)\b/.test(
+    normalized,
+  );
+  if (!continuationCue) {
+    return routed;
+  }
+
+  const lastMeaningfulTurn = [...recentTurns]
+    .reverse()
+    .find((turn) => turn.status !== "clarify" && isIntent(turn.intent));
+  if (!lastMeaningfulTurn) {
+    return routed;
+  }
+
+  return {
+    intent: lastMeaningfulTurn.intent,
+    task: input.trim(),
+  };
+}
+
+export function deriveCompactionPolicy(
+  recentTurns: Array<{ status: string; summary?: unknown }>,
+): { protectTokens: number; prunableTokens: number } {
+  const base = { protectTokens: 12_500, prunableTokens: 6_250 };
+  const recentFailures = recentTurns.filter(
+    (turn) => turn.status === "failed" || turn.status === "cancelled",
+  ).length;
+  const highStepTurns = recentTurns.filter((turn) => {
+    const summary = turn.summary as { steps?: unknown } | null | undefined;
+    return typeof summary?.steps === "number" && summary.steps >= 40;
+  }).length;
+
+  if (recentFailures >= 2 || highStepTurns >= 2) {
+    return {
+      protectTokens: 10_000,
+      prunableTokens: 5_000,
+    };
+  }
+
+  return base;
+}
+
+function isIntent(value: string): value is Exclude<InputIntent, "ambiguous"> {
+  return value === "change" || value === "question" || value === "research";
 }

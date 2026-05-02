@@ -1,10 +1,13 @@
 export {
   ensureStorageDir,
+  ensureStorageBootstrap,
   getDatabasePath,
   getDb,
   getSqlite,
   getStorageDir,
+  resetStorageForTests,
 } from "./db.js";
+export type { StorageBootstrapStatus } from "./db.js";
 export {
   appendMessage,
   buildCompactContinuationArtifact,

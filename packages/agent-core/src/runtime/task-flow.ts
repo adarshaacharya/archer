@@ -100,7 +100,11 @@ export function prependContinuationBrief(
   ].join("\n");
 }
 
-export function buildPlanningPrompt(task: string, contextSummary: string): string {
+export function buildPlanningPrompt(
+  task: string,
+  contextSummary: string,
+  priorTurnGuidance?: string,
+): string {
   return [
     "Produce an execution plan for the task below.",
     "Use the gathered repository context and output strict JSON only.",
@@ -109,11 +113,14 @@ export function buildPlanningPrompt(task: string, contextSummary: string): strin
     "Return this exact shape:",
     '{ "goal": string, "steps": [{ "id": string, "title": string, "targets": string[], "rationale": string, "verification": string }] }',
     "Keep steps concrete and minimal.",
+    priorTurnGuidance ? `Recent turn guidance:\n${priorTurnGuidance.trim()}` : "",
     "Task:",
     task.trim(),
     "Context summary:",
     contextSummary.trim() || "(none)",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function buildImplementationPrompt(task: string, planJson: string): string {

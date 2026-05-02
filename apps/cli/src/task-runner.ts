@@ -13,7 +13,12 @@ import {
 } from "@xeq/agent-core";
 import { createSandboxEnvironment } from "@xeq/sandbox";
 import { AgentRequestSchema } from "@xeq/shared";
-import { appendMessage, loadLatestCompactContinuationArtifact, updateSessionTitle } from "@xeq/storage";
+import {
+  appendMessage,
+  getTurnResults,
+  loadLatestCompactContinuationArtifact,
+  updateSessionTitle,
+} from "@xeq/storage";
 import { createWebSearchProvider } from "@xeq/web";
 import { requestApproval, withApprovalQueue } from "./approvals.js";
 import { webFetchRuleForUrl } from "./settings-store.js";
@@ -97,6 +102,51 @@ type VerificationReport = {
   commands: string[];
   findings: string[];
 };
+
+export function buildPriorTurnPlanningGuidance(
+  turns: Array<{
+    status: string;
+    task: string;
+    summary?: unknown;
+    message?: string | null;
+  }>,
+): string | null {
+  const relevant = turns
+    .filter((turn) => turn.status === "failed" || turn.status === "cancelled")
+    .slice(-3);
+
+  const lines: string[] = [];
+  for (const turn of relevant) {
+    const summary = turn.summary as
+      | {
+          steps?: unknown;
+          durationMs?: unknown;
+        }
+      | null
+      | undefined;
+    const parts = [`- Prior ${turn.status} turn on: ${turn.task.replace(/\s+/g, " ").trim().slice(0, 120)}`];
+    if (typeof summary?.steps === "number") {
+      parts.push(`steps=${summary.steps}`);
+    }
+    if (typeof summary?.durationMs === "number") {
+      parts.push(`durationMs=${Math.round(summary.durationMs)}`);
+    }
+    if (turn.message) {
+      parts.push(`message=${turn.message.slice(0, 180)}`);
+    }
+    lines.push(parts.join("  "));
+  }
+
+  const heavyTurns = turns.filter((turn) => {
+    const summary = turn.summary as { steps?: unknown } | null | undefined;
+    return typeof summary?.steps === "number" && summary.steps >= 40;
+  });
+  if (heavyTurns.length >= 2) {
+    lines.push("- Recent turns were step-heavy. Prefer a tighter plan, fewer exploratory reads, and earlier verification.");
+  }
+
+  return lines.length > 0 ? lines.join("\n") : null;
+}
 
 function extractJsonObject(text: string): string | null {
   const trimmed = text.trim();
@@ -326,6 +376,8 @@ export async function runTask(
 
   const started = performance.now();
   const continuationArtifact = await loadLatestCompactContinuationArtifact(state.sessionId);
+  const recentTurns = await getTurnResults(state.sessionId, 5);
+  const priorTurnGuidance = buildPriorTurnPlanningGuidance(recentTurns);
   const turnContext: TurnContext = {
     sessionId: state.sessionId,
     task: request.task,
@@ -602,7 +654,11 @@ export async function runTask(
     }
 
     turn.beginPlanning();
-    const planningPrompt = buildPlanningPrompt(request.task, contextResult.outputText);
+    const planningPrompt = buildPlanningPrompt(
+      request.task,
+      contextResult.outputText,
+      priorTurnGuidance ?? undefined,
+    );
     let planningResult = await runPhase(planningPrompt, false, planningMaxSteps);
     if (planningResult.status === "cancelled") {
       turn.cancel();

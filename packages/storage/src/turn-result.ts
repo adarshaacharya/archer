@@ -34,13 +34,15 @@ export async function appendTurnResult(input: PersistedTurnResult): Promise<void
   });
 }
 
-export async function getTurnResults(sessionId: string) {
+export async function getTurnResults(sessionId: string, limit?: number) {
   const rows = await getDb().query.turn_results.findMany({
     where: eq(turn_results.session_id, sessionId),
     orderBy: [asc(turn_results.created_at)],
   });
 
-  return rows.map((row) => ({
+  const sliced = limit && limit > 0 ? rows.slice(-limit) : rows;
+
+  return sliced.map((row) => ({
     ...row,
     summary:
       row.summary_json == null

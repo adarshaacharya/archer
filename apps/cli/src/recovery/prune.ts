@@ -1,4 +1,5 @@
 import {
+  generateCompactContinuationArtifact,
   estimateModelMessageTokens as estimateProviderMessageTokens,
   estimateTextTokens as estimateProviderTextTokens,
   type SupportedProvider,
@@ -46,6 +47,8 @@ export async function maybePruneSessionBeforeTurn(
   opts?: {
     provider?: SupportedProvider | null;
     modelId?: string;
+    protectTokens?: number;
+    prunableTokens?: number;
   },
 ): Promise<{
   shouldPrune: boolean;
@@ -62,9 +65,11 @@ export async function maybePruneSessionBeforeTurn(
     estimateTokens: estimators.estimateText,
   });
 
+  const protectTokens = opts?.protectTokens ?? PRETURN_PROTECT_TOKENS;
+  const prunableTokens = opts?.prunableTokens ?? PRETURN_PRUNABLE_TOKENS;
+
   const shouldPrune =
-    pressure.retainedTokens >= PRETURN_PROTECT_TOKENS &&
-    pressure.prunableTokens >= PRETURN_PRUNABLE_TOKENS;
+    pressure.retainedTokens >= protectTokens && pressure.prunableTokens >= prunableTokens;
 
   if (!shouldPrune) {
     return {
@@ -82,6 +87,12 @@ export async function maybePruneSessionBeforeTurn(
   const artifact = await buildCompactContinuationArtifact({
     sessionId,
     keepRecentAssistantMessages: 2,
+    builder: async (content) =>
+      generateCompactContinuationArtifact({
+        content,
+        provider: opts?.provider,
+        modelId: opts?.modelId,
+      }),
   });
   if (
     artifact &&
