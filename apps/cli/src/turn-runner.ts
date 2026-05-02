@@ -1,6 +1,6 @@
 import type { SessionState } from "./session-state.js";
 import type { Tui } from "@xeq/tui";
-import { resetSessionById } from "@xeq/agent-core";
+import { deriveCompactionPolicy, resetSessionById } from "@xeq/agent-core";
 import { appendTurnResult, getTurnResults } from "@xeq/storage";
 import { routeInput, type InputIntent, type RoutedInput } from "./intent-router.js";
 import { runTask } from "./task-runner.js";
@@ -133,28 +133,6 @@ export function routeInputWithHistory(
     intent,
     task: input.trim(),
   };
-}
-
-export function deriveCompactionPolicy(
-  recentTurns: Array<{ status: string; summary?: unknown }>,
-): { protectTokens: number; prunableTokens: number } {
-  const base = { protectTokens: 12_500, prunableTokens: 6_250 };
-  const recentFailures = recentTurns.filter(
-    (turn) => turn.status === "failed" || turn.status === "cancelled",
-  ).length;
-  const highStepTurns = recentTurns.filter((turn) => {
-    const summary = turn.summary as { steps?: unknown } | null | undefined;
-    return typeof summary?.steps === "number" && summary.steps >= 40;
-  }).length;
-
-  if (recentFailures >= 2 || highStepTurns >= 2) {
-    return {
-      protectTokens: 10_000,
-      prunableTokens: 5_000,
-    };
-  }
-
-  return base;
 }
 
 function isIntent(value: string): value is Exclude<InputIntent, "ambiguous"> {

@@ -21,6 +21,21 @@ export interface TurnSummary {
   promptTokens: number;
   completionTokens: number;
   estimatedCostUsd: number;
+  compaction?: {
+    policy: {
+      protectTokens: number;
+      prunableTokens: number;
+    };
+    attempted: boolean;
+    attempts: number;
+    trigger: "context-pressure" | null;
+    status: "not-needed" | "succeeded" | "failed";
+    report: {
+      summary: string;
+      criticalFiles: string[];
+      openRisks: string[];
+    } | null;
+  };
   evalMetrics?: {
     approvalCount: number;
     fileReadCount: number;

@@ -5,5 +5,7 @@ export * from "./runtime/task-flow.js";
 export * from "./runtime/question-exploration.js";
 export * from "./runtime/planning-artifacts.js";
 export * from "./runtime/execution-policy.js";
+export * from "./runtime/implementation-policy.js";
+export * from "./runtime/compaction-policy.js";
 export { resetSessionById } from "./runtime/session.js";
 export type { OpenHarnessRuntimeDeps, OpenHarnessToolEvent } from "./runtime/openharness-types.js";

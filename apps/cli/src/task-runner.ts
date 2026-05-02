@@ -1,10 +1,20 @@
 import { performance } from "node:perf_hooks";
 import {
+  accumulatePlanningResult,
+  buildCompactionPrompt,
+  createCompactionMetadata,
+  buildRepairPlanningPrompt,
   buildQuestionLimitFinalAnswerPrompt,
+  didVerificationPass,
+  deriveCompactionPolicy,
+  type ImplementationRunOutcome,
+  isContextPressureFailure,
+  parseCompactionReport,
+  recordCompactionAttempt,
+  mergeUsage,
   type OpenHarnessRuntimeDeps,
   type VerificationReport,
   buildPriorTurnPlanningGuidance,
-  buildCompactionPrompt,
   buildContextGatheringPrompt,
   buildDirectAnswerPrompt,
   buildDirectAnswerSystemPrompt,
@@ -25,6 +35,7 @@ import {
   prependContinuationBrief,
   recordQuestionStep,
   runOpenHarnessRuntime,
+  shouldRepairImplementationOutcome,
   shouldInspectRepositoryForQuestion,
   summarizeQuestionExploration,
 } from "@xeq/agent-core";
@@ -41,39 +52,15 @@ import { createWebSearchProvider } from "@xeq/web";
 import { requestApproval, withApprovalQueue } from "./approvals.js";
 import { createEvalMetricsCollector } from "./eval-metrics.js";
 import { resolveActiveWebProvider } from "./auth-store.js";
-import { isContextPressureFailure, parseCompactionReport } from "./recovery/compaction.js";
 import { pruneSessionAfterTurn } from "./recovery/prune.js";
 import type { SessionState } from "./session-state.js";
 import { webFetchRuleForUrl } from "./settings-store.js";
 import { titleFromTask } from "./task-title.js";
 import { createTurnStateMachine } from "./turn-state-machine.js";
-import type { TurnContext, TurnResult } from "./turn-types.js";
+import type { TurnContext, TurnResult, TurnSummary } from "./turn-types.js";
 
 function newMessageId(sessionId: string, role: string): string {
   return `${sessionId}_${role}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function mergeUsage(
-  left:
-    | {
-        promptTokens: number;
-        completionTokens: number;
-        totalTokens: number;
-      }
-    | undefined,
-  right:
-    | {
-        promptTokens: number;
-        completionTokens: number;
-        totalTokens: number;
-      }
-    | undefined,
-) {
-  return {
-    promptTokens: (left?.promptTokens ?? 0) + (right?.promptTokens ?? 0),
-    completionTokens: (left?.completionTokens ?? 0) + (right?.completionTokens ?? 0),
-    totalTokens: (left?.totalTokens ?? 0) + (right?.totalTokens ?? 0),
-  };
 }
 
 type PatchPreview = NonNullable<OpenHarnessRuntimeDeps["approvePatchApply"]> extends (
@@ -163,6 +150,7 @@ export async function runTask(
   const continuationArtifact = await loadLatestCompactContinuationArtifact(state.sessionId);
   const recentTurns = await getTurnResults(state.sessionId, 5);
   const priorTurnGuidance = buildPriorTurnPlanningGuidance(recentTurns);
+  const compactionPolicy = deriveCompactionPolicy(recentTurns);
   const turnContext: TurnContext = {
     sessionId: state.sessionId,
     task: request.task,
@@ -174,6 +162,7 @@ export async function runTask(
   };
   const patchApprovedPaths = new Set<string>();
   const evalMetrics = createEvalMetricsCollector();
+  let compactionMetadata = createCompactionMetadata(compactionPolicy);
   const phase = createTaskPhaseController();
   const turn = createTurnStateMachine(intent);
   turn.transition("routing");
@@ -279,6 +268,14 @@ export async function runTask(
       promptPending = false;
     }
   };
+
+  const buildSummary = (
+    fields: Omit<TurnSummary, "compaction" | "evalMetrics"> & Partial<Pick<TurnSummary, "evalMetrics">>,
+  ): TurnSummary => ({
+    ...fields,
+    compaction: compactionMetadata,
+    evalMetrics: fields.evalMetrics ?? evalMetrics.summarize(),
+  });
 
   const approveToolCall = createToolApprovalHandler({
     approvalMode: state.approvalMode,
@@ -494,6 +491,7 @@ export async function runTask(
         promptTokens: contextResult.usage?.promptTokens ?? 0,
         completionTokens: contextResult.usage?.completionTokens ?? 0,
         estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
+        compaction: compactionMetadata,
         evalMetrics: evalMetrics.summarize(),
         ...(explorationSummary ? { exploration: explorationSummary } : {}),
       };
@@ -621,13 +619,14 @@ export async function runTask(
     if (contextResult.status === "cancelled") {
       turn.cancel();
       const summary = {
-        success: false,
-        steps: contextResult.steps,
-        durationMs: Math.round(performance.now() - started),
-        promptTokens: contextResult.usage?.promptTokens ?? 0,
-        completionTokens: contextResult.usage?.completionTokens ?? 0,
-        estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
-        evalMetrics: evalMetrics.summarize(),
+        ...buildSummary({
+          success: false,
+          steps: contextResult.steps,
+          durationMs: Math.round(performance.now() - started),
+          promptTokens: contextResult.usage?.promptTokens ?? 0,
+          completionTokens: contextResult.usage?.completionTokens ?? 0,
+          estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
+        }),
       };
       tui.renderSummary(summary);
       return {
@@ -642,15 +641,16 @@ export async function runTask(
     if (contextResult.status !== "completed") {
       if (!isContextBudgetResult(contextResult)) {
         turn.fail();
-      const summary = {
-        success: false,
-        steps: contextResult.steps,
-        durationMs: Math.round(performance.now() - started),
-        promptTokens: contextResult.usage?.promptTokens ?? 0,
-        completionTokens: contextResult.usage?.completionTokens ?? 0,
-        estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
-        evalMetrics: evalMetrics.summarize(),
-      };
+        const summary = {
+          ...buildSummary({
+            success: false,
+            steps: contextResult.steps,
+            durationMs: Math.round(performance.now() - started),
+            promptTokens: contextResult.usage?.promptTokens ?? 0,
+            completionTokens: contextResult.usage?.completionTokens ?? 0,
+            estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
+          }),
+        };
         tui.renderSummary(summary);
         return {
           status: "failed",
@@ -671,30 +671,28 @@ export async function runTask(
     let planningResult = await runPhase(planningPrompt, false, planningMaxSteps);
     if (planningResult.status === "cancelled") {
       turn.cancel();
-      const summary = {
+      const summary = buildSummary({
         success: false,
         steps: planningResult.steps,
         durationMs: Math.round(performance.now() - started),
         promptTokens: planningResult.usage?.promptTokens ?? 0,
         completionTokens: planningResult.usage?.completionTokens ?? 0,
         estimatedCostUsd: planningResult.estimatedCostUsd ?? 0,
-        evalMetrics: evalMetrics.summarize(),
-      };
+      });
       tui.renderSummary(summary);
       return { status: "cancelled", intent: turnContext.intent, task: turnContext.task, summary };
     }
 
     if (planningResult.status !== "completed") {
       turn.fail();
-      const summary = {
+      const summary = buildSummary({
         success: false,
         steps: planningResult.steps,
         durationMs: Math.round(performance.now() - started),
         promptTokens: planningResult.usage?.promptTokens ?? 0,
         completionTokens: planningResult.usage?.completionTokens ?? 0,
         estimatedCostUsd: planningResult.estimatedCostUsd ?? 0,
-        evalMetrics: evalMetrics.summarize(),
-      };
+      });
       tui.renderSummary(summary);
       return {
         status: "failed",
@@ -726,7 +724,7 @@ export async function runTask(
 
     if (!plan) {
       turn.fail();
-      const summary = {
+      const summary = buildSummary({
         success: false,
         steps: Math.max(1, planningResult.steps),
         durationMs: Math.round(performance.now() - started),
@@ -737,8 +735,7 @@ export async function runTask(
           (planningResult.usage?.completionTokens ?? 0),
         estimatedCostUsd:
           (contextResult.estimatedCostUsd ?? 0) + (planningResult.estimatedCostUsd ?? 0),
-        evalMetrics: evalMetrics.summarize(),
-      };
+      });
       tui.renderSummary(summary);
       return {
         status: "failed",
@@ -795,7 +792,7 @@ export async function runTask(
       };
     };
 
-    let runOutcome = await attemptImplementationAndVerification(
+    let runOutcome: ImplementationRunOutcome = await attemptImplementationAndVerification(
       buildImplementationPrompt(request.task, JSON.stringify(plan, null, 2)),
     );
 
@@ -812,6 +809,11 @@ export async function runTask(
       );
       const compacted =
         compactRun.status === "completed" ? parseCompactionReport(compactRun.outputText) : null;
+      compactionMetadata = recordCompactionAttempt(compactionMetadata, {
+        trigger: "context-pressure",
+        completed: compactRun.status === "completed",
+        report: compacted,
+      });
 
       if (compacted) {
         tui.renderApprovalPrompt({
@@ -830,19 +832,10 @@ export async function runTask(
         );
       }
 
-      planningResult = {
-        ...planningResult,
-        usage: mergeUsage(planningResult.usage, compactRun.usage),
-        estimatedCostUsd:
-          (planningResult.estimatedCostUsd ?? 0) + (compactRun.estimatedCostUsd ?? 0),
-        steps: planningResult.steps + compactRun.steps,
-      };
+      planningResult = accumulatePlanningResult(planningResult, compactRun);
     }
 
-    const shouldRepair =
-      runOutcome.implementationResult.status === "completed" &&
-      runOutcome.verificationResult?.status === "completed" &&
-      runOutcome.verificationReport?.passed === false;
+    const shouldRepair = shouldRepairImplementationOutcome(runOutcome);
 
     if (shouldRepair) {
       turn.beginRepair();
@@ -851,17 +844,7 @@ export async function runTask(
         throw new Error("Repair requested without a verification report.");
       }
       const repairPlanning = await runPhase(
-        [
-          "Create a repair plan from the failed verification report.",
-          "Return strict JSON only:",
-          '{ "goal": string, "steps": [{ "id": string, "title": string, "targets": string[], "rationale": string, "verification": string }] }',
-          "Original task:",
-          request.task,
-          "Current plan:",
-          JSON.stringify(plan),
-          "Verification report:",
-          JSON.stringify(report),
-        ].join("\n"),
+        buildRepairPlanningPrompt(request.task, JSON.stringify(plan), JSON.stringify(report)),
         false,
         Math.max(8, Math.floor(planningMaxSteps / 2)),
       );
@@ -884,13 +867,7 @@ export async function runTask(
           verificationReport: repairedOutcome.verificationReport,
         };
         // Merge repair planning usage into context/planning bucket by shadowing planningResult usage later.
-        planningResult = {
-          ...planningResult,
-          usage: mergeUsage(planningResult.usage, repairPlanning.usage),
-          estimatedCostUsd:
-            (planningResult.estimatedCostUsd ?? 0) + (repairPlanning.estimatedCostUsd ?? 0),
-          steps: planningResult.steps + repairPlanning.steps,
-        };
+        planningResult = accumulatePlanningResult(planningResult, repairPlanning);
       }
     }
 
@@ -901,11 +878,10 @@ export async function runTask(
       ),
       runOutcome.verificationResult?.usage,
     );
-    const verificationPassed =
-      runOutcome.verificationResult == null
-        ? true
-        : runOutcome.verificationResult.status === "completed" &&
-          (runOutcome.verificationReport?.passed ?? false);
+    const verificationPassed = didVerificationPass(
+      runOutcome.verificationResult,
+      runOutcome.verificationReport,
+    );
     if (
       (runOutcome.implementationResult.status === "completed" ||
         runOutcome.implementationResult.status === "cancelled") &&
@@ -918,17 +894,18 @@ export async function runTask(
       turn.fail();
     }
     const summary = {
-      success: turn.state === "done",
-      steps: runOutcome.implementationResult.steps + (runOutcome.verificationResult?.steps ?? 0),
-      durationMs: Math.round(performance.now() - started),
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
-      estimatedCostUsd:
-        (contextResult.estimatedCostUsd ?? 0) +
-        (planningResult.estimatedCostUsd ?? 0) +
-        (runOutcome.implementationResult.estimatedCostUsd ?? 0) +
-        (runOutcome.verificationResult?.estimatedCostUsd ?? 0),
-      evalMetrics: evalMetrics.summarize(),
+      ...buildSummary({
+        success: turn.state === "done",
+        steps: runOutcome.implementationResult.steps + (runOutcome.verificationResult?.steps ?? 0),
+        durationMs: Math.round(performance.now() - started),
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        estimatedCostUsd:
+          (contextResult.estimatedCostUsd ?? 0) +
+          (planningResult.estimatedCostUsd ?? 0) +
+          (runOutcome.implementationResult.estimatedCostUsd ?? 0) +
+          (runOutcome.verificationResult?.estimatedCostUsd ?? 0),
+      }),
     };
     tui.renderSummary(summary);
     void pruneSessionAfterTurn(state.sessionId);

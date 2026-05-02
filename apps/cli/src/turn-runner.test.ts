@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { deriveCompactionPolicy, routeInputWithHistory } from "./turn-runner.js";
+import { deriveCompactionPolicy } from "@xeq/agent-core";
+import { routeInputWithHistory } from "./turn-runner.js";
 
 describe("routeInputWithHistory", () => {
   it("reuses the last meaningful intent for continuation-style ambiguous input", () => {
