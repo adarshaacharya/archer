@@ -52,8 +52,34 @@ export function createToolApprovalHandler(opts: {
   patchApprovedPaths: Set<string>;
   requestApproval: ApprovalHandler;
 }) {
+  let lastToolSignature: string | null = null;
+  let repeatedToolCount = 0;
+
   return async (toolCall: { toolName: string; input: unknown }): Promise<boolean> => {
     const decision = classifyToolCall(toolCall.toolName, toolCall.input);
+    const signature = toolCallSignature(toolCall.toolName, toolCall.input);
+
+    if (signature === lastToolSignature) {
+      repeatedToolCount += 1;
+    } else {
+      lastToolSignature = signature;
+      repeatedToolCount = 1;
+    }
+
+    if (repeatedToolCount >= 3) {
+      const approval = await opts.requestApproval({
+        kind: "command",
+        target: `tool-repeat:${toolCall.toolName}`,
+        details: `Repeated identical tool call detected (${repeatedToolCount}x).\n${truncate(
+          signature,
+          500,
+        )}`,
+      });
+      if (approval === "reject") {
+        return false;
+      }
+      repeatedToolCount = 0;
+    }
 
     if (opts.phase.isContextPhase()) {
       return decision.permission === "read" || decision.permission === "web_fetch";
@@ -111,4 +137,49 @@ function commandPattern(input: unknown): string {
   if (typeof command !== "string") return "*";
 
   return command.split(/\s+/).slice(0, 2).join(" ") || "*";
+}
+
+function toolCallSignature(toolName: string, input: unknown): string {
+  return `${toolName}:${safeStableStringify(input)}`;
+}
+
+function safeStableStringify(value: unknown): string {
+  const seen = new WeakSet<object>();
+
+  const normalize = (input: unknown): unknown => {
+    if (Array.isArray(input)) {
+      return input.map(normalize);
+    }
+
+    if (input && typeof input === "object") {
+      const obj = input as Record<string, unknown>;
+      if (seen.has(obj)) {
+        return "[circular]";
+      }
+      seen.add(obj);
+
+      return Object.keys(obj)
+        .sort()
+        .reduce<Record<string, unknown>>((acc, key) => {
+          acc[key] = normalize(obj[key]);
+          return acc;
+        }, {});
+    }
+
+    return input;
+  };
+
+  try {
+    return JSON.stringify(normalize(value));
+  } catch {
+    return String(value);
+  }
+}
+
+function truncate(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+
+  return `${value.slice(0, maxChars)}…`;
 }

@@ -68,6 +68,11 @@ function isContextBudgetResult(
   );
 }
 
+function expandedContextSteps(maxSteps: number, initialContextSteps: number): number {
+  const cap = Math.min(64, Math.max(24, Math.floor(maxSteps / 3)));
+  return Math.max(initialContextSteps + 8, cap);
+}
+
 function updateWebSessionState(
   state: SessionState,
   resolved: Awaited<ReturnType<typeof resolveActiveWebProvider>>,
@@ -337,7 +342,21 @@ export async function runTask(
     );
 
   try {
-    const contextResult = await runPhase(buildContextGatheringPrompt(request.task), false, contextMaxSteps);
+    let contextResult = await runPhase(
+      buildContextGatheringPrompt(request.task),
+      false,
+      contextMaxSteps,
+    );
+
+    if (isContextBudgetResult(contextResult)) {
+      const retrySteps = expandedContextSteps(request.maxSteps, contextMaxSteps);
+      contextResult = await runPhase(
+        buildContextGatheringPrompt(request.task),
+        false,
+        retrySteps,
+      );
+    }
+
     if (contextResult.status === "cancelled") {
       tui.renderSummary({
         success: false,
@@ -351,9 +370,7 @@ export async function runTask(
     }
 
     if (contextResult.status !== "completed") {
-      if (isContextBudgetResult(contextResult)) {
-        tui.renderInfoMessage("Context pass hit its budget. Continuing into implementation.");
-      } else {
+      if (!isContextBudgetResult(contextResult)) {
         tui.renderSummary({
           success: false,
           steps: contextResult.steps,
