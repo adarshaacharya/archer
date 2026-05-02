@@ -1,6 +1,7 @@
 import { performance } from "node:perf_hooks";
 import {
   buildContextGatheringPrompt,
+  buildResearchAnswerPrompt,
   buildPlanningPrompt,
   buildImplementationPrompt,
   buildVerificationPrompt,
@@ -354,6 +355,7 @@ export async function runTask(
   tui: Tui,
   state: SessionState,
   abortController?: AbortController,
+  intent: TurnContext["intent"] = "change",
 ): Promise<TurnResult> {
   const activeAbortController = abortController ?? new AbortController();
   const request = AgentRequestSchema.parse({
@@ -381,7 +383,7 @@ export async function runTask(
   const turnContext: TurnContext = {
     sessionId: state.sessionId,
     task: request.task,
-    intent: "change",
+    intent,
     projectRoot: state.projectRoot,
     approvalMode: state.approvalMode,
     modelId: state.modelId,
@@ -405,7 +407,7 @@ export async function runTask(
 
   const patchApprovedPaths = new Set<string>();
   const phase = createTaskPhaseController();
-  const turn = createTurnStateMachine("change");
+  const turn = createTurnStateMachine(intent);
   turn.transition("routing");
 
   const env = createSandboxEnvironment({
@@ -496,6 +498,10 @@ export async function runTask(
   });
 
   const approvePatchApply = async (preview: PatchPreview) => {
+    if (intent !== "change") {
+      return false;
+    }
+
     if (phase.isContextPhase()) {
       return false;
     }
@@ -559,6 +565,7 @@ export async function runTask(
   const planningMaxSteps = Math.min(24, Math.max(10, Math.floor(request.maxSteps / 6)));
   const verificationMaxSteps = Math.min(24, Math.max(8, Math.floor(request.maxSteps / 6)));
   const compactionMaxSteps = Math.min(18, Math.max(8, Math.floor(request.maxSteps / 10)));
+  const researchMaxSteps = Math.min(192, Math.max(64, Math.floor(request.maxSteps * 0.75)));
 
   const runPhase = async (prompt: string, persistTranscript: boolean, maxSteps: number) =>
     runOpenHarnessRuntime(
@@ -608,19 +615,99 @@ export async function runTask(
 
   try {
     turn.beginResearch();
+    const researchPrompt = prependContinuationBrief(
+      intent === "change"
+        ? buildContextGatheringPrompt(request.task)
+        : buildResearchAnswerPrompt(request.task, intent),
+      continuationArtifact,
+    );
     let contextResult = await runPhase(
-      prependContinuationBrief(buildContextGatheringPrompt(request.task), continuationArtifact),
-      false,
-      contextMaxSteps,
+      researchPrompt,
+      intent !== "change",
+      intent === "change" ? contextMaxSteps : researchMaxSteps,
     );
 
-    if (isContextBudgetResult(contextResult)) {
+    if (intent === "change" && isContextBudgetResult(contextResult)) {
       const retrySteps = expandedContextSteps(request.maxSteps, contextMaxSteps);
       contextResult = await runPhase(
-        prependContinuationBrief(buildContextGatheringPrompt(request.task), continuationArtifact),
+        researchPrompt,
         false,
         retrySteps,
       );
+    }
+
+    if (intent !== "change") {
+      const baseSummary = {
+        success: contextResult.status === "completed",
+        steps: contextResult.steps,
+        durationMs: Math.round(performance.now() - started),
+        promptTokens: contextResult.usage?.promptTokens ?? 0,
+        completionTokens: contextResult.usage?.completionTokens ?? 0,
+        estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
+      };
+
+      if (contextResult.status === "completed") {
+        turn.finish();
+        tui.renderSummary({ ...baseSummary, success: true });
+        void pruneSessionAfterTurn(state.sessionId);
+        return {
+          status: "completed",
+          intent: turnContext.intent,
+          task: turnContext.task,
+          summary: { ...baseSummary, success: true },
+        };
+      }
+
+      const partialAnswer = contextResult.outputText.trim();
+      if (partialAnswer) {
+        const message = `${partialAnswer}\n\nNote: the research turn hit its runtime limit before it could finish inspecting more files.`;
+        tui.finalizeAssistantStream(message);
+        void appendMessage({
+          id: newMessageId(state.sessionId, "assistant"),
+          session_id: state.sessionId,
+          role: "assistant",
+          kind: "transcript",
+          content: message,
+        });
+        turn.finish();
+        tui.renderSummary({ ...baseSummary, success: true });
+        void pruneSessionAfterTurn(state.sessionId);
+        return {
+          status: "completed",
+          intent: turnContext.intent,
+          task: turnContext.task,
+          summary: { ...baseSummary, success: true },
+          message,
+        };
+      }
+
+      if (contextResult.status === "cancelled") {
+        turn.cancel();
+        tui.renderSummary(baseSummary);
+        return {
+          status: "cancelled",
+          intent: turnContext.intent,
+          task: turnContext.task,
+          summary: baseSummary,
+          message: contextResult.error,
+        };
+      }
+
+      turn.fail();
+      tui.renderAssistantMessage(
+        contextResult.error
+          ? `Research failed: ${contextResult.error}`
+          : "Research failed before an answer could be produced.",
+      );
+      tui.renderSummary(baseSummary);
+      void pruneSessionAfterTurn(state.sessionId);
+      return {
+        status: "failed",
+        intent: turnContext.intent,
+        task: turnContext.task,
+        summary: baseSummary,
+        message: contextResult.error,
+      };
     }
 
     if (contextResult.status === "cancelled") {
@@ -634,7 +721,13 @@ export async function runTask(
         estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
       };
       tui.renderSummary(summary);
-      return { status: "cancelled", intent: turnContext.intent, task: turnContext.task, summary };
+      return {
+        status: "cancelled",
+        intent: turnContext.intent,
+        task: turnContext.task,
+        summary,
+        message: contextResult.error,
+      };
     }
 
     if (contextResult.status !== "completed") {
@@ -649,7 +742,13 @@ export async function runTask(
           estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
         };
         tui.renderSummary(summary);
-        return { status: "failed", intent: turnContext.intent, task: turnContext.task, summary };
+        return {
+          status: "failed",
+          intent: turnContext.intent,
+          task: turnContext.task,
+          summary,
+          message: contextResult.error,
+        };
       }
     }
 
@@ -685,7 +784,13 @@ export async function runTask(
         estimatedCostUsd: planningResult.estimatedCostUsd ?? 0,
       };
       tui.renderSummary(summary);
-      return { status: "failed", intent: turnContext.intent, task: turnContext.task, summary };
+      return {
+        status: "failed",
+        intent: turnContext.intent,
+        task: turnContext.task,
+        summary,
+        message: planningResult.error,
+      };
     }
 
     let plan = parseExecutionPlan(planningResult.outputText);
@@ -722,7 +827,13 @@ export async function runTask(
           (contextResult.estimatedCostUsd ?? 0) + (planningResult.estimatedCostUsd ?? 0),
       };
       tui.renderSummary(summary);
-      return { status: "failed", intent: turnContext.intent, task: turnContext.task, summary };
+      return {
+        status: "failed",
+        intent: turnContext.intent,
+        task: turnContext.task,
+        summary,
+        message: "Planning output was invalid.",
+      };
     }
 
     tui.renderApprovalPrompt({
@@ -911,6 +1022,10 @@ export async function runTask(
       intent: turnContext.intent,
       task: turnContext.task,
       summary,
+      message:
+        turn.state === "failed"
+          ? runOutcome.implementationResult.error
+          : undefined,
     };
   } finally {
     clearInterval(spinner);

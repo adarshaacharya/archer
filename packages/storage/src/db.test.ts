@@ -15,7 +15,10 @@ afterEach(() => {
 });
 
 describe("storage bootstrap", () => {
-  test("adds missing newer tables for an older history database", () => {
+  test("baselines an older history database and applies newer migrations", () => {
+    rmSync(getDatabasePath(), { force: true });
+    rmSync(`${getDatabasePath()}-shm`, { force: true });
+    rmSync(`${getDatabasePath()}-wal`, { force: true });
     const db = new Database(getDatabasePath(), { create: true, strict: true });
     db.exec("PRAGMA foreign_keys = ON;");
     db.exec(`
@@ -68,8 +71,8 @@ describe("storage bootstrap", () => {
 
     const status = ensureStorageBootstrap();
 
-    expect(status.created).toContain("table:turn_results");
-    expect(status.created).toContain("index:turn_results_session_id_created_at_idx");
+    expect(status.migrationTableCreated).toBe(true);
+    expect(status.baselineApplied).toContain("0000_legacy_init");
 
     const verifyDb = new Database(getDatabasePath(), { create: false, strict: true });
     const rows = verifyDb
@@ -77,8 +80,12 @@ describe("storage bootstrap", () => {
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'turn_results'",
       )
       .all();
+    const migrationRows = verifyDb
+      .query<{ hash: string }, []>('SELECT hash FROM "__drizzle_migrations"')
+      .all();
     verifyDb.close();
 
     expect(rows).toHaveLength(1);
+    expect(migrationRows).toHaveLength(2);
   });
 });

@@ -40,6 +40,7 @@ import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compa
 import { KeybindManager } from "./keybinds.js";
 import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
 import { titleFromTask } from "./task-title.js";
+import { runTask } from "./task-runner.js";
 import { runTurn } from "./turn-runner.js";
 import { loadTuiConfig } from "./tui-config.js";
 import type { SessionState } from "./session-state.js";

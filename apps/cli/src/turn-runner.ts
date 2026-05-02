@@ -3,10 +3,17 @@ import type { Tui } from "@xeq/tui";
 import { resetSessionById } from "@xeq/agent-core";
 import { appendTurnResult, getTurnResults } from "@xeq/storage";
 import { routeInput, type InputIntent, type RoutedInput } from "./intent-router.js";
-import { runResearchTask } from "./research-runner.js";
 import { runTask } from "./task-runner.js";
 import { maybePruneSessionBeforeTurn } from "./recovery/prune.js";
 import type { TurnResult } from "./turn-types.js";
+
+type RunTurnDeps = {
+  getTurnResults: typeof getTurnResults;
+  maybePruneSessionBeforeTurn: typeof maybePruneSessionBeforeTurn;
+  resetSessionById: typeof resetSessionById;
+  runTask: typeof runTask;
+  appendTurnResult: typeof appendTurnResult;
+};
 
 export async function runTurn(
   input: string,
@@ -14,9 +21,31 @@ export async function runTurn(
   state: SessionState,
   abortController?: AbortController,
 ): Promise<TurnResult> {
-  const recentTurns = await getTurnResults(state.sessionId, 5);
+  return runTurnWithDeps(
+    {
+      getTurnResults,
+      maybePruneSessionBeforeTurn,
+      resetSessionById,
+      runTask,
+      appendTurnResult,
+    },
+    input,
+    tui,
+    state,
+    abortController,
+  );
+}
+
+export async function runTurnWithDeps(
+  deps: RunTurnDeps,
+  input: string,
+  tui: Tui,
+  state: SessionState,
+  abortController?: AbortController,
+): Promise<TurnResult> {
+  const recentTurns = await deps.getTurnResults(state.sessionId, 5);
   const compactionPolicy = deriveCompactionPolicy(recentTurns);
-  const preturnPrune = await maybePruneSessionBeforeTurn(state.sessionId, {
+  const preturnPrune = await deps.maybePruneSessionBeforeTurn(state.sessionId, {
     provider: state.provider,
     modelId: state.modelId,
     protectTokens: compactionPolicy.protectTokens,
@@ -27,7 +56,7 @@ export async function runTurn(
     preturnPrune.modelMessagesPruned > 0 ||
     preturnPrune.artifactCreated
   ) {
-    resetSessionById(state.sessionId);
+    deps.resetSessionById(state.sessionId);
   }
   if (preturnPrune.prunedCount > 0 || preturnPrune.modelMessagesPruned > 0) {
     tui.renderApprovalPrompt({
@@ -49,21 +78,22 @@ export async function runTurn(
       task: input.trim(),
       message,
     };
-    await persistTurnResult(state.sessionId, result);
+    await persistTurnResult(deps.appendTurnResult, state.sessionId, result);
     return result;
   }
 
-  const result =
-    routed.intent === "change"
-      ? await runTask(routed.task, tui, state, abortController)
-      : await runResearchTask(routed.task, routed.intent, tui, state, abortController);
+  const result = await deps.runTask(routed.task, tui, state, abortController, routed.intent);
 
-  await persistTurnResult(state.sessionId, result);
+  await persistTurnResult(deps.appendTurnResult, state.sessionId, result);
   return result;
 }
 
-async function persistTurnResult(sessionId: string, result: TurnResult): Promise<void> {
-  await appendTurnResult({
+async function persistTurnResult(
+  append: typeof appendTurnResult,
+  sessionId: string,
+  result: TurnResult,
+): Promise<void> {
+  await append({
     id: `${sessionId}_turn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
     sessionId,
     intent: result.intent,
@@ -98,8 +128,9 @@ export function routeInputWithHistory(
     return routed;
   }
 
+  const intent = lastMeaningfulTurn.intent as Exclude<InputIntent, "ambiguous">;
   return {
-    intent: lastMeaningfulTurn.intent,
+    intent,
     task: input.trim(),
   };
 }

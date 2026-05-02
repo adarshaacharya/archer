@@ -113,7 +113,7 @@ describe("storage messages", () => {
       sessionId,
       artifact: {
         summary: "Context was compacted before this turn.",
-        criticalFiles: ["apps/cli/src/research-runner.ts"],
+        criticalFiles: ["apps/cli/src/task-runner.ts"],
         openRisks: ["Need to keep verification read-only"],
         source: "preturn-prune",
         createdAt: Date.now(),
@@ -144,7 +144,7 @@ describe("storage messages", () => {
     expect(String(nextMessages[0]?.content)).toContain(
       "Continuation brief from compacted prior session context:",
     );
-    expect(String(nextMessages[0]?.content)).toContain("apps/cli/src/research-runner.ts");
+    expect(String(nextMessages[0]?.content)).toContain("apps/cli/src/task-runner.ts");
     expect(String(nextMessages[1]?.content)).toContain("Message 4");
     expect(String(nextMessages[2]?.content)).toContain("Message 5");
   });
