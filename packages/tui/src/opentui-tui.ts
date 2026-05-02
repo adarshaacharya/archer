@@ -492,20 +492,20 @@ export class PiTui implements Tui {
     const text = normalizeText(message);
     if (!text) return;
     this.renderMessageBlock(text, {
-      backgroundColor: col.userBg,
       textColor: col.text,
       prefix: "› ",
     });
+    this.print("");
   }
 
   renderAssistantMessage(message: string): void {
     const text = normalizeText(message);
     if (!text) return;
     this.renderMessageBlock(text, {
-      backgroundColor: "#11161d",
       textColor: col.text,
       prefix: "‹ ",
     });
+    this.renderMessageSeparator();
   }
 
   renderInfoMessage(message: string): void {
@@ -656,7 +656,6 @@ export class PiTui implements Tui {
   private renderMessageBlock(
     content: string,
     opts: {
-      backgroundColor: string;
       textColor: string;
       prefix: string;
     },
@@ -669,11 +668,21 @@ export class PiTui implements Tui {
         wrapMode: "word",
         truncate: false,
         fg: opts.textColor,
-        bg: opts.backgroundColor,
-        paddingLeft: 2,
-        paddingRight: 2,
-        paddingTop: 1,
-        paddingBottom: 1,
+      });
+      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
+  }
+
+  private renderMessageSeparator(): void {
+    this.writeScrollback((ctx) => {
+      const line = "─".repeat(Math.max(1, ctx.width));
+      const text = new TextRenderable(ctx.renderContext, {
+        id: "sb-message-separator",
+        content: line,
+        width: ctx.width,
+        wrapMode: "truncate",
+        truncate: true,
+        fg: col.border,
       });
       return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
     });
