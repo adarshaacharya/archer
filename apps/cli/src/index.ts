@@ -46,6 +46,29 @@ function parseInitialTask(argv: string[]): string | null {
   return task.length > 0 ? task : null;
 }
 
+function isCasualGreeting(input: string): boolean {
+  const text = input.trim().toLowerCase();
+  if (!text) return false;
+
+  const normalized = text.replace(/[!?.,]+$/g, "");
+  return new Set([
+    "hi",
+    "hello",
+    "hey",
+    "yo",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "thanks",
+    "thank you",
+  ]).has(normalized);
+}
+
+function renderGreetingReply(tui: Tui, greeting: string): void {
+  tui.renderUserMessage(greeting);
+  tui.renderAssistantMessage("What would you like to work on?");
+}
+
 function newSessionId(): string {
   return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -957,6 +980,11 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
       break;
     }
 
+    if (isCasualGreeting(line)) {
+      renderGreetingReply(tui, line);
+      continue;
+    }
+
     try {
       await runTask(line, tui, state);
     } catch (error) {
@@ -1045,7 +1073,11 @@ async function main(): Promise<void> {
     tui.renderApprovalPrompt(null);
 
     if (initialTask) {
-      await runTask(initialTask, tui, state);
+      if (isCasualGreeting(initialTask)) {
+        renderGreetingReply(tui, initialTask);
+      } else {
+        await runTask(initialTask, tui, state);
+      }
     }
 
     await runInteractive(tui, state);

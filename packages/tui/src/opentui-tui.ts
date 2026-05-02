@@ -32,6 +32,7 @@ export interface Tui {
   renderStartupBanner(): void;
   setActiveModel(modelId: string): void;
   renderUserMessage(message: string): void;
+  renderAssistantMessage(message: string): void;
   renderInfoMessage(message: string): void;
   renderInfoLines(lines: Array<{ text: string; color?: string }>): void;
   renderStep(step: AgentStep): void;
@@ -491,6 +492,12 @@ export class PiTui implements Tui {
     const text = normalizeText(message);
     if (!text) return;
     this.print(`› ${text}`, col.text);
+  }
+
+  renderAssistantMessage(message: string): void {
+    const text = normalizeText(message);
+    if (!text) return;
+    this.print(`‹ ${text}`, col.accent);
   }
 
   renderInfoMessage(message: string): void {
