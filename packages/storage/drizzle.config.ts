@@ -1,3 +1,5 @@
+import os from "node:os";
+import path from "node:path";
 import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
@@ -5,6 +7,11 @@ export default defineConfig({
   schema: "./src/schema.ts",
   dialect: "sqlite",
   dbCredentials: {
-    url: "./history.db",
+    url:
+      process.env.XEQ_DATABASE_PATH ??
+      path.join(
+        process.env.XEQ_STORAGE_DIR ?? path.join(os.homedir(), ".local", "share", "xeq"),
+        "history.db",
+      ),
   },
 });

@@ -1,4 +1,4 @@
-import type { FsProvider, ShellProvider } from "@openharness/core";
+import type { FsProvider, ShellProvider, ToolCallInfo } from "@openharness/core";
 import type { WebSearchProvider } from "@xeq/tools";
 
 export interface OpenHarnessRuntimeStepEvent {
@@ -7,6 +7,12 @@ export interface OpenHarnessRuntimeStepEvent {
   thought?: string;
   observation?: string;
 }
+
+export type OpenHarnessUsageEvent = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
 
 export type RuntimeProviders = {
   fs: FsProvider;
@@ -33,7 +39,9 @@ export interface OpenHarnessRuntimeDeps {
   instructions?: string;
   onStep?: (event: OpenHarnessRuntimeStepEvent) => void;
   onTextDelta?: (delta: string) => void;
+  approveToolCall?: (toolCall: ToolCallInfo) => Promise<boolean> | boolean;
   approvePatchApply?: (preview: PatchPreview) => Promise<boolean> | boolean;
+  onUsage?: (usage: OpenHarnessUsageEvent, replace?: boolean) => void;
   sessionId?: string;
   providers: RuntimeProviders;
 }

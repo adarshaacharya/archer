@@ -171,7 +171,7 @@ packages/
 
 ## 8. Acceptance Criteria (V1)
 
-- Can complete coding tasks end-to-end in local repos
+- Can complete coding tasks end-to-end in locbuty al repos
 - Never writes outside allowed workspace roots
 - Supports deterministic edit flow (patch > apply > verify)
 - Runs tests/checks after edits and reports results

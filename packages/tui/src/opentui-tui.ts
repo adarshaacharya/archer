@@ -1,12 +1,14 @@
 import {
   BoxRenderable,
   type CliRenderer,
-  InputRenderable,
-  InputRenderableEvents,
   SelectRenderable,
   SelectRenderableEvents,
+  StyledText,
   TextRenderable,
+  TextareaRenderable,
   createCliRenderer,
+  fg,
+  type TextChunk,
 } from "@opentui/core";
 import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
 import type { AgentStep, RunSummary } from "@xeq/shared";
@@ -27,8 +29,10 @@ export interface SlashCommandItem {
 
 export interface Tui {
   start(): Promise<void>;
+  renderStartupBanner(): void;
   setActiveModel(modelId: string): void;
   renderUserMessage(message: string): void;
+  renderAssistantMessage(message: string): void;
   renderInfoMessage(message: string): void;
   renderInfoLines(lines: Array<{ text: string; color?: string }>): void;
   renderStep(step: AgentStep): void;
@@ -75,8 +79,8 @@ const col = {
   summary:   "#F0883E",
 };
 
-// Footer sizing: status(2) + border-top(1) + input(1) + border-bottom(1) = 5
-const BASE_FOOTER = 5;
+// Footer sizing: status(2) + composer box(5) = 7 before slash menu or dialogs.
+const BASE_FOOTER = 7;
 const MAX_SLASH_ROWS = 6;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,6 +104,18 @@ type PendingModal =
 
 function normalizeText(value: string): string {
   return value.trim().replace(/\r\n/g, "\n");
+}
+
+function truncateMiddle(value: string, max: number): string {
+  if (value.length <= max) return value;
+  if (max <= 3) return value.slice(0, max);
+  const head = Math.ceil((max - 1) / 2);
+  const tail = Math.floor((max - 1) / 2);
+  return `${value.slice(0, head)}…${value.slice(-tail)}`;
+}
+
+function padRight(value: string, width: number): string {
+  return value.length >= width ? value : `${value}${" ".repeat(width - value.length)}`;
 }
 
 function compactDiff(diff: string, maxLines = 16): string {
@@ -175,9 +191,11 @@ function slashCommandMatches(commands: SlashCommandItem[], input: string): Slash
 export class PiTui implements Tui {
   private renderer: CliRenderer | null = null;
   private footerRoot: BoxRenderable | null = null;
+  private composerBox: BoxRenderable | null = null;
+  private inputRow: BoxRenderable | null = null;
   private statusPrimaryText: TextRenderable | null = null;
   private statusSecondaryText: TextRenderable | null = null;
-  private input: InputRenderable | null = null;
+  private input: TextareaRenderable | null = null;
   private slashMenuBox: BoxRenderable | null = null;
   private slashMenuSelect: SelectRenderable | null = null;
   private slashCommands: SlashCommandItem[] = [];
@@ -229,6 +247,22 @@ export class PiTui implements Tui {
     this.submitSlashMenuSelection();
   }
 
+  private syncScrollbackViewport(): void {
+    const renderer = this.renderer as CliRenderer | null;
+    if (!renderer) return;
+
+    const sync = (renderer as unknown as { syncSplitScrollback?: () => void }).syncSplitScrollback;
+    if (typeof sync === "function") {
+      sync.call(renderer);
+    }
+  }
+
+  private writeScrollback(write: Parameters<CliRenderer["writeToScrollback"]>[0]): void {
+    if (!this.renderer) return;
+    this.renderer.writeToScrollback(write);
+    this.syncScrollbackViewport();
+  }
+
   async start(): Promise<void> {
     this.renderer = await createCliRenderer({
       screenMode: "split-footer",
@@ -237,7 +271,7 @@ export class PiTui implements Tui {
       exitOnCtrlC: false,
       clearOnShutdown: false,
       autoFocus: true,
-      useMouse: true,
+      useMouse: false,
       targetFps: 30,
     });
 
@@ -348,7 +382,7 @@ export class PiTui implements Tui {
     const composerBox = new BoxRenderable(this.renderer, {
       id: "composer",
       width: "100%",
-      height: 3,
+      height: 5,
       flexShrink: 0,
       flexDirection: "column",
       alignItems: "stretch",
@@ -358,14 +392,16 @@ export class PiTui implements Tui {
       paddingLeft: 1,
       paddingRight: 1,
     });
+    this.composerBox = composerBox;
 
     const inputRow = new BoxRenderable(this.renderer, {
       id: "input-row",
       width: "100%",
-      height: 1,
+      height: 3,
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "stretch",
     });
+    this.inputRow = inputRow;
 
     const promptGlyph = new TextRenderable(this.renderer, {
       id: "prompt",
@@ -375,13 +411,35 @@ export class PiTui implements Tui {
       fg: col.accent,
     });
 
-    this.input = new InputRenderable(this.renderer, {
+    this.input = new TextareaRenderable(this.renderer, {
       id: "input",
-      value: "",
+      initialValue: "",
       placeholder: "message xeq…",
+      wrapMode: "word",
       flexGrow: 1,
       flexShrink: 1,
+      minHeight: 3,
+      maxHeight: 3,
       textColor: col.text,
+      keyBindings: [
+        { name: "return", action: "submit" },
+        { name: "linefeed", action: "submit" },
+        { name: "return", shift: true, action: "newline" },
+        { name: "linefeed", shift: true, action: "newline" },
+      ],
+      onContentChange: () => {
+        const value = this.input?.plainText ?? "";
+        this.currentInput = value;
+        this.setInputValue?.(value);
+        this.updateSlashMenu(value);
+        this.syncComposerLayout();
+      },
+      onSubmit: () => {
+        this.submitComposerValue(normalizeText(this.input?.plainText ?? ""));
+      },
+      onSizeChange: () => {
+        this.syncComposerLayout();
+      },
     });
 
     inputRow.add(promptGlyph);
@@ -393,35 +451,7 @@ export class PiTui implements Tui {
     this.footerRoot.add(this.slashMenuBox);
     this.renderer.root.add(this.footerRoot);
     this.renderer.start();
-
-    // Welcome banner
-    this.print("xeq  type a task to get started  /help for commands  ctrl+c to quit", col.muted);
-    this.print("");
-
-    // ── Input events ──────────────────────────────────────────────────────────
-    this.input.on(InputRenderableEvents.INPUT, (value: string) => {
-      this.currentInput = value;
-      this.setInputValue?.(value);
-      this.updateSlashMenu(value);
-    });
-
-    this.input.on(InputRenderableEvents.ENTER, (value: string) => {
-      const submit = normalizeText(value);
-      this.currentInput = "";
-      if (this.input) this.input.value = "";
-      this.setInputValue?.("");
-      this.updateSlashMenu("");
-
-      if (this.pendingReadResolve) {
-        const resolve = this.pendingReadResolve;
-        this.pendingReadResolve = null;
-        resolve(submit);
-      } else if (submit.startsWith("/")) {
-        const command = submit.slice(1).split(/\s+/)[0];
-        const match = this.slashCommands.find((item) => item.name === `/${command}`);
-        if (match) this.renderUserMessage(submit);
-      }
-    });
+    this.syncComposerLayout();
 
     this.renderer.addInputHandler((seq) => {
       if (seq === "\x03") {
@@ -437,43 +467,51 @@ export class PiTui implements Tui {
         this.rejectPendingModal();
         return true;
       }
+      if (seq === "\x1b" && this.cancelRunningHandler) {
+        this.cancelRunningHandler();
+        return true;
+      }
       return false;
     });
 
     this.input.focus();
   }
 
+  renderStartupBanner(): void {
+    this.renderStartupCard();
+    this.print("");
+  }
+
   setActiveModel(modelId: string): void {
     const value = modelId.trim();
     this.activeModelLabel = value ? `model=${value}` : "model=unconfigured";
-    this.setStatus(this.activeModelLabel);
+    this.setStatus("", col.muted, "", col.muted);
   }
 
   renderUserMessage(message: string): void {
     const text = normalizeText(message);
     if (!text) return;
-    if (!this.renderer) return;
-    this.renderer.writeToScrollback((ctx) => {
-      const box = new BoxRenderable(ctx.renderContext, {
-        id: "user-msg-box",
-        width: ctx.width,
-        backgroundColor: col.userBg,
-        paddingLeft: 2,
-        paddingRight: 2,
-        paddingTop: 0,
-        paddingBottom: 0,
-      });
-      box.add(new TextRenderable(ctx.renderContext, {
-        id: "user-msg-text",
-        content: `› ${text}`,
-        width: ctx.width - 4,
-        wrapMode: "word",
-        truncate: false,
-        fg: col.text,
-      }));
-      return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    this.renderMessageBlock(text, {
+      textColor: col.text,
+      prefix: "› ",
+      backgroundColor: "#1b1f24",
+      fullWidthBackground: true,
+      paddingLeft: 2,
+      paddingRight: 2,
+      paddingTop: 0,
+      paddingBottom: 0,
     });
     this.print("");
+  }
+
+  renderAssistantMessage(message: string): void {
+    const text = normalizeText(message);
+    if (!text) return;
+    this.renderMessageBlock(text, {
+      textColor: col.text,
+      prefix: "‹ ",
+    });
+    this.renderMessageSeparator();
   }
 
   renderInfoMessage(message: string): void {
@@ -482,21 +520,21 @@ export class PiTui implements Tui {
     for (const line of text.split("\n")) {
       this.print(line, col.muted);
     }
-    this.print("");
   }
 
   renderInfoLines(lines: Array<{ text: string; color?: string }>): void {
     for (const line of lines) {
       this.print(line.text, line.color ?? col.muted);
     }
-    this.print("");
   }
 
   renderStep(step: AgentStep): void {
-    const detail = step.observation
-      ? `\n  ${normalizeText(step.observation).split("\n").slice(0, 3).join("\n  ")}`
-      : "";
-    this.print(`● ${step.action}  step ${step.step}${detail}`, col.step);
+    const observation = step.observation ? normalizeText(step.observation).split("\n").slice(0, 3).join("\n") : "";
+    this.print(`● ${step.action}  step ${step.step}`, col.step);
+    if (!observation) return;
+    for (const line of observation.split("\n")) {
+      this.print(`  ${line}`, col.step);
+    }
   }
 
   renderAssistantDelta(delta: string): void {
@@ -510,9 +548,14 @@ export class PiTui implements Tui {
   finalizeAssistantStream(text?: string): void {
     const final = normalizeText(text ?? this.assistantStreamText);
     this.assistantStreamText = "";
-    this.setStatus(this.activeModelLabel);
+    this.setStatus("", col.muted, "", col.muted);
     if (final) {
-      this.print(final, col.text);
+      this.renderTranscriptCard(final, {
+        boxId: "assistant-msg-box",
+        textId: "assistant-msg-text",
+        borderColor: col.accent,
+        backgroundColor: "#11161d",
+      });
       this.print("");
     }
   }
@@ -520,7 +563,7 @@ export class PiTui implements Tui {
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
     if (!prompt) {
       this.closePendingModal();
-      this.setStatus(this.activeModelLabel);
+      this.setStatus("", col.muted, "", col.muted);
       this.input?.focus();
       return;
     }
@@ -560,10 +603,18 @@ export class PiTui implements Tui {
       summary.success ? "done" : "failed",
       `steps=${summary.steps}`,
       `${Math.round(summary.durationMs / 1000)}s`,
-    ].join("  ");
-    this.print(`◆ ${line}`, col.summary);
-    this.print("");
-    this.printSeparator();
+      summary.promptTokens || summary.completionTokens
+        ? `tokens=${summary.promptTokens + summary.completionTokens}`
+        : "",
+      summary.estimatedCostUsd > 0 ? `cost=$${summary.estimatedCostUsd.toFixed(4)}` : "",
+    ].filter(Boolean).join("  ");
+    this.renderTranscriptCard(`◆ ${line}`, {
+      boxId: "run-summary-box",
+      textId: "run-summary-text",
+      borderColor: col.summary,
+      backgroundColor: "#1a120c",
+      textColor: col.summary,
+    });
     this.print("");
   }
 
@@ -593,25 +644,9 @@ export class PiTui implements Tui {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
-  private printSeparator(): void {
-    if (!this.renderer) return;
-    this.renderer.writeToScrollback((ctx) => {
-      const text = new TextRenderable(ctx.renderContext, {
-        id: "sb-sep",
-        content: "─".repeat(ctx.width),
-        width: ctx.width,
-        wrapMode: "none",
-        truncate: true,
-        fg: col.border,
-      });
-      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
-    });
-  }
-
   /** Write a styled line to the scrollback area above the footer. */
   private print(content: string, fg: string = col.text): void {
-    if (!this.renderer) return;
-    this.renderer.writeToScrollback((ctx) => {
+    this.writeScrollback((ctx) => {
       const text = new TextRenderable(ctx.renderContext, {
         id: "sb-line",
         content,
@@ -619,6 +654,215 @@ export class PiTui implements Tui {
         wrapMode: "word",
         truncate: false,
         fg,
+      });
+      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
+  }
+
+  private renderMessageBlock(
+    content: string,
+    opts: {
+      textColor: string;
+      prefix: string;
+      backgroundColor?: string;
+      fullWidthBackground?: boolean;
+      paddingLeft?: number;
+      paddingRight?: number;
+      paddingTop?: number;
+      paddingBottom?: number;
+    },
+  ): void {
+    this.writeScrollback((ctx) => {
+      if (opts.backgroundColor && opts.fullWidthBackground) {
+        const box = new BoxRenderable(ctx.renderContext, {
+          id: "sb-message-block-bg",
+          width: ctx.width,
+          backgroundColor: opts.backgroundColor,
+          paddingLeft: opts.paddingLeft ?? 0,
+          paddingRight: opts.paddingRight ?? 0,
+          paddingTop: opts.paddingTop ?? 0,
+          paddingBottom: opts.paddingBottom ?? 0,
+        });
+        box.add(new TextRenderable(ctx.renderContext, {
+          id: "sb-message-block",
+          content: `${opts.prefix}${content}`,
+          width: Math.max(1, ctx.width - (opts.paddingLeft ?? 0) - (opts.paddingRight ?? 0)),
+          wrapMode: "word",
+          truncate: false,
+          fg: opts.textColor,
+        }));
+        return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      }
+
+      const text = new TextRenderable(ctx.renderContext, {
+        id: "sb-message-block",
+        content: `${opts.prefix}${content}`,
+        width: ctx.width,
+        wrapMode: "word",
+        truncate: false,
+        fg: opts.textColor,
+        bg: opts.backgroundColor,
+        paddingLeft: opts.paddingLeft ?? 0,
+        paddingRight: opts.paddingRight ?? 0,
+        paddingTop: opts.paddingTop ?? 0,
+        paddingBottom: opts.paddingBottom ?? 0,
+      });
+      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
+  }
+
+  private renderMessageSeparator(): void {
+    this.writeScrollback((ctx) => {
+      const line = "─".repeat(Math.max(1, ctx.width));
+      const text = new TextRenderable(ctx.renderContext, {
+        id: "sb-message-separator",
+        content: line,
+        width: ctx.width,
+        wrapMode: "truncate",
+        truncate: true,
+        fg: col.border,
+      });
+      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
+  }
+
+  private renderTranscriptCard(
+    content: string,
+    opts: {
+      boxId: string;
+      textId: string;
+      borderColor: string;
+      backgroundColor: string;
+      textColor?: string;
+    },
+  ): void {
+    this.writeScrollback((ctx) => {
+      const contentWidth = Math.max(1, ctx.width - 5);
+      const box = new BoxRenderable(ctx.renderContext, {
+        id: opts.boxId,
+        width: ctx.width,
+        border: ["left"],
+        borderColor: opts.borderColor,
+        backgroundColor: opts.backgroundColor,
+        paddingLeft: 2,
+        paddingRight: 2,
+        paddingTop: 1,
+        paddingBottom: 1,
+      });
+      box.add(
+        new TextRenderable(ctx.renderContext, {
+          id: opts.textId,
+          content,
+          width: contentWidth,
+          wrapMode: "word",
+          truncate: false,
+          fg: opts.textColor ?? col.text,
+        }),
+      );
+      return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
+  }
+
+  private renderInfoCard(content: string, textColor: string = col.muted): void {
+    this.writeScrollback((ctx) => {
+      const contentWidth = Math.max(1, ctx.width - 5);
+      const box = new BoxRenderable(ctx.renderContext, {
+        id: "info-msg-box",
+        width: ctx.width,
+        border: ["left"],
+        borderColor: col.border,
+        backgroundColor: "#0b1016",
+        paddingLeft: 2,
+        paddingRight: 2,
+        paddingTop: 1,
+        paddingBottom: 1,
+      });
+      box.add(
+        new TextRenderable(ctx.renderContext, {
+          id: "info-msg-text",
+          content,
+          width: contentWidth,
+          wrapMode: "word",
+          truncate: false,
+          fg: textColor,
+        }),
+      );
+      return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+    });
+  }
+
+  private renderStartupCard(): void {
+    this.writeScrollback((ctx) => {
+      const width = clamp(ctx.width - 8, 68, 86);
+      const innerWidth = width - 2;
+      const labelWidth = 10;
+      const commandWidth = 18;
+      const directory = truncateMiddle(
+        process.cwd().replace(/^\/Users\/[^/]+/, "~"),
+        innerWidth - labelWidth - 3,
+      );
+      const modelLine = truncateMiddle(
+        this.activeModelLabel.replace(/^model=/, ""),
+        innerWidth - labelWidth - 3,
+      );
+      const chunks: TextChunk[] = [];
+      const push = (color: string, content: string): void => {
+        chunks.push(fg(color)(content));
+      };
+      const pushLine = (): void => push(col.border, "\n");
+      const borderLine = (left: string, fill: string, right: string): void => {
+        push(col.border, `${left}${fill.repeat(innerWidth)}${right}`);
+        pushLine();
+      };
+      const row = (segments: Array<{ text: string; color?: string }>): void => {
+        const contentLength = segments.reduce((sum, segment) => sum + segment.text.length, 0);
+        push(col.border, "│ ");
+        for (const segment of segments) {
+          push(segment.color ?? col.text, segment.text);
+        }
+        push(col.text, " ".repeat(Math.max(0, innerWidth - contentLength - 1)));
+        push(col.border, "│");
+        pushLine();
+      };
+      const keyValue = (label: string, value: string): void =>
+        row([
+          { text: padRight(label, labelWidth), color: col.muted },
+          { text: value },
+        ]);
+      const actionRow = (command: string, hint: string): void => {
+        const content = `${padRight(command, commandWidth)}${hint}`;
+        row([
+          { text: padRight(command, commandWidth), color: col.accent },
+          { text: hint },
+        ]);
+      };
+
+      borderLine("┌", "─", "┐");
+      row([
+        { text: ">_ ", color: col.accent },
+        { text: "xeq", color: col.accent },
+        { text: `  v${Bun.version}`, color: col.muted },
+      ]);
+      row([{ text: "ready for a task", color: col.muted }]);
+      borderLine("├", "─", "┤");
+      keyValue("workspace", directory);
+      keyValue("model", modelLine);
+      borderLine("├", "─", "┤");
+      actionRow("type anything", "start a new turn");
+      actionRow("/", "browse commands");
+      actionRow("/resume", "restore a saved session");
+      actionRow("ctrl+c", "quit");
+      borderLine("└", "─", "┘");
+      if (chunks[chunks.length - 1]?.text === "\n") {
+        chunks.pop();
+      }
+      const text = new TextRenderable(ctx.renderContext, {
+        id: "startup-card-text",
+        content: new StyledText(chunks),
+        width,
+        height: 12,
+        wrapMode: "none",
+        truncate: false,
       });
       return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
     });
@@ -633,6 +877,51 @@ export class PiTui implements Tui {
       renderer.footerHeight = nextHeight;
     }
     renderer.requestRender();
+  }
+
+  private syncComposerLayout(): void {
+    const composerBox = this.composerBox;
+    const inputRow = this.inputRow;
+    const input = this.input;
+    if (!composerBox || !inputRow || !input) return;
+
+    const visibleLines = clamp(Math.max(1, input.virtualLineCount), 1, 5);
+    const nextInputHeight = Math.max(3, visibleLines);
+    const nextComposerHeight = nextInputHeight + 2;
+
+    if (inputRow.height !== nextInputHeight) {
+      inputRow.height = nextInputHeight;
+    }
+    if (input.height !== nextInputHeight) {
+      input.height = nextInputHeight;
+    }
+    if (composerBox.height !== nextComposerHeight) {
+      composerBox.height = nextComposerHeight;
+    }
+
+    this.syncFooterHeight();
+  }
+
+  private submitComposerValue(submit: string): void {
+    this.currentInput = "";
+    if (this.input) {
+      this.input.setText("");
+    }
+    this.setInputValue?.("");
+    this.updateSlashMenu("");
+
+    if (this.pendingReadResolve) {
+      const resolve = this.pendingReadResolve;
+      this.pendingReadResolve = null;
+      resolve(submit);
+      return;
+    }
+
+    if (submit.startsWith("/")) {
+      const command = submit.slice(1).split(/\s+/)[0];
+      const match = this.slashCommands.find((item) => item.name === `/${command}`);
+      if (match) this.renderUserMessage(submit);
+    }
   }
 
   private updateSlashMenu(value: string): void {
@@ -690,7 +979,7 @@ export class PiTui implements Tui {
     if (seq === "\t") {
       const selected = this.slashMenuItems[this.slashMenuIndex];
       if (!selected) return false;
-      input.value = selected.name;
+      input.setText(selected.name);
       this.currentInput = selected.name;
       this.setInputValue?.(selected.name);
       this.updateSlashMenu(selected.name);
@@ -751,20 +1040,7 @@ export class PiTui implements Tui {
     const input = this.input;
     if (!selected || !renderer || !input) return;
 
-    input.value = "";
-    this.currentInput = "";
-    this.setInputValue?.("");
-    this.updateSlashMenu("");
-
-    if (this.pendingReadResolve) {
-      const resolve = this.pendingReadResolve;
-      this.pendingReadResolve = null;
-      renderer.requestRender();
-      resolve(selected.name);
-      return;
-    }
-
-    this.renderUserMessage(selected.name);
+    this.submitComposerValue(selected.name);
     renderer.requestRender();
   }
 
@@ -801,11 +1077,13 @@ export class PiTui implements Tui {
       flexShrink: 0,
       flexDirection: "column",
       alignItems: "stretch",
-      border: true,
-      borderStyle: "single",
+      border: ["left"],
       borderColor: col.accent,
-      paddingLeft: 1,
-      paddingRight: 1,
+      backgroundColor: "#0b1016",
+      paddingLeft: 2,
+      paddingRight: 2,
+      paddingTop: 1,
+      paddingBottom: 1,
       title: ` ${title} `,
     });
   }
@@ -824,7 +1102,7 @@ export class PiTui implements Tui {
 
     const choices = prompt.choices ?? defaultApprovalChoices();
     const selectedIndex = Math.max(0, Math.min(choices.length - 1, prompt.selectedIndex ?? 1));
-    const visibleChoices = Math.min(choices.length, 8);
+    const visibleChoices = Math.min(choices.length, 12);
     const hasDetails = Boolean(prompt.details?.trim());
     const showPreview = choices.some((choice) => choice.description?.trim());
     // innerRows = message(1) + details?(1) + choices viewport + preview?(1) + help(1)
@@ -865,11 +1143,11 @@ export class PiTui implements Tui {
       focusedBackgroundColor: col.userBg,
       showScrollIndicator: choices.length > visibleChoices,
       showDescription: false,
-      selectedBackgroundColor: col.accent,
-      selectedTextColor: "#000000",
+      selectedBackgroundColor: col.border,
+      selectedTextColor: col.text,
       textColor: col.text,
       descriptionColor: col.muted,
-      selectedDescriptionColor: "#000000",
+      selectedDescriptionColor: col.muted,
     });
 
     box.add(select);

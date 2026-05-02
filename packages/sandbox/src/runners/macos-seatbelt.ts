@@ -23,7 +23,7 @@ export const runWithMacosSeatbelt: SandboxRunner = async (
   const env = { ...process.env, ...(options.env ?? {}) };
   const profile = buildSeatbeltProfile(cwd);
 
-  const args = ["-p", profile, "bash", "-lc", command];
+  const args = ["-p", profile, "bash", "--noprofile", "--norc", "-c", command];
 
   const child = spawn("sandbox-exec", args, {
     cwd,

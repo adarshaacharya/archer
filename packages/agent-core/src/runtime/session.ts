@@ -1,16 +1,22 @@
 import { Agent, Session, createLocalTools } from "@openharness/core";
 import { resolveModelConfig } from "@xeq/model-providers";
+import { loadEffectiveModelMessages, replaceMessages } from "@xeq/storage";
 import { createEditTools, createWebFetchTool, createWebSearchTool } from "@xeq/tools";
+import type { ModelMessage } from "ai";
 import { DEFAULT_MAX_STEPS } from "../types.js";
+import { createTrackedFsProvider } from "./file-tracker.js";
 import { sanitizeId } from "./ids.js";
 import { resolveModel } from "./model.js";
 import type { OpenHarnessRuntimeDeps, RuntimeProviders } from "./openharness-types.js";
+import { buildSystemPrompt } from "./task-flow.js";
 
 type RuntimeSession = {
   session: Session;
   cwd: string;
   provider: string;
   modelId: string;
+  pricing?: ReturnType<typeof resolveModel>["pricing"];
+  loaded: boolean;
 };
 
 const SESSIONS = new Map<string, RuntimeSession>();
@@ -20,6 +26,7 @@ function createSession({
   providers,
   modelId,
   instructions,
+  approveToolCall,
   approvePatchApply,
   sessionId,
 }: {
@@ -27,11 +34,13 @@ function createSession({
   providers: RuntimeProviders;
   modelId?: string;
   instructions?: string;
+  approveToolCall?: OpenHarnessRuntimeDeps["approveToolCall"];
   approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
   sessionId?: string;
 }): RuntimeSession {
   const model = resolveModel(modelId);
-  const editTools = createEditTools(providers.fs, {
+  const trackedFs = createTrackedFsProvider(providers.fs, sessionId ?? `${cwd}:${model.modelId}`);
+  const editTools = createEditTools(trackedFs, {
     onPatchPreview: async (preview) => {
       if (!approvePatchApply) {
         return true;
@@ -69,7 +78,7 @@ function createSession({
     },
   });
   const tools = {
-    ...createLocalTools({ fs: providers.fs, shell: providers.shell }),
+    ...createLocalTools({ fs: trackedFs, shell: providers.shell }),
     preparePatchBundle: editTools.preparePatchBundle,
     preparePatch: editTools.preparePatch,
     ...(providers.webSearch
@@ -84,26 +93,11 @@ function createSession({
     name: "xeq",
     description: "XEQ terminal coding agent",
     model: model.model,
-    systemPrompt:
-      instructions ??
-      [
-        "You are XEQ, a terminal coding agent.",
-        "Default to doing the work without asking questions. Treat short tasks as sufficient direction and infer missing details by reading the codebase and following existing conventions.",
-        "Only ask when you are truly blocked after checking relevant context and cannot safely pick a reasonable default.",
-        "This usually means the request is ambiguous in a way that materially changes the result, the action is destructive or security-sensitive, or you need a secret or value that cannot be inferred.",
-        "If you must ask, do all non-blocked work first, ask exactly one targeted question, include your recommended default, and say what changes based on the answer.",
-        "Never ask permission questions like 'Should I proceed?' or 'Do you want me to run tests?'; proceed with the most reasonable option and mention what you did.",
-        "Make minimal safe edits and use tools deliberately.",
-        "Prefer preparePatchBundle for multi-file changes and preparePatch for single-file changes.",
-        "These tools show a reviewable diff and apply the change immediately when approved.",
-      ].join(" "),
+    systemPrompt: instructions ?? buildSystemPrompt(),
     maxSteps: DEFAULT_MAX_STEPS,
     tools,
     approve: async (toolCall) => {
-      // if (toolCall.toolName === "bash") {
-      //   return false;
-      // }
-      return true;
+      return approveToolCall ? approveToolCall(toolCall) : true;
     },
   });
 
@@ -111,9 +105,22 @@ function createSession({
     agent,
     contextWindow: 200_000,
     sessionId: sessionId ? sanitizeId(sessionId) : undefined,
+    sessionStore: {
+      load: async (id: string) => loadEffectiveModelMessages(id),
+      save: async (id: string, messages: ModelMessage[]) => {
+        await replaceMessages(id, messages);
+      },
+    },
   });
 
-  return { session, cwd, provider: model.provider, modelId: model.modelId };
+  return {
+    session,
+    cwd,
+    provider: model.provider,
+    modelId: model.modelId,
+    pricing: model.pricing,
+    loaded: false,
+  };
 }
 
 export function getOrCreateSession({
@@ -121,6 +128,7 @@ export function getOrCreateSession({
   providers,
   modelId,
   instructions,
+  approveToolCall,
   approvePatchApply,
   sessionId,
 }: {
@@ -128,6 +136,7 @@ export function getOrCreateSession({
   providers: RuntimeProviders;
   modelId?: string;
   instructions?: string;
+  approveToolCall?: OpenHarnessRuntimeDeps["approveToolCall"];
   approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
   sessionId?: string;
 }): RuntimeSession {
@@ -148,9 +157,15 @@ export function getOrCreateSession({
     providers,
     modelId: resolved.modelId,
     instructions,
+    approveToolCall,
     approvePatchApply,
     sessionId: key,
   });
   SESSIONS.set(key, created);
   return created;
+}
+
+export function resetSessionById(sessionId: string): void {
+  const key = sanitizeId(sessionId);
+  SESSIONS.delete(key);
 }

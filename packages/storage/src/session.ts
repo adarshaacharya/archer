@@ -37,6 +37,10 @@ export async function getSession(id: string) {
   });
 }
 
+export async function deleteSession(id: string): Promise<void> {
+  await getDb().delete(sessions).where(eq(sessions.id, id));
+}
+
 export async function listSessions(opts?: {
   limit?: number;
   project_root?: string;
@@ -51,7 +55,7 @@ export async function listSessions(opts?: {
 export async function touchSession(input: {
   id: string;
   updated_at?: number;
-  last_message_at?: number;
+  last_message_at?: number | null;
   status?: string;
 }): Promise<void> {
   const now = input.updated_at ?? Date.now();
@@ -61,6 +65,19 @@ export async function touchSession(input: {
       updated_at: now,
       last_message_at: input.last_message_at ?? now,
       status: input.status,
+    })
+    .where(eq(sessions.id, input.id));
+}
+
+export async function updateSessionTitle(input: {
+  id: string;
+  title: string;
+}): Promise<void> {
+  await getDb()
+    .update(sessions)
+    .set({
+      title: input.title,
+      updated_at: Date.now(),
     })
     .where(eq(sessions.id, input.id));
 }

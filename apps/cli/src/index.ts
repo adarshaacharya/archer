@@ -1,13 +1,22 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
-import { performance } from "node:perf_hooks";
-import { runOpenHarnessRuntime } from "@xeq/agent-core";
 import type { SupportedProvider } from "@xeq/model-providers";
-import { type ApprovalChoice, type ApprovalRequest, createSandboxEnvironment } from "@xeq/sandbox";
-import { AgentRequestSchema } from "@xeq/shared";
-import { appendMessage, createSession, getMessages, listSessions } from "@xeq/storage";
+import { type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
+import {
+  createSession,
+  getMessages,
+  getSession,
+  getTurnResults,
+  listSessions,
+  updateSessionTitle,
+} from "@xeq/storage";
 import { PiTui, type SlashCommandItem, type Tui } from "@xeq/tui";
-import { type SupportedWebProvider, createWebSearchProvider } from "@xeq/web";
+import type { SupportedWebProvider } from "@xeq/web";
+import {
+  permissionsSummary,
+  requestApproval,
+  setApprovalMode,
+} from "./approvals.js";
 import {
   clearProviderEnv,
   clearWebProviderEnv,
@@ -26,104 +35,75 @@ import {
   saveProviderAuth,
   saveWebProviderAuth,
 } from "./auth-store.js";
+import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.js";
+import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compact.js";
 import { KeybindManager } from "./keybinds.js";
 import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
-import {
-  type PermissionRequest,
-  applyApprovalChoice,
-  getSettingsFilePath,
-  hasStoredPermission,
-  readSettings,
-  webFetchRuleForUrl,
-} from "./settings-store.js";
+import { titleFromTask } from "./task-title.js";
+import { runTask } from "./task-runner.js";
+import { runTurn } from "./turn-runner.js";
 import { loadTuiConfig } from "./tui-config.js";
+import type { SessionState } from "./session-state.js";
 
 function parseInitialTask(argv: string[]): string | null {
   const task = argv.join(" ").trim();
   return task.length > 0 ? task : null;
 }
 
+function isCasualGreeting(input: string): boolean {
+  const text = input.trim().toLowerCase();
+  if (!text) return false;
+
+  const normalized = text.replace(/[!?.,]+$/g, "");
+  return new Set([
+    "hi",
+    "hello",
+    "hey",
+    "yo",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "thanks",
+    "thank you",
+  ]).has(normalized);
+}
+
+function renderGreetingReply(tui: Tui, greeting: string): void {
+  tui.renderUserMessage(greeting);
+  tui.renderAssistantMessage("What would you like to work on?");
+}
+
 function newSessionId(): string {
   return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function newMessageId(): string {
-  return `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+function resolveProjectRoot(startDir: string): string {
+  const result = Bun.spawnSync({
+    cmd: ["git", "rev-parse", "--show-toplevel"],
+    cwd: startDir,
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+
+  if (result.exitCode === 0) {
+    const root = new TextDecoder().decode(result.stdout).trim();
+    if (root) {
+      return root;
+    }
+  }
+
+  return startDir;
 }
 
 type SlashCommandResult =
-  | { type: "continue"; message: string; lines?: Array<{ text: string; color?: string }> }
+  | {
+      type: "continue";
+      message: string;
+      lines?: Array<{ text: string; color?: string }>;
+      restoreSessionId?: string;
+    }
   | { type: "exit" }
   | { type: "none" };
-
-type SessionState = {
-  sessionId: string;
-  provider: SupportedProvider | null;
-  modelId: string;
-  authSource: "env" | "saved" | null;
-  webProvider: SupportedWebProvider | null;
-  webAuthSource: "env" | "saved" | null;
-};
-
-type LocalApprovalRequest = ApprovalRequest | PermissionRequest;
-
-function describeApprovalRequest(request: LocalApprovalRequest): string {
-  switch (request.kind) {
-    case "command":
-      return `Allow command?\n${request.target}`;
-    case "file-write":
-      return request.details
-        ? `Review patch before applying?\n${request.target}`
-        : `Allow file write?\n${request.target}`;
-    case "web-fetch":
-      return `Allow web fetch?\n${request.target}`;
-  }
-}
-
-async function requestApproval(tui: Tui, request: LocalApprovalRequest): Promise<ApprovalChoice> {
-  const settings = await readSettings();
-  if (hasStoredPermission(settings, request)) {
-    return "always";
-  }
-
-  const result = await tui.promptApproval({
-    message: describeApprovalRequest(request),
-    details: request.details,
-    choices: [
-      {
-        value: "reject",
-        label: "Reject",
-        description: "Deny this action",
-      },
-      {
-        value: "once",
-        label: "Approve once",
-        description: "Allow this action this time only",
-      },
-      {
-        value: "always",
-        label: "Always approve",
-        description: "Remember this rule for next time",
-      },
-    ],
-  });
-
-  if (result === "always") {
-    await applyApprovalChoice(request, "always");
-  }
-
-  return result as ApprovalChoice;
-}
-
-async function permissionsSummary(): Promise<string> {
-  const settings = await readSettings();
-  return [
-    `file_writes=${settings.permissions.fileWriteAllowRules.length}`,
-    `commands=${settings.permissions.commandAllowRules.length}`,
-    `web_fetch=${settings.permissions.webFetchAllowRules.length}`,
-    `store=${getSettingsFilePath()}`,
-  ].join("  ");
-}
 
 function activeProviderSummary(state: SessionState): string {
   if (!state.provider || !state.authSource) {
@@ -367,215 +347,6 @@ function updateWebSessionState(
   state.webAuthSource = resolved.authSource;
 }
 
-async function runTask(task: string, tui: Tui, state: SessionState): Promise<void> {
-  const abortController = new AbortController();
-  tui.onCancelRunning(() => {
-    abortController.abort();
-    tui.renderApprovalPrompt({
-      message: "Cancelling current run...",
-      options: ["wait"],
-    });
-  });
-
-  const request = AgentRequestSchema.parse({
-    task,
-    repoRoot: process.cwd(),
-    approvalMode: "suggest",
-    maxSteps: 256,
-    maxDurationMs: 120000,
-  });
-
-  tui.renderApprovalPrompt({ message: request.task, options: ["running"] });
-
-  const started = performance.now();
-  const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-  let frameIndex = 0;
-  let promptPending = false;
-  const spinner = setInterval(() => {
-    if (promptPending) {
-      return;
-    }
-
-    const frame = spinnerFrames[frameIndex % spinnerFrames.length];
-    frameIndex += 1;
-    tui.renderApprovalPrompt({
-      message: `${frame} Processing task...`,
-      options: ["esc=abort"],
-    });
-  }, 120);
-
-  const patchApprovedPaths = new Set<string>();
-
-  const env = createSandboxEnvironment({
-    cwd: request.repoRoot,
-    approvals: async (approvalRequest) => {
-      if (approvalRequest.kind === "file-write" && patchApprovedPaths.has(approvalRequest.target)) {
-        patchApprovedPaths.delete(approvalRequest.target);
-        return "once";
-      }
-      promptPending = true;
-      try {
-        return await requestApproval(tui, approvalRequest);
-      } finally {
-        promptPending = false;
-      }
-    },
-  });
-
-  tui.renderUserMessage(request.task);
-  await appendMessage({
-    id: newMessageId(),
-    session_id: state.sessionId,
-    role: "user",
-    content: request.task,
-  });
-  const webSearch = createWebSearchProvider(
-    async () => {
-      promptPending = true;
-      try {
-        const connected = await ensureWebProviderConnected(tui, state);
-        if (!connected) {
-          throw new Error("Web search cancelled: no provider configured");
-        }
-
-        const resolved = await resolveActiveWebProvider();
-        updateWebSessionState(state, resolved);
-        if (!resolved) {
-          throw new Error("Web search is unavailable");
-        }
-
-        return {
-          provider: resolved.provider,
-          apiKey: resolved.apiKey,
-        };
-      } finally {
-        promptPending = false;
-      }
-    },
-    {
-      allowUrl: async (url) => {
-        const rule = webFetchRuleForUrl(url);
-        if (!rule) {
-          throw new Error(`Invalid URL for web fetch: ${url}`);
-        }
-
-        promptPending = true;
-        try {
-          const approval = await requestApproval(tui, {
-            kind: "web-fetch",
-            target: rule,
-          });
-          if (approval === "reject") {
-            throw new Error(`Web fetch denied for ${rule}`);
-          }
-        } finally {
-          promptPending = false;
-        }
-      },
-    },
-  );
-
-  const result = await runOpenHarnessRuntime(
-    {
-      modelId: state.modelId,
-      sessionId: state.sessionId,
-      providers: {
-        ...env,
-        webSearch,
-      },
-      approvePatchApply: async (preview) => {
-        promptPending = true;
-        try {
-          const approval = await tui.promptApproval({
-            message: "Review changes",
-            details: preview.summary ? preview.summary : "Inspect the patch before applying.",
-            review:
-              preview.files && preview.files.length > 0
-                ? {
-                    summary: preview.summary ?? "Prepared changes",
-                    changedFilesCount: preview.changedFilesCount ?? preview.files.length,
-                    files: preview.files,
-                  }
-                : undefined,
-            choices: [
-              {
-                value: "reject",
-                label: "Reject",
-                description: "Deny these changes",
-              },
-              {
-                value: "once",
-                label: "Approve once",
-                description: "Apply these changes this time only",
-              },
-              {
-                value: "always",
-                label: "Always approve",
-                description: "Remember this approval choice",
-              },
-            ],
-          });
-          if (approval !== "reject" && preview.files) {
-            for (const f of preview.files) {
-              patchApprovedPaths.add(f.filePath);
-            }
-          }
-          return approval !== "reject";
-        } finally {
-          promptPending = false;
-        }
-      },
-      onStep: (step) => {
-        if (step.action === "model.final") {
-          tui.finalizeAssistantStream(step.observation);
-          return;
-        }
-
-        tui.renderStep({
-          step: step.step,
-          action: step.action,
-          thought: step.thought,
-          observation: step.observation,
-        });
-      },
-      onTextDelta: (delta) => {
-        tui.renderAssistantDelta(delta);
-      },
-    },
-    request.task,
-    {
-      cwd: request.repoRoot,
-      maxSteps: request.maxSteps,
-      timeoutMs: request.maxDurationMs,
-      abortSignal: abortController.signal,
-    },
-  ).finally(() => {
-    clearInterval(spinner);
-    tui.onCancelRunning(null);
-  });
-
-  tui.renderSummary({
-    success: result.status === "completed" || result.status === "cancelled",
-    steps: result.steps,
-    durationMs: Math.round(performance.now() - started),
-    promptTokens: 0,
-    completionTokens: 0,
-    estimatedCostUsd: 0,
-  });
-
-  if (result.outputText.trim().length > 0) {
-    await appendMessage({
-      id: newMessageId(),
-      session_id: state.sessionId,
-      role: "assistant",
-      kind: result.status === "completed" ? "message" : "status",
-      content: result.outputText,
-    });
-  }
-
-  tui.renderApprovalPrompt(null);
-}
-
 function formatTimestamp(timestamp: number | null | undefined): string {
   if (!timestamp) {
     return "unknown";
@@ -584,35 +355,196 @@ function formatTimestamp(timestamp: number | null | undefined): string {
   return new Date(timestamp).toLocaleString();
 }
 
-async function historySummary(): Promise<Array<{ text: string; color?: string }>> {
-  const sessions = await listSessions({
-    limit: 12,
-    project_root: process.cwd(),
+function sessionLabel(
+  session: Awaited<ReturnType<typeof listSessions>>[number],
+  index?: number,
+): string {
+  const prefix = index === undefined ? "" : `${index + 1}. `;
+  const stamp = formatTimestamp(session.updated_at);
+  const title = session.title?.trim() || "Untitled";
+  return `${prefix}${title}  ${stamp}`;
+}
+
+function sessionDescription(session: Awaited<ReturnType<typeof listSessions>>[number]): string {
+  return `updated=${formatTimestamp(session.updated_at)}  id=${session.id}`;
+}
+
+async function projectSessions() {
+  return listSessions({
+    limit: 50,
+    project_root: resolveProjectRoot(process.cwd()),
   });
+}
+
+async function historySummary(): Promise<Array<{ text: string; color?: string }>> {
+  const sessions = await projectSessions();
 
   if (sessions.length === 0) {
     return [{ text: "No stored sessions for this project yet.", color: "#6E7681" }];
   }
 
-  return sessions.map((session, index) => ({
-    text: [
-      `${index + 1}.`,
-      session.title ?? session.id,
-      `[${session.status}]`,
-      `updated=${formatTimestamp(session.updated_at)}`,
-      `id=${session.id}`,
-    ].join(" "),
-    color: session.id.startsWith("session_") ? "#E6EDF3" : "#6E7681",
-  }));
+  const turnCounts = await Promise.all(
+    sessions.map(async (session) => ({
+      id: session.id,
+      turns: (await getTurnResults(session.id, 3)).length,
+    })),
+  );
+
+  return sessions.map((session, index) => {
+    const turnCount = turnCounts.find((item) => item.id === session.id)?.turns ?? 0;
+    return {
+      text: `${sessionLabel(session, index)}  ${sessionDescription(session)}  turns=${turnCount}`,
+      color: session.id.startsWith("session_") ? "#E6EDF3" : "#6E7681",
+    };
+  });
 }
 
-async function historyTranscript(sessionId: string): Promise<string> {
-  const messages = await getMessages(sessionId);
-  if (messages.length === 0) {
-    return `No stored messages for ${sessionId}.`;
+function renderStoredContent(content: string): string {
+  const renderPart = (part: unknown): string[] => {
+    if (typeof part === "string") {
+      return [part];
+    }
+
+    if (!part || typeof part !== "object") {
+      return [];
+    }
+
+    const record = part as Record<string, unknown>;
+    const type = typeof record.type === "string" ? record.type : null;
+
+    if ((type === "reasoning" || type === "reasoning_text") && typeof record.text === "string") {
+      return [`[reasoning] ${record.text}`];
+    }
+
+    if (type === "text" && typeof record.text === "string") {
+      return [record.text];
+    }
+
+    if (type === "text" && typeof record.value === "string") {
+      return [record.value];
+    }
+
+    if ((type === "tool-call" || type === "tool_call") && typeof record.toolName === "string") {
+      const input =
+        record.input === undefined ? "" : ` ${JSON.stringify(record.input).slice(0, 240)}`;
+      return [`[tool-call:${record.toolName}]${input}`];
+    }
+
+    if ((type === "tool-result" || type === "tool_result") && typeof record.toolName === "string") {
+      const output =
+        record.output === undefined ? "" : ` ${JSON.stringify(record.output).slice(0, 240)}`;
+      return [`[tool-result:${record.toolName}]${output}`];
+    }
+
+    if ((type === "image" || type === "file") && typeof record.mimeType === "string") {
+      return [`[${type}:${record.mimeType}]`];
+    }
+
+    if (type === "file") {
+      return ["[file]"];
+    }
+
+    if (type) {
+      return [`[${type}]`];
+    }
+
+    if (typeof record.text === "string") {
+      return [record.text];
+    }
+
+    return [];
+  };
+
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+
+    if (Array.isArray(parsed)) {
+      const parts = parsed.flatMap((item) => renderPart(item));
+      const visibleParts = parts.some((part) => !part.startsWith("[reasoning]"))
+        ? parts.filter((part) => !part.startsWith("[reasoning]"))
+        : parts;
+
+      if (visibleParts.length > 0) {
+        return visibleParts.join("\n");
+      }
+    }
+
+    if (parsed && typeof parsed === "object") {
+      const lines = renderPart(parsed);
+      if (lines.length > 0) {
+        return lines.join("\n");
+      }
+    }
+  } catch {
+    return content;
   }
 
-  return messages.map((message) => `[${message.role}] ${message.content}`).join("\n\n");
+  return content;
+}
+
+async function pickSession(tui: Tui, prompt: string): Promise<string | "cancel"> {
+  const sessions = await projectSessions();
+  if (sessions.length === 0) {
+    return "cancel";
+  }
+
+  const picked = await tui.promptApproval({
+    message: prompt,
+    choices: sessions.map((session) => ({
+      value: session.id,
+      label: sessionLabel(session),
+      description: sessionDescription(session),
+    })),
+  });
+
+  if (picked === "reject") {
+    return "cancel";
+  }
+
+  return picked;
+}
+
+async function continueSession(
+  sessionId: string,
+  state: SessionState,
+): Promise<SlashCommandResult> {
+  const session = await getSession(sessionId);
+  if (!session) {
+    return {
+      type: "continue",
+      message: `Unknown session: ${sessionId}`,
+    };
+  }
+
+  state.sessionId = session.id;
+  state.sessionTitle = session.title ?? null;
+  return {
+    type: "continue",
+    message: "",
+    restoreSessionId: session.id,
+  };
+}
+
+async function startNewSession(state: SessionState): Promise<SlashCommandResult> {
+  const sessionId = newSessionId();
+  await createSession({
+    id: sessionId,
+    title: null,
+    cwd: process.cwd(),
+    project_root: state.projectRoot,
+    provider: state.provider ?? "unknown",
+    model: state.modelId || "unknown",
+  });
+
+  state.sessionId = sessionId;
+  state.sessionTitle = null;
+  return {
+    type: "continue",
+    message: "Started a new session.",
+  };
 }
 
 async function promptForProvider(
@@ -773,6 +705,73 @@ async function ensureWebProviderConnected(tui: Tui, state: SessionState): Promis
   return result.type !== "exit" && state.webProvider !== null;
 }
 
+async function replaySessionTranscript(tui: Tui, sessionId: string): Promise<void> {
+  const [messages, turnResults] = await Promise.all([
+    getMessages(sessionId),
+    getTurnResults(sessionId, 10),
+  ]);
+  if (messages.length === 0) {
+    tui.renderInfoMessage(`No stored messages for ${sessionId}.`);
+    return;
+  }
+
+  tui.renderInfoMessage(
+    `Restored ${messages.length} stored message${messages.length === 1 ? "" : "s"} from ${sessionId}.`,
+  );
+
+  if (turnResults.length > 0) {
+    tui.renderInfoMessage("Recent turn results:");
+    for (const turn of turnResults.slice(-5)) {
+      tui.renderInfoMessage(formatTurnResultLine(turn));
+    }
+  }
+
+  for (const message of messages) {
+    const content = renderStoredContent(message.content);
+    if (!content.trim()) {
+      continue;
+    }
+
+    if (message.role === "user") {
+      tui.renderUserMessage(content);
+      continue;
+    }
+
+    if (message.role === "assistant") {
+      tui.finalizeAssistantStream(content);
+      continue;
+    }
+
+    tui.renderInfoMessage(`[${message.role}] ${content}`);
+  }
+}
+
+function formatTurnResultLine(turn: {
+  intent: string;
+  status: string;
+  task: string;
+  summary?: unknown;
+  created_at: number;
+}): string {
+  const summary = turn.summary as
+    | {
+        steps?: unknown;
+        durationMs?: unknown;
+        estimatedCostUsd?: unknown;
+      }
+    | null
+    | undefined;
+  const steps = typeof summary?.steps === "number" ? ` steps=${summary.steps}` : "";
+  const duration =
+    typeof summary?.durationMs === "number" ? ` dur=${Math.round(summary.durationMs)}ms` : "";
+  const cost =
+    typeof summary?.estimatedCostUsd === "number"
+      ? ` cost=$${summary.estimatedCostUsd.toFixed(4)}`
+      : "";
+  const task = turn.task.replace(/\s+/g, " ").trim().slice(0, 80);
+  return `[turn ${formatTimestamp(turn.created_at)}] ${turn.intent}/${turn.status}${steps}${duration}${cost}  ${task}`;
+}
+
 async function handleSlashCommand(
   input: string,
   tui: Tui,
@@ -790,25 +789,47 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message:
-        "Commands: /help, /history, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+        "Commands: /help, /new, /resume, /commit, /compact, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
     };
   }
 
-  if (command === "history") {
-    const args = trimmed.slice(command.length + 1).trim();
-    if (!args) {
-      const lines = await historySummary();
-      return {
-        type: "continue",
-        message: lines.map((line) => line.text).join("\n"),
-        lines,
-      };
-    }
+  if (command === "new") {
+    return startNewSession(state);
+  }
 
+  if (command === "commit") {
+    await runTask(commitWorkflowPrompt(state.projectRoot), tui, state);
     return {
       type: "continue",
-      message: await historyTranscript(args),
+      message: "Commit workflow finished.",
     };
+  }
+
+  if (command === "compact") {
+    await runTask(compactWorkflowPrompt(), tui, state);
+    return {
+      type: "continue",
+      message: "Compaction workflow finished.",
+    };
+  }
+
+  if (command === "resume") {
+    const args = trimmed.slice(command.length + 1).trim();
+    if (!args) {
+      const picked = await pickSession(tui, "Choose session to resume");
+      if (picked === "cancel") {
+        const lines = await historySummary();
+        return {
+          type: "continue",
+          message: lines.map((line) => line.text).join("\n"),
+          lines,
+        };
+      }
+
+      return continueSession(picked, state);
+    }
+
+    return continueSession(args, state);
   }
 
   if (command === "providers") {
@@ -843,6 +864,11 @@ async function handleSlashCommand(
       type: "continue",
       message: await permissionsSummary(),
     };
+  }
+
+  if (command === "mode" || command === "approval") {
+    const args = trimmed.slice(command.length + 1).trim();
+    return setApprovalMode(tui, state, args);
   }
 
   if (command === "connect") {
@@ -992,6 +1018,9 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
     }
     if (slash.type === "continue") {
       tui.renderApprovalPrompt(null);
+      if (slash.restoreSessionId) {
+        await replaySessionTranscript(tui, slash.restoreSessionId);
+      }
       if (slash.lines && slash.lines.length > 0) {
         tui.renderInfoLines(slash.lines);
       } else if (slash.message.includes("\n")) {
@@ -1009,8 +1038,13 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
       break;
     }
 
+    if (isCasualGreeting(line)) {
+      renderGreetingReply(tui, line);
+      continue;
+    }
+
     try {
-      await runTask(line, tui, state);
+      await runTurn(line, tui, state);
     } catch (error) {
       tui.renderApprovalPrompt({
         message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -1023,8 +1057,13 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
 async function main(): Promise<void> {
   const initialTask = parseInitialTask(process.argv.slice(2));
   const sessionId = newSessionId();
+  const cwd = process.cwd();
+  const projectRoot = resolveProjectRoot(cwd);
   const state: SessionState = {
     sessionId,
+    sessionTitle: null,
+    projectRoot,
+    approvalMode: "suggest",
     provider: null,
     modelId: "",
     authSource: null,
@@ -1032,7 +1071,7 @@ async function main(): Promise<void> {
     webAuthSource: null,
   };
 
-  const tuiConfig = await loadTuiConfig(process.cwd());
+  const tuiConfig = await loadTuiConfig(cwd);
   const keybinds = new KeybindManager(tuiConfig.keybinds);
   const promptOptions = [
     `${keybinds.print("input_submit")}=run`,
@@ -1041,11 +1080,16 @@ async function main(): Promise<void> {
   ];
   const slashCommandOptions: SlashCommandItem[] = [
     { name: "/providers", description: "show provider connection status" },
+    { name: "/new", description: "start a fresh session" },
+    { name: "/resume", description: "pick and resume a saved session" },
+    commitSlashCommandItem,
+    compactSlashCommandItem,
     { name: "/connect", description: "connect a model provider" },
     { name: "/change-key", description: "update a provider API key" },
     { name: "/disconnect", description: "remove a saved provider key" },
     { name: "/provider", description: "show the active model provider" },
     { name: "/model", description: "choose the active model" },
+    { name: "/mode", description: "choose the approval mode" },
     { name: "/web", description: "connect a web search provider" },
     { name: "/web-provider", description: "show the active web search provider" },
     { name: "/web-logout", description: "remove the saved web provider key" },
@@ -1069,19 +1113,30 @@ async function main(): Promise<void> {
     const ready = await ensureProviderConnected(tui, state);
     if (!ready) return;
     tui.setActiveModel(state.modelId);
-    await createSession({
-      id: state.sessionId,
-      title: initialTask ? initialTask.slice(0, 80) : null,
-      cwd: process.cwd(),
-      project_root: process.cwd(),
-      provider: state.provider ?? "unknown",
-      model: state.modelId || "unknown",
-    });
+    tui.renderStartupBanner();
+    const existing = await getSession(state.sessionId);
+    if (!existing) {
+      await createSession({
+        id: state.sessionId,
+        title: initialTask ? titleFromTask(initialTask) : null,
+        cwd,
+        project_root: state.projectRoot,
+        provider: state.provider ?? "unknown",
+        model: state.modelId || "unknown",
+      });
+      state.sessionTitle = initialTask ? titleFromTask(initialTask) : null;
+    } else {
+      state.sessionTitle = existing.title ?? null;
+    }
 
     tui.renderApprovalPrompt(null);
 
     if (initialTask) {
-      await runTask(initialTask, tui, state);
+      if (isCasualGreeting(initialTask)) {
+        renderGreetingReply(tui, initialTask);
+      } else {
+        await runTurn(initialTask, tui, state);
+      }
     }
 
     await runInteractive(tui, state);

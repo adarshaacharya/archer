@@ -6,6 +6,12 @@ import { ProviderError } from "@xeq/shared";
 import { generateText } from "ai";
 import type { LanguageModel, ModelMessage } from "ai";
 import { z } from "zod";
+export { generateCompactContinuationArtifact } from "./compaction-artifact.js";
+import { estimateUsageCost, resolveModelPricing, type ModelPricing } from "./model-pricing.js";
+export { estimateModelMessageTokens, estimateTextTokens } from "./token-estimation.js";
+
+export { estimateUsageCost, resolveModelPricing } from "./model-pricing.js";
+export type { ModelPricing } from "./model-pricing.js";
 
 export type SupportedProvider = "openrouter" | "openai" | "anthropic" | "gemini";
 
@@ -20,12 +26,18 @@ export interface ResolvedLanguageModel {
   modelId: string;
   apiKeyEnvVar: string;
   model: LanguageModel;
+  pricing?: ModelPricing;
+}
+
+export interface ResolvedCompactionModel extends ResolvedLanguageModel {
+  strategy: "dedicated" | "fallback-active";
 }
 
 export interface ModelResponse {
   content: string;
   promptTokens?: number;
   completionTokens?: number;
+  estimatedCostUsd?: number;
 }
 
 export interface ModelDecisionResponse {
@@ -88,6 +100,21 @@ function normalizeModelId(provider: SupportedProvider, modelId: string): string 
   }
 }
 
+function compactionModelId(provider: SupportedProvider, activeModelId: string): string {
+  switch (provider) {
+    case "openai":
+      return "gpt-4o-mini";
+    case "gemini":
+      return "gemini-2.0-flash";
+    case "openrouter":
+      return "openai/gpt-4o-mini";
+    case "anthropic":
+      return activeModelId.includes("haiku") ? activeModelId : "claude-3-5-sonnet-latest";
+    default:
+      return activeModelId;
+  }
+}
+
 function resolveApiKey(
   provider: SupportedProvider,
   env: NodeJS.ProcessEnv,
@@ -146,31 +173,57 @@ export function resolveLanguageModel(options: ResolveModelOptions = {}): Resolve
   const env = options.env ?? process.env;
   const config = resolveModelConfig(options);
   const { apiKey } = resolveApiKey(config.provider, env);
+  const pricing = resolveModelPricing({ provider: config.provider, modelId: config.modelId });
 
   switch (config.provider) {
     case "openai":
       return {
         ...config,
         model: createOpenAI({ apiKey })(config.modelId),
+        pricing,
       };
     case "anthropic":
       return {
         ...config,
         model: createAnthropic({ apiKey })(config.modelId),
+        pricing,
       };
     case "gemini":
       return {
         ...config,
         model: createGoogleGenerativeAI({ apiKey })(config.modelId),
+        pricing,
       };
     default: {
       const openrouter = createOpenRouter({ apiKey });
       return {
         ...config,
         model: openrouter.chat(config.modelId),
+        pricing,
       };
     }
   }
+}
+
+export function resolveCompactionModel(options: ResolveModelOptions = {}): ResolvedCompactionModel {
+  const env = options.env ?? process.env;
+  const provider = normalizeProvider(options.provider ?? env[PROVIDER_ENV_VAR]);
+  const activeModelId = normalizeModelId(
+    provider,
+    options.modelId ?? env.AGENT_MODEL ?? defaultModelId(provider),
+  );
+  const dedicatedModelId = compactionModelId(provider, activeModelId);
+  const resolved = resolveLanguageModel({
+    ...options,
+    provider,
+    modelId: dedicatedModelId,
+    env,
+  });
+
+  return {
+    ...resolved,
+    strategy: dedicatedModelId === activeModelId ? "fallback-active" : "dedicated",
+  };
 }
 
 export class OpenRouterProvider implements ModelProvider {
@@ -196,6 +249,13 @@ export class OpenRouterProvider implements ModelProvider {
         content: response.text,
         promptTokens: response.usage?.inputTokens ?? 0,
         completionTokens: response.usage?.outputTokens ?? 0,
+        estimatedCostUsd: estimateUsageCost({
+          pricing: resolveModelPricing({ provider: "openrouter", modelId: this.model }),
+          usage: {
+            promptTokens: response.usage?.inputTokens ?? 0,
+            completionTokens: response.usage?.outputTokens ?? 0,
+          },
+        }),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
