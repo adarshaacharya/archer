@@ -122,6 +122,7 @@ export async function runOpenHarnessRuntime(
       mapEvent(
         event,
         deps.onStep,
+        deps.onToolEvent,
         deps.onTextDelta,
         handleUsage,
         Math.max(1, stepCounter),

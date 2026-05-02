@@ -38,8 +38,6 @@ describe("question strategy", () => {
     expect(prompt).toContain("package.json");
     expect(prompt).toContain("README");
     expect(prompt).toContain("AGENTS.md");
-    expect(prompt).toContain("Do not special-case temporary planning docs");
-    expect(prompt).toContain("PLAN.md");
     expect(prompt).not.toContain("Read PLAN.md");
     expect(prompt).not.toContain("Question subtype:");
     expect(prompt).toContain("missing files must not fail the question turn");

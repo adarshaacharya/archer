@@ -44,6 +44,7 @@ function formatToolOutput(output: unknown): string {
 export function mapEvent(
   event: SessionEvent,
   onStep: OpenHarnessRuntimeDeps["onStep"],
+  onToolEvent: OpenHarnessRuntimeDeps["onToolEvent"],
   onTextDelta: OpenHarnessRuntimeDeps["onTextDelta"],
   onUsage: OpenHarnessRuntimeDeps["onUsage"],
   step: number,
@@ -59,10 +60,12 @@ export function mapEvent(
       onStep({ step, action: "model.reasoning", observation: event.text });
       break;
     case "tool.start":
+      onToolEvent?.({ phase: "start", step, toolName: event.toolName });
       if (!onStep) return;
       onStep({ step, action: `tool.${event.toolName}`, observation: "started" });
       break;
     case "tool.done":
+      onToolEvent?.({ phase: "done", step, toolName: event.toolName, output: event.output });
       if (!onStep) return;
       onStep({
         step,
@@ -71,6 +74,7 @@ export function mapEvent(
       });
       break;
     case "tool.error":
+      onToolEvent?.({ phase: "error", step, toolName: event.toolName, error: event.error });
       if (!onStep) return;
       onStep({ step, action: `tool.${event.toolName}`, observation: event.error });
       break;

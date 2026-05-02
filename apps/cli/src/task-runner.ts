@@ -1,7 +1,6 @@
 import { performance } from "node:perf_hooks";
 import {
   type OpenHarnessRuntimeDeps,
-  type QuestionStrategy,
   buildCompactionPrompt,
   buildContextGatheringPrompt,
   buildDirectAnswerPrompt,
@@ -11,10 +10,14 @@ import {
   buildQuestionStrategy,
   buildResearchAnswerPrompt,
   buildVerificationPrompt,
+  createQuestionExplorationState,
   createTaskPhaseController,
   createToolApprovalHandler,
+  evaluateQuestionAnswerReadiness,
   prependContinuationBrief,
+  recordQuestionStep,
   runOpenHarnessRuntime,
+  summarizeQuestionExploration,
 } from "@xeq/agent-core";
 import { createSandboxEnvironment } from "@xeq/sandbox";
 import { AgentRequestSchema } from "@xeq/shared";
@@ -27,6 +30,7 @@ import {
 import type { Tui } from "@xeq/tui";
 import { createWebSearchProvider } from "@xeq/web";
 import { requestApproval, withApprovalQueue } from "./approvals.js";
+import { createEvalMetricsCollector } from "./eval-metrics.js";
 import { resolveActiveWebProvider } from "./auth-store.js";
 import { isContextPressureFailure, parseCompactionReport } from "./recovery/compaction.js";
 import { pruneSessionAfterTurn } from "./recovery/prune.js";
@@ -106,159 +110,6 @@ type VerificationReport = {
   commands: string[];
   findings: string[];
 };
-
-export type QuestionExplorationState = {
-  filesRead: Set<string>;
-  manifestsDocsCovered: Set<string>;
-  searchHits: number;
-  misses: Set<string>;
-  repeatedAttempts: Map<string, number>;
-  repeatedDirectoryScans: number;
-  toolCalls: number;
-  stepsSinceNewRelevance: number;
-};
-
-function createQuestionExplorationState(): QuestionExplorationState {
-  return {
-    filesRead: new Set(),
-    manifestsDocsCovered: new Set(),
-    searchHits: 0,
-    misses: new Set(),
-    repeatedAttempts: new Map(),
-    repeatedDirectoryScans: 0,
-    toolCalls: 0,
-    stepsSinceNewRelevance: 0,
-  };
-}
-
-function recordQuestionStep(
-  exploration: QuestionExplorationState,
-  step: {
-    action: string;
-    observation?: string;
-  },
-): void {
-  if (!step.action.startsWith("tool.")) {
-    return;
-  }
-
-  if (step.observation === "started") {
-    return;
-  }
-
-  exploration.toolCalls += 1;
-  const observation = step.observation ?? "";
-  const key = `${step.action}:${observation.slice(0, 240)}`;
-  const seen = exploration.repeatedAttempts.get(key) ?? 0;
-  exploration.repeatedAttempts.set(key, seen + 1);
-  let foundNewSignal = seen === 0 && observation.trim().length > 0;
-
-  if (/\b(enoent|no such file|not found|cannot find)\b/i.test(observation)) {
-    exploration.misses.add(key);
-    foundNewSignal = false;
-  }
-
-  if (step.action === "tool.grep" || step.action === "tool.bash") {
-    const likelySearchOutput =
-      /\b(src|app|apps|packages|lib|cmd|internal|crates|services|server|client|tests)\/.+:\d+/i.test(
-        observation,
-      );
-    if (likelySearchOutput) {
-      exploration.searchHits += 1;
-    }
-  }
-
-  if (step.action === "tool.readFile") {
-    const path = extractLikelyPath(observation);
-    if (path) {
-      const sizeBefore = exploration.filesRead.size;
-      exploration.filesRead.add(path);
-      if (isManifestOrRootDoc(path)) {
-        exploration.manifestsDocsCovered.add(path);
-      }
-      foundNewSignal = exploration.filesRead.size > sizeBefore || foundNewSignal;
-    }
-  }
-
-  if (step.action === "tool.listFiles" || step.action === "tool.bash") {
-    const repeatedScans = [...exploration.repeatedAttempts.entries()].filter(
-      ([attemptKey, count]) =>
-        count > 1 &&
-        (attemptKey.startsWith("tool.listFiles") ||
-          /\b(ls|find|tree|rg --files)\b/i.test(attemptKey)),
-    ).length;
-    exploration.repeatedDirectoryScans = repeatedScans;
-  }
-
-  exploration.stepsSinceNewRelevance = foundNewSignal ? 0 : exploration.stepsSinceNewRelevance + 1;
-}
-
-function extractLikelyPath(text: string): string | null {
-  const match = text.match(
-    /(?:^|\s)((?:\.\/)?[\w./@-]+\.(?:ts|tsx|js|jsx|mjs|cjs|json|md|mdx|toml|yaml|yml|rs|py|go|java|kt|rb|php|cs|sql|sh|lock))(?:\s|$|:)/,
-  );
-  return match?.[1] ?? null;
-}
-
-function isManifestOrRootDoc(path: string): boolean {
-  const normalized = path.replace(/^\.\//, "");
-  return (
-    !normalized.includes("/") &&
-    /^(README(?:\..*)?|AGENTS\.md|CLAUDE\.md|GEMINI\.md|package\.json|Cargo\.toml|pyproject\.toml|go\.mod|Gemfile|composer\.json|pom\.xml|build\.gradle|Makefile|Dockerfile|pnpm-workspace\.yaml)$/i.test(
-      normalized,
-    )
-  );
-}
-
-export function summarizeQuestionExploration(exploration: QuestionExplorationState) {
-  return {
-    filesRead: exploration.filesRead.size,
-    manifestsDocsCovered: exploration.manifestsDocsCovered.size,
-    searchHits: exploration.searchHits,
-    misses: exploration.misses.size,
-    repeatedAttempts: [...exploration.repeatedAttempts.values()].filter((count) => count > 1)
-      .length,
-    repeatedDirectoryScans: exploration.repeatedDirectoryScans,
-    toolCalls: exploration.toolCalls,
-    stepsSinceNewRelevance: exploration.stepsSinceNewRelevance,
-  };
-}
-
-export type QuestionReadinessDecision = {
-  ready: boolean;
-  reason: string;
-};
-
-function ready(reason: string): QuestionReadinessDecision {
-  return { ready: true, reason };
-}
-
-function notReady(reason: string): QuestionReadinessDecision {
-  return { ready: false, reason };
-}
-
-export function evaluateQuestionAnswerReadiness(
-  strategy: QuestionStrategy,
-  exploration: QuestionExplorationState,
-): QuestionReadinessDecision {
-  if (exploration.toolCalls >= strategy.explorationBudget.maxToolCalls) {
-    return ready("question exploration budget reached");
-  }
-
-  if (exploration.misses.size >= strategy.explorationBudget.maxSpeculativeMisses) {
-    return ready("speculative file misses reached the exploration limit");
-  }
-
-  if (exploration.repeatedDirectoryScans >= strategy.explorationBudget.maxRepeatedScans) {
-    return ready("directory scans are repeating without new signal");
-  }
-
-  if (exploration.stepsSinceNewRelevance >= 5 && exploration.toolCalls >= 4) {
-    return ready("recent exploration stopped finding new relevant evidence");
-  }
-
-  return notReady("let the model decide whether current evidence is enough to answer");
-}
 
 export function buildPriorTurnPlanningGuidance(
   turns: Array<{
@@ -609,6 +460,7 @@ export async function runTask(
     startedAt: started,
   };
   const patchApprovedPaths = new Set<string>();
+  const evalMetrics = createEvalMetricsCollector();
   const phase = createTaskPhaseController();
   const turn = createTurnStateMachine(intent);
   turn.transition("routing");
@@ -637,6 +489,7 @@ export async function runTask(
       }
       promptPending = true;
       try {
+        evalMetrics.recordApproval();
         return await requestApproval(tui, approvalRequest, state.sessionId);
       } finally {
         promptPending = false;
@@ -706,6 +559,7 @@ export async function runTask(
   const requestApprovalForTool = async (approvalRequest: Parameters<typeof requestApproval>[1]) => {
     promptPending = true;
     try {
+      evalMetrics.recordApproval();
       return await requestApproval(tui, approvalRequest, state.sessionId);
     } finally {
       promptPending = false;
@@ -840,6 +694,7 @@ export async function runTask(
           }
 
           if (step.action === "model.final") {
+            evalMetrics.recordFinalMessage(step.observation ?? "");
             if (persistTranscript) {
               tui.finalizeAssistantStream(step.observation);
               if (step.observation?.trim()) {
@@ -861,6 +716,9 @@ export async function runTask(
             thought: step.thought,
             observation: step.observation,
           });
+        },
+        onToolEvent: (event) => {
+          evalMetrics.onToolEvent(event);
         },
         onTextDelta: persistTranscript
           ? (delta) => {
@@ -922,6 +780,7 @@ export async function runTask(
         promptTokens: contextResult.usage?.promptTokens ?? 0,
         completionTokens: contextResult.usage?.completionTokens ?? 0,
         estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
+        evalMetrics: evalMetrics.summarize(),
         ...(explorationSummary ? { exploration: explorationSummary } : {}),
       };
 
@@ -1054,6 +913,7 @@ export async function runTask(
         promptTokens: contextResult.usage?.promptTokens ?? 0,
         completionTokens: contextResult.usage?.completionTokens ?? 0,
         estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
+        evalMetrics: evalMetrics.summarize(),
       };
       tui.renderSummary(summary);
       return {
@@ -1068,14 +928,15 @@ export async function runTask(
     if (contextResult.status !== "completed") {
       if (!isContextBudgetResult(contextResult)) {
         turn.fail();
-        const summary = {
-          success: false,
-          steps: contextResult.steps,
-          durationMs: Math.round(performance.now() - started),
-          promptTokens: contextResult.usage?.promptTokens ?? 0,
-          completionTokens: contextResult.usage?.completionTokens ?? 0,
-          estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
-        };
+      const summary = {
+        success: false,
+        steps: contextResult.steps,
+        durationMs: Math.round(performance.now() - started),
+        promptTokens: contextResult.usage?.promptTokens ?? 0,
+        completionTokens: contextResult.usage?.completionTokens ?? 0,
+        estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
+        evalMetrics: evalMetrics.summarize(),
+      };
         tui.renderSummary(summary);
         return {
           status: "failed",
@@ -1103,6 +964,7 @@ export async function runTask(
         promptTokens: planningResult.usage?.promptTokens ?? 0,
         completionTokens: planningResult.usage?.completionTokens ?? 0,
         estimatedCostUsd: planningResult.estimatedCostUsd ?? 0,
+        evalMetrics: evalMetrics.summarize(),
       };
       tui.renderSummary(summary);
       return { status: "cancelled", intent: turnContext.intent, task: turnContext.task, summary };
@@ -1117,6 +979,7 @@ export async function runTask(
         promptTokens: planningResult.usage?.promptTokens ?? 0,
         completionTokens: planningResult.usage?.completionTokens ?? 0,
         estimatedCostUsd: planningResult.estimatedCostUsd ?? 0,
+        evalMetrics: evalMetrics.summarize(),
       };
       tui.renderSummary(summary);
       return {
@@ -1160,6 +1023,7 @@ export async function runTask(
           (planningResult.usage?.completionTokens ?? 0),
         estimatedCostUsd:
           (contextResult.estimatedCostUsd ?? 0) + (planningResult.estimatedCostUsd ?? 0),
+        evalMetrics: evalMetrics.summarize(),
       };
       tui.renderSummary(summary);
       return {
@@ -1350,6 +1214,7 @@ export async function runTask(
         (planningResult.estimatedCostUsd ?? 0) +
         (runOutcome.implementationResult.estimatedCostUsd ?? 0) +
         (runOutcome.verificationResult?.estimatedCostUsd ?? 0),
+      evalMetrics: evalMetrics.summarize(),
     };
     tui.renderSummary(summary);
     void pruneSessionAfterTurn(state.sessionId);

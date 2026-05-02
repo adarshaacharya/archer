@@ -21,6 +21,13 @@ export interface TurnSummary {
   promptTokens: number;
   completionTokens: number;
   estimatedCostUsd: number;
+  evalMetrics?: {
+    approvalCount: number;
+    fileReadCount: number;
+    changedPaths: string[];
+    toolNames: string[];
+    finalMessage: string;
+  };
 }
 
 export interface TurnResult {

@@ -1,24 +1,17 @@
 import { describe, expect, it } from "bun:test";
-import { buildQuestionStrategy } from "@xeq/agent-core";
 import {
-  type QuestionExplorationState,
-  buildPriorTurnPlanningGuidance,
+  buildQuestionStrategy,
+  createQuestionExplorationState,
   evaluateQuestionAnswerReadiness,
+  type QuestionExplorationState,
+} from "@xeq/agent-core";
+import {
+  buildPriorTurnPlanningGuidance,
   shouldInspectRepositoryForQuestion,
 } from "./task-runner.js";
 
 function exploration(overrides: Partial<QuestionExplorationState> = {}): QuestionExplorationState {
-  return {
-    filesRead: new Set(),
-    manifestsDocsCovered: new Set(),
-    searchHits: 0,
-    misses: new Set(),
-    repeatedAttempts: new Map(),
-    repeatedDirectoryScans: 0,
-    toolCalls: 0,
-    stepsSinceNewRelevance: 0,
-    ...overrides,
-  };
+  return { ...createQuestionExplorationState(), ...overrides };
 }
 
 describe("buildPriorTurnPlanningGuidance", () => {

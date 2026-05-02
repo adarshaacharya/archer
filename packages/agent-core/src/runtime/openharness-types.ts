@@ -8,6 +8,25 @@ export interface OpenHarnessRuntimeStepEvent {
   observation?: string;
 }
 
+export type OpenHarnessToolEvent =
+  | {
+      phase: "start";
+      step: number;
+      toolName: string;
+    }
+  | {
+      phase: "done";
+      step: number;
+      toolName: string;
+      output: unknown;
+    }
+  | {
+      phase: "error";
+      step: number;
+      toolName: string;
+      error: string;
+    };
+
 export type OpenHarnessUsageEvent = {
   promptTokens: number;
   completionTokens: number;
@@ -38,6 +57,7 @@ export interface OpenHarnessRuntimeDeps {
   modelId?: string;
   instructions?: string;
   onStep?: (event: OpenHarnessRuntimeStepEvent) => void;
+  onToolEvent?: (event: OpenHarnessToolEvent) => void;
   onTextDelta?: (delta: string) => void;
   approveToolCall?: (toolCall: ToolCallInfo) => Promise<boolean> | boolean;
   approvePatchApply?: (preview: PatchPreview) => Promise<boolean> | boolean;
