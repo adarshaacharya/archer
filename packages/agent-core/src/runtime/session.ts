@@ -7,7 +7,8 @@ import {
   createSubmitPlanTool,
   createSubmitTurnDecisionTool,
   createSubmitVerificationReportTool,
-  createWebFetchTool,
+  createWebFindInPageTool,
+  createWebOpenPageTool,
   createWebSearchTool,
 } from "@xeq/tools";
 import type { ModelMessage } from "ai";
@@ -102,10 +103,11 @@ function createSession({
     createDirectory: editTools.createDirectory,
     preparePatchBundle: editTools.preparePatchBundle,
     preparePatch: editTools.preparePatch,
-    ...(providers.webSearch
+    ...(providers.web
       ? {
-          webFetch: createWebFetchTool(providers.webSearch),
-          webSearch: createWebSearchTool(providers.webSearch),
+          webFindInPage: createWebFindInPageTool(providers.web),
+          webOpenPage: createWebOpenPageTool(providers.web),
+          webSearch: createWebSearchTool(providers.web),
         }
       : {}),
   };

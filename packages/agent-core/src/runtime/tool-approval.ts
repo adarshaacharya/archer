@@ -58,7 +58,7 @@ export function classifyToolCall(
     };
   }
 
-  if (toolName === "webFetch") {
+  if (["webSearch", "webOpenPage", "webFindInPage"].includes(toolName)) {
     return { permission: "web_fetch", pattern: "*", action: "allow" };
   }
 

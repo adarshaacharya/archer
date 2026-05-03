@@ -1,10 +1,13 @@
-import type { OpenHarnessToolEvent } from "@xeq/agent-core";
+import type { OpenHarnessToolEvent, WebRuntimeEvent } from "@xeq/agent-core";
 
 export interface EvalMetricsSummary {
   approvalCount: number;
   fileReadCount: number;
   changedPaths: string[];
   toolNames: string[];
+  webEventCount: number;
+  webQueries: string[];
+  webUrls: string[];
   finalMessage: string;
 }
 
@@ -55,6 +58,9 @@ export function createEvalMetricsCollector() {
   let fileReadCount = 0;
   const changedPaths = new Set<string>();
   const toolNames = new Set<string>();
+  let webEventCount = 0;
+  const webQueries = new Set<string>();
+  const webUrls = new Set<string>();
   let finalMessage = "";
 
   return {
@@ -88,6 +94,31 @@ export function createEvalMetricsCollector() {
         collectChangedPaths(changedPaths, event.output);
       }
     },
+    onWebEvent(event: WebRuntimeEvent) {
+      webEventCount += 1;
+      switch (event.type) {
+        case "web.search.started":
+        case "web.search.completed":
+        case "web.search.failed":
+          if (event.query.trim()) {
+            webQueries.add(event.query);
+          }
+          break;
+        case "web.openPage.started":
+        case "web.openPage.completed":
+        case "web.openPage.failed":
+          webUrls.add(event.url);
+          break;
+        case "web.findInPage.started":
+        case "web.findInPage.completed":
+        case "web.findInPage.failed":
+          webUrls.add(event.url);
+          if (event.pattern.trim()) {
+            webQueries.add(event.pattern);
+          }
+          break;
+      }
+    },
     currentChangedPaths(): string[] {
       return [...changedPaths].sort();
     },
@@ -97,6 +128,9 @@ export function createEvalMetricsCollector() {
         fileReadCount,
         changedPaths: [...changedPaths].sort(),
         toolNames: [...toolNames].sort(),
+        webEventCount,
+        webQueries: [...webQueries].sort(),
+        webUrls: [...webUrls].sort(),
         finalMessage,
       };
     },

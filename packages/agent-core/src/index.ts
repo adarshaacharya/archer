@@ -16,5 +16,6 @@ export * from "./runtime/turn-reducer.js";
 export * from "./runtime/turn-guards.js";
 export * from "./runtime/engine-adapter.js";
 export * from "./runtime/phase-runner.js";
+export * from "./runtime/web-events.js";
 export { resetSessionById } from "./runtime/session.js";
 export type { OpenHarnessRuntimeDeps, OpenHarnessToolEvent } from "./runtime/openharness-types.js";

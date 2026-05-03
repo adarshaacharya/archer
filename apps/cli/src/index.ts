@@ -793,6 +793,9 @@ function formatTurnResultLine(turn: {
         steps?: unknown;
         durationMs?: unknown;
         estimatedCostUsd?: unknown;
+        evalMetrics?: {
+          webEventCount?: unknown;
+        };
       }
     | null
     | undefined;
@@ -803,8 +806,12 @@ function formatTurnResultLine(turn: {
     typeof summary?.estimatedCostUsd === "number"
       ? ` cost=$${summary.estimatedCostUsd.toFixed(4)}`
       : "";
+  const web =
+    typeof summary?.evalMetrics?.webEventCount === "number" && summary.evalMetrics.webEventCount > 0
+      ? ` web=${summary.evalMetrics.webEventCount}`
+      : "";
   const task = turn.task.replace(/\s+/g, " ").trim().slice(0, 80);
-  return `[turn ${formatTimestamp(turn.created_at)}] ${turn.intent}/${turn.status}${steps}${duration}${cost}  ${task}`;
+  return `[turn ${formatTimestamp(turn.created_at)}] ${turn.intent}/${turn.status}${steps}${duration}${cost}${web}  ${task}`;
 }
 
 async function handleSlashCommand(

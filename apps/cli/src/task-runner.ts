@@ -26,6 +26,9 @@ import {
   createTaskPhaseController,
   createToolApprovalHandler,
   createOpenHarnessEngineAdapter,
+  createWebCompletedEvent,
+  createWebFailedEvent,
+  createWebStartedEvent,
   expandedContextSteps,
   evaluateQuestionAnswerReadiness,
   isContextBudgetResult,
@@ -44,7 +47,7 @@ import {
   updateSessionTitle,
 } from "@xeq/storage";
 import type { Tui } from "@xeq/tui";
-import { createWebSearchProvider } from "@xeq/web";
+import { createWebCapability } from "@xeq/web";
 import { requestApproval, withApprovalQueue } from "./approvals.js";
 import { createEvalMetricsCollector } from "./eval-metrics.js";
 import { buildExplicitFileContext, prependExplicitFileContext } from "./explicit-context.js";
@@ -242,7 +245,7 @@ export async function runTask(
     content: taskOptions?.displayTask ?? request.task,
   });
 
-  const webSearch = createWebSearchProvider(
+  const baseWeb = createWebCapability(
     async () => {
       promptPending = true;
       try {
@@ -291,6 +294,21 @@ export async function runTask(
       },
     },
   );
+  const web = {
+    async execute(action: Parameters<typeof baseWeb.execute>[0]) {
+      evalMetrics.onWebEvent(createWebStartedEvent(action));
+      try {
+        const result = await baseWeb.execute(action);
+        evalMetrics.onWebEvent(createWebCompletedEvent(result));
+        return result;
+      } catch (error) {
+        evalMetrics.onWebEvent(
+          createWebFailedEvent(action, error instanceof Error ? error.message : String(error)),
+        );
+        throw error;
+      }
+    },
+  };
 
   const requestApprovalForTool = async (approvalRequest: Parameters<typeof requestApproval>[1]) => {
     promptPending = true;
@@ -530,7 +548,7 @@ export async function runTask(
         instructions: options.instructions,
         providers: {
           ...env,
-          webSearch,
+          web,
         },
         approveToolCall: (toolCall) => {
           if (options.allowTools === false) {

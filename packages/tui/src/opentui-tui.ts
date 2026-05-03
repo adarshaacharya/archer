@@ -15,6 +15,12 @@ import { createPlainComposerSubmission, type AgentStep, type ComposerMentionBind
 import { buildComposerTextElements, findActiveMentionQuery, insertFileMention, MentionFileIndex, type ActiveMentionQuery, type MentionSuggestion, reconcileMentionBindings } from "./mention-state.js";
 import { PromptHistory, type PromptHistoryEntry } from "./prompt-history.js";
 
+type SummaryLike = RunSummary & {
+  evalMetrics?: {
+    webEventCount?: unknown;
+  };
+};
+
 export interface ApprovalPromptState {
   message: string;
   options?: string[];
@@ -708,7 +714,9 @@ export class PiTui implements Tui {
     });
   }
 
-  renderSummary(summary: RunSummary): void {
+  renderSummary(summary: SummaryLike): void {
+    const webEventCount =
+      typeof summary.evalMetrics?.webEventCount === "number" ? summary.evalMetrics.webEventCount : 0;
     const line = [
       summary.success ? "done" : "failed",
       `steps=${summary.steps}`,
@@ -717,6 +725,7 @@ export class PiTui implements Tui {
         ? `tokens=${summary.promptTokens + summary.completionTokens}`
         : "",
       summary.estimatedCostUsd > 0 ? `cost=$${summary.estimatedCostUsd.toFixed(4)}` : "",
+      webEventCount > 0 ? `web=${webEventCount}` : "",
     ].filter(Boolean).join("  ");
     this.renderTranscriptCard(`◆ ${line}`, {
       boxId: "run-summary-box",

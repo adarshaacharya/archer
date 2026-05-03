@@ -38,6 +38,9 @@ export interface TurnSummary {
     fileReadCount: number;
     changedPaths: string[];
     toolNames: string[];
+    webEventCount: number;
+    webQueries: string[];
+    webUrls: string[];
     finalMessage: string;
   };
 }
