@@ -1,6 +1,6 @@
 import type { InputIntent } from "./intent-router.js";
 
-export type TurnIntent = Exclude<InputIntent, "ambiguous">;
+export type TurnIntent = InputIntent;
 
 export type TurnStatus = "completed" | "failed" | "cancelled" | "clarify";
 

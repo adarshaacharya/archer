@@ -2,7 +2,7 @@ import type { SessionState } from "./session-state.js";
 import type { Tui } from "@xeq/tui";
 import { deriveCompactionPolicy, resetSessionById } from "@xeq/agent-core";
 import { appendTurnResult, getTurnResults } from "@xeq/storage";
-import { routeInput, type InputIntent, type RoutedInput } from "./intent-router.js";
+import { inferExplicitIntent, type InputIntent } from "./intent-router.js";
 import { runTask } from "./task-runner.js";
 import { maybePruneSessionBeforeTurn } from "./recovery/prune.js";
 import type { TurnResult } from "./turn-types.js";
@@ -43,6 +43,20 @@ export async function runTurnWithDeps(
   state: SessionState,
   abortController?: AbortController,
 ): Promise<TurnResult> {
+  const trimmedInput = input.trim();
+  if (!trimmedInput) {
+    const message = "Please enter a task or question.";
+    tui.renderAssistantMessage(message);
+    const result: TurnResult = {
+      status: "clarify",
+      intent: "question",
+      task: trimmedInput,
+      message,
+    };
+    await persistTurnResult(deps.appendTurnResult, state.sessionId, result);
+    return result;
+  }
+
   const recentTurns = await deps.getTurnResults(state.sessionId, 5);
   const compactionPolicy = deriveCompactionPolicy(recentTurns);
   const preturnPrune = await deps.maybePruneSessionBeforeTurn(state.sessionId, {
@@ -68,21 +82,8 @@ export async function runTurnWithDeps(
     });
   }
 
-  const routed = routeInputWithHistory(input, recentTurns);
-  if (routed.intent === "ambiguous") {
-    const message = `Please ask a concrete question, a research request, or a code change task. ${routed.reason}`;
-    tui.renderAssistantMessage(message);
-    const result: TurnResult = {
-      status: "clarify",
-      intent: routed.intent,
-      task: input.trim(),
-      message,
-    };
-    await persistTurnResult(deps.appendTurnResult, state.sessionId, result);
-    return result;
-  }
-
-  const result = await deps.runTask(routed.task, tui, state, abortController, routed.intent);
+  const intent = resolveIntent(input, recentTurns);
+  const result = await deps.runTask(trimmedInput, tui, state, abortController, intent);
 
   await persistTurnResult(deps.appendTurnResult, state.sessionId, result);
   return result;
@@ -104,37 +105,38 @@ async function persistTurnResult(
   });
 }
 
-export function routeInputWithHistory(
+export function inferIntentWithHistory(
   input: string,
   recentTurns: Array<{ intent: string; status: string; task: string }>,
-): RoutedInput {
-  const routed = routeInput(input);
-  if (routed.intent !== "ambiguous") {
-    return routed;
+): InputIntent {
+  const explicitIntent = inferExplicitIntent(input);
+  if (explicitIntent) {
+    return explicitIntent;
   }
 
   const normalized = input.trim().toLowerCase();
-  const continuationCue = /^(also|and|then|now|next|continue|continue with|do that|fix that|same|again)\b/.test(
-    normalized,
-  );
-  if (!continuationCue) {
-    return routed;
-  }
-
   const lastMeaningfulTurn = [...recentTurns]
     .reverse()
-    .find((turn) => turn.status !== "clarify" && isIntent(turn.intent));
+    .find(
+      (
+        turn,
+      ): turn is { intent: InputIntent; status: string; task: string } =>
+        turn.status !== "clarify" && isIntent(turn.intent),
+    );
   if (!lastMeaningfulTurn) {
-    return routed;
+    return "change";
   }
 
-  const intent = lastMeaningfulTurn.intent as Exclude<InputIntent, "ambiguous">;
-  return {
-    intent,
-    task: input.trim(),
-  };
+  return lastMeaningfulTurn.intent;
 }
 
-function isIntent(value: string): value is Exclude<InputIntent, "ambiguous"> {
+function isIntent(value: string): value is InputIntent {
   return value === "change" || value === "question" || value === "research";
+}
+
+function resolveIntent(
+  input: string,
+  recentTurns: Array<{ intent: string; status: string; task: string }>,
+): InputIntent {
+  return inferIntentWithHistory(input, recentTurns);
 }
