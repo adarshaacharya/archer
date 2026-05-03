@@ -7,6 +7,7 @@ import {
   createSubmitPlanTool,
   createSubmitTurnDecisionTool,
   createSubmitVerificationReportTool,
+  createSpawnSubagentTool,
   createWebFindInPageTool,
   createWebOpenPageTool,
   createWebSearchTool,
@@ -18,6 +19,7 @@ import { DEFAULT_MAX_STEPS } from "../types.js";
 import { createTrackedFsProvider } from "./file-tracker.js";
 import { sanitizeId } from "./ids.js";
 import { resolveModel } from "./model.js";
+import { createSpawnSubagentExecutor } from "./subagent-execution.js";
 import type {
   OpenHarnessRuntimeDeps,
   RuntimeProviders,
@@ -161,9 +163,21 @@ function createSession({
                   status: preview.status,
                 },
               ],
-            },
+        },
       );
     },
+  });
+  const spawnSubagent = createSpawnSubagentExecutor({
+    cwd,
+    parentSessionId: sanitizeId(sessionId ?? `${cwd}:${model.modelId}`),
+    providers: {
+      ...providers,
+      fs: trackedFs,
+    },
+    runtimeConfig,
+    modelId: model.modelId,
+    approveToolCall,
+    approvePatchApply,
   });
   const tools = {
     ...createLocalTools({ fs: trackedFs, shell: providers.shell }),
@@ -171,6 +185,7 @@ function createSession({
     submitTurnDecision: createSubmitTurnDecisionTool(),
     submitPlan: createSubmitPlanTool(),
     submitVerificationReport: createSubmitVerificationReportTool(),
+    ...(runtimeConfig?.subagents?.enabled === false ? {} : { spawnSubagent: createSpawnSubagentTool(spawnSubagent) }),
     createDirectory: editTools.createDirectory,
     preparePatchBundle: editTools.preparePatchBundle,
     preparePatch: editTools.preparePatch,

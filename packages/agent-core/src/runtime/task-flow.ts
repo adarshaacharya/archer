@@ -43,6 +43,7 @@ export function buildSystemPrompt(): string {
     "Never ask permission questions like 'Should I proceed?' or 'Do you want me to run tests?'; proceed with the most reasonable option and mention what you did.",
     "Make minimal safe edits and use tools deliberately.",
     "Use the skill tool when a named skill would materially improve the task.",
+    "Use spawnSubagent for delegated exploration, research, or narrow implementation work when a focused child run would be clearer than keeping everything in the main context.",
     "Use subagents for focused exploration or external research when it would reduce context pressure or narrow the main turn.",
     "If the user asks you to add a file in a missing folder inside the workspace, create the parent directory as part of the implementation instead of treating it as a blocker.",
     "Use createDirectory for explicit folder creation when needed, then use preparePatch or preparePatchBundle for file contents.",
