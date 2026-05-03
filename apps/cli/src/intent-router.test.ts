@@ -22,6 +22,11 @@ describe("prerouteInput", () => {
   it("keeps only obvious repository markers in the deterministic fast-path", () => {
     expect(prerouteInput("where is turn routing implemented")).toBeNull();
     expect(prerouteInput("check codex and claude once")).toBeNull();
+    expect(prerouteInput("https://stripe.com/pricing")).toMatchObject({
+      mode: "web-context",
+      shouldQuery: true,
+      source: "fast-path",
+    });
     expect(prerouteInput("open apps/cli/src/task-runner.ts")).toMatchObject({
       mode: "repo-context",
       shouldQuery: true,
@@ -58,6 +63,7 @@ describe("inferExplicitIntent", () => {
   it("maps prerouting decisions to turn intents", () => {
     expect(inferExplicitIntent("fix the router")).toBe("change");
     expect(inferExplicitIntent("what is rust")).toBeNull();
+    expect(inferExplicitIntent("https://stripe.com/pricing")).toBe("question");
     expect(inferExplicitIntent("where is the runtime loop")).toBeNull();
   });
 });

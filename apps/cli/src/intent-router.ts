@@ -1,5 +1,5 @@
 export type InputIntent = "question" | "research" | "change";
-export type PreRouteKind = "direct-answer" | "repo-context" | "change";
+export type PreRouteKind = "direct-answer" | "web-context" | "repo-context" | "change";
 
 export type PreRouteResult = {
   shouldQuery: boolean;
@@ -32,6 +32,7 @@ const CASUAL_PATTERNS = [
 const CHANGE_PATTERNS = [
   /^(please\s+)?(fix|implement|add|create|update|refactor|remove|delete|rename|move|edit|change|write|make|build|patch|replace)\b/,
 ];
+const URL_PATTERN = /\bhttps?:\/\/[^\s)]+/i;
 const PATHLIKE_PATTERN = /(?:^|[\s(])(?:[a-z0-9_.-]+\/)+[a-z0-9_.-]+/i;
 
 export function inferExplicitIntent(raw: string): InputIntent | null {
@@ -47,7 +48,11 @@ export function inferExplicitIntent(raw: string): InputIntent | null {
   if (plan.result.mode === "change") {
     return "change";
   }
-  if (plan.result.mode === "direct-answer" || plan.result.mode === "repo-context") {
+  if (
+    plan.result.mode === "direct-answer" ||
+    plan.result.mode === "web-context" ||
+    plan.result.mode === "repo-context"
+  ) {
     return "question";
   }
   return null;
@@ -82,6 +87,17 @@ export function planPreRoute(raw: string): PreRoutePlan {
       result: createPreRouteResult(
         "direct-answer",
         "casual or social input does not need repository context",
+        "fast-path",
+      ),
+    };
+  }
+
+  if (URL_PATTERN.test(task)) {
+    return {
+      status: "resolved",
+      result: createPreRouteResult(
+        "web-context",
+        "message includes an external URL that should be inspected with web tools",
         "fast-path",
       ),
     };
@@ -132,7 +148,12 @@ function createPreRouteResult(
   return {
     shouldQuery: mode !== "direct-answer",
     mode,
-    allowedToolNames: mode === "direct-answer" ? [] : undefined,
+    allowedToolNames:
+      mode === "direct-answer"
+        ? []
+        : mode === "web-context"
+          ? ["webSearch", "webOpenPage", "webFindInPage"]
+          : undefined,
     source,
     rationale,
   };

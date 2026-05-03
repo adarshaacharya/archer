@@ -6,6 +6,8 @@ import {
   evaluateQuestionAnswerReadiness,
   type QuestionExplorationState,
 } from "@xeq/agent-core";
+import { prerouteInput } from "./intent-router.js";
+import { resolveTaskExecutionRoute } from "./task-runner.js";
 
 function exploration(overrides: Partial<QuestionExplorationState> = {}): QuestionExplorationState {
   return { ...createQuestionExplorationState(), ...overrides };
@@ -94,5 +96,25 @@ describe("evaluateQuestionAnswerReadiness", () => {
 
     expect(decision.ready).toBe(true);
     expect(decision.reason).toContain("misses");
+  });
+});
+
+describe("resolveTaskExecutionRoute", () => {
+  it("routes external URLs through the web path instead of the no-tools direct-answer path", () => {
+    const preRoute = prerouteInput("https://stripe.com/pricing");
+    expect(preRoute).toMatchObject({
+      mode: "web-context",
+      shouldQuery: true,
+    });
+    expect(resolveTaskExecutionRoute(preRoute, "question")).toBe("web-context");
+  });
+
+  it("keeps casual chat on the direct-answer path", () => {
+    const preRoute = prerouteInput("how are you");
+    expect(preRoute).toMatchObject({
+      mode: "direct-answer",
+      shouldQuery: false,
+    });
+    expect(resolveTaskExecutionRoute(preRoute, "question")).toBe("direct-answer");
   });
 });

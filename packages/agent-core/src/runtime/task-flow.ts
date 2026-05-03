@@ -139,6 +139,26 @@ export function buildDirectAnswerSystemPrompt(): string {
   ].join(" ");
 }
 
+export function buildWebAnswerPrompt(task: string): string {
+  return [
+    "Answer the user's question using web tools if needed.",
+    "Do not inspect the repository unless the user explicitly asks about local code.",
+    "If the user provided a URL, open it and extract the relevant content before answering.",
+    "If web access is unavailable, say so clearly instead of guessing.",
+    "Task:",
+    task.trim(),
+  ].join("\n");
+}
+
+export function buildWebAnswerSystemPrompt(): string {
+  return [
+    "You are XEQ, a terminal coding agent.",
+    "Use web tools to inspect the provided URL or external sources when needed.",
+    "Do not inspect local repository files unless the user asks about the repo.",
+    "Answer plainly from the content you inspected.",
+  ].join(" ");
+}
+
 export function prependContinuationBrief(
   prompt: string,
   continuation:

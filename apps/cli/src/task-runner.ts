@@ -22,6 +22,8 @@ import {
   buildDirectAnswerSystemPrompt,
   buildQuestionStrategy,
   buildResearchAnswerPrompt,
+  buildWebAnswerPrompt,
+  buildWebAnswerSystemPrompt,
   createQuestionExplorationState,
   createTaskPhaseController,
   createToolApprovalHandler,
@@ -61,6 +63,8 @@ import { titleFromTask } from "./task-title.js";
 import { createTurnStateMachine } from "./turn-state-machine.js";
 import type { TurnContext, TurnResult, TurnSummary } from "./turn-types.js";
 
+export type TaskExecutionRoute = "direct-answer" | "web-context" | "research" | "change";
+
 function newMessageId(sessionId: string, role: string): string {
   return `${sessionId}_${role}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -72,6 +76,28 @@ type PatchPreview = NonNullable<OpenHarnessRuntimeDeps["approvePatchApply"]> ext
   : never;
 
 type RuntimeToolCall = Parameters<NonNullable<OpenHarnessRuntimeDeps["approveToolCall"]>>[0];
+
+export function resolveTaskExecutionRoute(
+  resolvedPreRoute: PreRouteResult | null,
+  declaredIntent: TurnResult["intent"],
+): TaskExecutionRoute {
+  if (declaredIntent === "change") {
+    return "change";
+  }
+  if (!resolvedPreRoute) {
+    return "research";
+  }
+  if (resolvedPreRoute.mode === "change") {
+    return "change";
+  }
+  if (resolvedPreRoute.mode === "direct-answer") {
+    return "direct-answer";
+  }
+  if (resolvedPreRoute.mode === "web-context") {
+    return "web-context";
+  }
+  return "research";
+}
 
 function shellOutputText(output: unknown): string {
   if (!output || typeof output !== "object") {
@@ -648,9 +674,10 @@ export async function runTask(
         "Submit the routing decision with the submitTurnDecision tool.",
         "Do not return raw JSON when the tool is available.",
         "The decision shape is:",
-        '{ mode: "direct-answer" | "repo-context" | "change", rationale: string }',
+        '{ mode: "direct-answer" | "web-context" | "repo-context" | "change", rationale: string }',
         "",
         'Use "direct-answer" for casual conversation or general questions answerable without local repository context.',
+        'Use "web-context" when the user supplied a URL or needs external web content, but not local repository files.',
         'Use "repo-context" when answering correctly requires inspecting the local repository or files.',
         'Use "change" when the user is asking for code or file modifications.',
         "",
@@ -683,7 +710,12 @@ export async function runTask(
     if (!decision) {
       return null;
     }
-    const mode = decision.mode === "answer" ? "repo-context" : decision.mode;
+    const mode =
+      decision.mode === "answer"
+        ? "repo-context"
+        : decision.mode === "web-context"
+          ? "web-context"
+          : decision.mode;
     return preRouteResultFromMode(mode, decision.rationale, "classifier");
   };
 
@@ -697,17 +729,19 @@ export async function runTask(
             : await classifyPreRouteDecision()
           : null;
 
-    if (resolvedPreRoute?.mode === "change") {
+    const executionRoute = resolveTaskExecutionRoute(resolvedPreRoute ?? null, declaredIntent);
+
+    if (executionRoute === "change") {
       isChangeTurn = true;
       isAnswerTurn = false;
       observedFacts.changeFlowEntered = true;
     }
 
-    if (resolvedPreRoute?.shouldQuery === false && declaredIntent !== "change") {
+    if (executionRoute === "direct-answer") {
       renderApprovalMessage("Answering directly...");
       const directResult = await runPhase(buildDirectAnswerPrompt(request.task), true, 8, {
         allowTools: false,
-        allowedToolNames: resolvedPreRoute.allowedToolNames,
+        allowedToolNames: resolvedPreRoute!.allowedToolNames,
         instructions: buildDirectAnswerSystemPrompt(),
       });
 
@@ -733,6 +767,37 @@ export async function runTask(
 
       turn.fail();
       return buildTurnResult("failed", undefined, directResult.outputText);
+    }
+
+    if (executionRoute === "web-context") {
+      renderApprovalMessage("Inspecting web content...");
+      const webResult = await runPhase(buildWebAnswerPrompt(request.task), true, 8, {
+        allowedToolNames: resolvedPreRoute!.allowedToolNames,
+        instructions: buildWebAnswerSystemPrompt(),
+      });
+
+      if (webResult.status === "completed") {
+        turn.finish();
+        const summary = buildSummary({
+          success: true,
+          steps: webResult.steps,
+          durationMs: elapsedMs(),
+          promptTokens: webResult.usage?.promptTokens ?? 0,
+          completionTokens: webResult.usage?.completionTokens ?? 0,
+          estimatedCostUsd: webResult.estimatedCostUsd ?? 0,
+        });
+        renderSummary(summary);
+        pruneAfterTurn();
+        return buildTurnResult("completed", summary, webResult.outputText);
+      }
+
+      if (webResult.status === "cancelled") {
+        turn.cancel();
+        return buildTurnResult("cancelled", undefined, webResult.outputText);
+      }
+
+      turn.fail();
+      return buildTurnResult("failed", undefined, webResult.outputText);
     }
 
     turn.beginResearch();
