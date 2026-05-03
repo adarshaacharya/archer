@@ -43,6 +43,7 @@ export interface Tui {
   renderUserMessage(message: string): void;
   renderAssistantMessage(message: string): void;
   renderInfoMessage(message: string): void;
+  renderEventMessage(message: string): void;
   renderInfoLines(lines: Array<{ text: string; color?: string }>): void;
   renderStep(step: AgentStep): void;
   renderAssistantDelta(delta: string): void;
@@ -636,6 +637,13 @@ export class PiTui implements Tui {
     for (const line of text.split("\n")) {
       this.print(line, col.muted);
     }
+  }
+
+  renderEventMessage(message: string): void {
+    const text = normalizeText(message);
+    if (!text) return;
+    this.renderInfoCard(`◇ ${text}`, col.accent);
+    this.print("");
   }
 
   renderInfoLines(lines: Array<{ text: string; color?: string }>): void {

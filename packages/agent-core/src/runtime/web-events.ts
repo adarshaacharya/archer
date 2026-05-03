@@ -121,3 +121,26 @@ export function createWebFailedEvent(action: WebAction, error: string): WebRunti
       };
   }
 }
+
+export function formatWebRuntimeEvent(event: WebRuntimeEvent): string {
+  switch (event.type) {
+    case "web.search.started":
+      return `webSearch: ${event.query}`;
+    case "web.search.completed":
+      return `webSearch done: ${event.resultCount} result${event.resultCount === 1 ? "" : "s"} via ${event.provider}`;
+    case "web.search.failed":
+      return `webSearch failed: ${event.query} (${event.error})`;
+    case "web.openPage.started":
+      return `webOpenPage: ${event.url}`;
+    case "web.openPage.completed":
+      return `webOpenPage done: ${event.title?.trim() || event.url}`;
+    case "web.openPage.failed":
+      return `webOpenPage failed: ${event.url} (${event.error})`;
+    case "web.findInPage.started":
+      return `webFindInPage: ${event.pattern} @ ${event.url}`;
+    case "web.findInPage.completed":
+      return `webFindInPage done: ${event.matchCount} match${event.matchCount === 1 ? "" : "es"} for ${event.pattern}`;
+    case "web.findInPage.failed":
+      return `webFindInPage failed: ${event.pattern} @ ${event.url} (${event.error})`;
+  }
+}

@@ -29,6 +29,7 @@ import {
   createWebCompletedEvent,
   createWebFailedEvent,
   createWebStartedEvent,
+  formatWebRuntimeEvent,
   expandedContextSteps,
   evaluateQuestionAnswerReadiness,
   isContextBudgetResult,
@@ -296,15 +297,22 @@ export async function runTask(
   );
   const web = {
     async execute(action: Parameters<typeof baseWeb.execute>[0]) {
-      evalMetrics.onWebEvent(createWebStartedEvent(action));
+      const startedEvent = createWebStartedEvent(action);
+      evalMetrics.onWebEvent(startedEvent);
+      persistEventMessage(formatWebRuntimeEvent(startedEvent));
       try {
         const result = await baseWeb.execute(action);
-        evalMetrics.onWebEvent(createWebCompletedEvent(result));
+        const completedEvent = createWebCompletedEvent(result);
+        evalMetrics.onWebEvent(completedEvent);
+        persistEventMessage(formatWebRuntimeEvent(completedEvent));
         return result;
       } catch (error) {
-        evalMetrics.onWebEvent(
-          createWebFailedEvent(action, error instanceof Error ? error.message : String(error)),
+        const failedEvent = createWebFailedEvent(
+          action,
+          error instanceof Error ? error.message : String(error),
         );
+        evalMetrics.onWebEvent(failedEvent);
+        persistEventMessage(formatWebRuntimeEvent(failedEvent));
         throw error;
       }
     },
@@ -360,6 +368,19 @@ export async function runTask(
       session_id: state.sessionId,
       role: "assistant",
       kind: "transcript",
+      content: message,
+    });
+  };
+  const persistEventMessage = (message: string) => {
+    if (!message.trim()) {
+      return;
+    }
+    tui.renderEventMessage(message);
+    void appendMessage({
+      id: newMessageId(state.sessionId, "event"),
+      session_id: state.sessionId,
+      role: "system",
+      kind: "event",
       content: message,
     });
   };

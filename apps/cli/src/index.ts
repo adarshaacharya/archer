@@ -767,6 +767,11 @@ async function replaySessionTranscript(tui: Tui, sessionId: string): Promise<voi
       continue;
     }
 
+    if (message.kind === "event") {
+      tui.renderEventMessage(content);
+      continue;
+    }
+
     if (message.role === "user") {
       tui.renderUserMessage(content);
       continue;
