@@ -4,6 +4,8 @@ export type RuntimePhaseUsage = {
   totalTokens: number;
 };
 
+import type { OpenHarnessToolEvent } from "./openharness-types.js";
+
 export type RuntimePhaseResult = {
   status: string;
   steps: number;
@@ -16,6 +18,7 @@ export type RuntimePhaseResult = {
 export type RuntimePhaseOptions = {
   allowTools?: boolean;
   instructions?: string;
+  onToolEvent?: (event: OpenHarnessToolEvent) => void;
 };
 
 export type RuntimePhaseRunner = (

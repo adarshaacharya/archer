@@ -7,12 +7,12 @@ import {
   deriveValidationScope,
   deriveCompactionPolicy,
   isContextPressureFailure,
-  handleAnswerContextOutcome,
-  handleChangeContextOutcome,
+  handleTaskContextOutcome,
   parseCompactionReport,
   parseTurnDecision,
   recordCompactionAttempt,
   resolveObservedTurnIntent,
+  validateTurnDecision,
   type OpenHarnessRuntimeDeps,
   type RuntimePhaseRunner,
   type TurnObservedFacts,
@@ -23,13 +23,14 @@ import {
   createQuestionExplorationState,
   createTaskPhaseController,
   createToolApprovalHandler,
+  createOpenHarnessEngineAdapter,
   expandedContextSteps,
   evaluateQuestionAnswerReadiness,
   isContextBudgetResult,
   prependContinuationBrief,
   recordQuestionStep,
-  runOpenHarnessRuntime,
   summarizeQuestionExploration,
+  type OpenHarnessToolEvent,
 } from "@xeq/agent-core";
 import { createSandboxEnvironment } from "@xeq/sandbox";
 import { AgentRequestSchema, autoApproveEditsInApprovalMode } from "@xeq/shared";
@@ -468,6 +469,7 @@ export async function runTask(
   const questionExploration = questionStrategy ? createQuestionExplorationState() : null;
   let questionAnswerReadyReason: string | null = null;
   const answerMaxSteps = request.maxSteps;
+  const engine = createOpenHarnessEngineAdapter();
 
   const approveToolCallWithQuestionReadiness = async (
     toolCall: RuntimeToolCall,
@@ -491,9 +493,13 @@ export async function runTask(
     prompt: string,
     persistTranscript: boolean,
     maxSteps: number,
-    options: { allowTools?: boolean; instructions?: string } = {},
+    options: {
+      allowTools?: boolean;
+      instructions?: string;
+      onToolEvent?: (event: OpenHarnessToolEvent) => void;
+    } = {},
   ) =>
-    runOpenHarnessRuntime(
+    engine.run(
       {
         modelId: state.modelId,
         sessionId: state.sessionId,
@@ -545,6 +551,7 @@ export async function runTask(
             commitWorkflowCompleted = true;
             commitWorkflowOutput = shellOutputText(event.output).trim();
           }
+          options.onToolEvent?.(event);
         },
         onTextDelta: persistTranscript
           ? (delta) => {
@@ -594,11 +601,14 @@ export async function runTask(
     }
 
     if (unifiedTurn && contextResult.status === "completed") {
+      let submittedDecision: ReturnType<typeof validateTurnDecision> = null;
       const decisionResult = await runPhase(
         [
           "Decide what the task needs next based on the task and inspected repository context.",
-          "Return strict JSON only in this shape:",
-          '{ "mode": "answer" | "change", "rationale": string }',
+          "Submit the routing decision with the submitTurnDecision tool.",
+          "Do not return raw JSON when the tool is available.",
+          "The decision shape is:",
+          '{ mode: "answer" | "change", rationale: string }',
           "",
           'Use "answer" when the user primarily asked for inspection, explanation, review, or current state.',
           'Use "change" when the user clearly wants code or file modifications.',
@@ -611,9 +621,19 @@ export async function runTask(
         ].join("\n"),
         false,
         12,
-        { allowTools: false },
+        {
+          onToolEvent: (event) => {
+            if (event.phase !== "done" || event.toolName !== "submitTurnDecision") {
+              return;
+            }
+            const validated = validateTurnDecision(event.output);
+            if (validated) {
+              submittedDecision = validated;
+            }
+          },
+        },
       );
-      const decision = parseTurnDecision(decisionResult.outputText);
+      const decision = submittedDecision ?? parseTurnDecision(decisionResult.outputText);
       if (decision?.mode === "change") {
         isChangeTurn = true;
         isAnswerTurn = false;
@@ -644,30 +664,14 @@ export async function runTask(
       return buildTurnResult("completed", summary, commitWorkflowOutput || "Created the git commit successfully.");
     }
 
-    if (isAnswerTurn) {
-      return await handleAnswerContextOutcome({
-        contextResult,
-        task: request.task,
-        questionAnswerReadyReason,
-        explorationSummary: questionExploration
-          ? summarizeQuestionExploration(questionExploration)
-          : undefined,
-        elapsedMs,
-        runPhase,
-        turn,
-        buildSummary,
-        buildTurnResult,
-        renderSummary,
-        renderAssistantError: (message) => {
-          tui.renderAssistantMessage(message);
-        },
-        persistAssistantTranscript,
-        pruneAfterTurn,
-      });
-    }
-    return await handleChangeContextOutcome({
+    return await handleTaskContextOutcome({
+      mode: isAnswerTurn ? "answer" : "change",
       contextResult,
       task: request.task,
+      questionAnswerReadyReason,
+      explorationSummary: questionExploration
+        ? summarizeQuestionExploration(questionExploration)
+        : undefined,
       priorTurnGuidance: priorTurnGuidance ?? undefined,
       planningMaxSteps,
       verificationMaxSteps,
@@ -692,6 +696,10 @@ export async function runTask(
       buildTurnResult,
       renderSummary,
       renderApprovalMessage,
+      renderAssistantError: (message) => {
+        tui.renderAssistantMessage(message);
+      },
+      persistAssistantTranscript,
       pruneAfterTurn,
       deriveValidationScope: deriveCurrentValidationScope,
       isContextBudgetResult,

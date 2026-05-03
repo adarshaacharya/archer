@@ -130,36 +130,83 @@ export function parseVerificationReport(raw: string): VerificationReport | null 
   }
 
   try {
-    const parsed = JSON.parse(jsonText) as {
-      passed?: unknown;
-      commands?: unknown;
-      findings?: unknown;
-    };
-    if (
-      typeof parsed.passed !== "boolean" ||
-      !Array.isArray(parsed.commands) ||
-      !Array.isArray(parsed.findings)
-    ) {
-      return null;
-    }
-
-    const commands = parsed.commands.filter((item): item is string => typeof item === "string");
-    const findings = parsed.findings.filter((item): item is string => typeof item === "string");
-    if (commands.length !== parsed.commands.length || findings.length !== parsed.findings.length) {
-      return null;
-    }
-
-    return {
-      passed: parsed.passed,
-      commands,
-      findings,
-    };
+    const parsed = JSON.parse(jsonText) as unknown;
+    return validateVerificationReport(parsed);
   } catch {
     return null;
   }
 }
 
-function validateExecutionPlan(value: unknown): ExecutionPlan | null {
+export function validateVerificationReport(value: unknown): VerificationReport | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const parsed = value as {
+    passed?: unknown;
+    commands?: unknown;
+    findings?: unknown;
+  };
+  if (
+    typeof parsed.passed !== "boolean" ||
+    !Array.isArray(parsed.commands) ||
+    !Array.isArray(parsed.findings)
+  ) {
+    return null;
+  }
+
+  const commands = parsed.commands.filter((item): item is string => typeof item === "string");
+  const findings = parsed.findings.filter((item): item is string => typeof item === "string");
+  if (commands.length !== parsed.commands.length || findings.length !== parsed.findings.length) {
+    return null;
+  }
+
+  return {
+    passed: parsed.passed,
+    commands,
+    findings,
+  };
+}
+
+export function validateCompactionReport(value: unknown): {
+  summary: string;
+  criticalFiles: string[];
+  openRisks: string[];
+} | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const parsed = value as {
+    summary?: unknown;
+    criticalFiles?: unknown;
+    openRisks?: unknown;
+  };
+  if (
+    typeof parsed.summary !== "string" ||
+    !Array.isArray(parsed.criticalFiles) ||
+    !Array.isArray(parsed.openRisks)
+  ) {
+    return null;
+  }
+
+  const criticalFiles = parsed.criticalFiles.filter((item): item is string => typeof item === "string");
+  const openRisks = parsed.openRisks.filter((item): item is string => typeof item === "string");
+  if (
+    criticalFiles.length !== parsed.criticalFiles.length ||
+    openRisks.length !== parsed.openRisks.length
+  ) {
+    return null;
+  }
+
+  return {
+    summary: parsed.summary.trim(),
+    criticalFiles: criticalFiles.map((item) => item.trim()).filter(Boolean),
+    openRisks: openRisks.map((item) => item.trim()).filter(Boolean),
+  };
+}
+
+export function validateExecutionPlan(value: unknown): ExecutionPlan | null {
   if (!value || typeof value !== "object") {
     return null;
   }

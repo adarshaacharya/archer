@@ -8,9 +8,17 @@ export type TurnObservedFacts = {
 
 export type RuntimeObservedIntent = "question" | "change";
 
+export function validateTurnDecision(value: unknown) {
+  try {
+    return TurnDecisionSchema.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 export function parseTurnDecision(outputText: string) {
   try {
-    return TurnDecisionSchema.parse(JSON.parse(outputText));
+    return validateTurnDecision(JSON.parse(outputText));
   } catch {
     return null;
   }

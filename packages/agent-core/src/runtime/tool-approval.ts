@@ -21,6 +21,22 @@ export function classifyToolCall(
     return { permission: "read", pattern: "*", action: "allow" };
   }
 
+  if (toolName === "submitPlan") {
+    return { permission: "read", pattern: "submitPlan", action: "allow" };
+  }
+
+  if (toolName === "submitTurnDecision") {
+    return { permission: "read", pattern: "submitTurnDecision", action: "allow" };
+  }
+
+  if (toolName === "submitCompactionReport") {
+    return { permission: "read", pattern: "submitCompactionReport", action: "allow" };
+  }
+
+  if (toolName === "submitVerificationReport") {
+    return { permission: "read", pattern: "submitVerificationReport", action: "allow" };
+  }
+
   if (toolName === "createDirectory") {
     return { permission: "edit", pattern: directoryPattern(input), action: "ask" };
   }

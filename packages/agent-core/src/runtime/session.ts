@@ -1,7 +1,15 @@
 import { Agent, Session, createLocalTools } from "@openharness/core";
 import { resolveModelConfig } from "@xeq/model-providers";
 import { loadEffectiveModelMessages, replaceMessages } from "@xeq/storage";
-import { createEditTools, createWebFetchTool, createWebSearchTool } from "@xeq/tools";
+import {
+  createEditTools,
+  createSubmitCompactionReportTool,
+  createSubmitPlanTool,
+  createSubmitTurnDecisionTool,
+  createSubmitVerificationReportTool,
+  createWebFetchTool,
+  createWebSearchTool,
+} from "@xeq/tools";
 import type { ModelMessage } from "ai";
 import { DEFAULT_MAX_STEPS } from "../types.js";
 import { createTrackedFsProvider } from "./file-tracker.js";
@@ -87,6 +95,10 @@ function createSession({
   });
   const tools = {
     ...createLocalTools({ fs: trackedFs, shell: providers.shell }),
+    submitCompactionReport: createSubmitCompactionReportTool(),
+    submitTurnDecision: createSubmitTurnDecisionTool(),
+    submitPlan: createSubmitPlanTool(),
+    submitVerificationReport: createSubmitVerificationReportTool(),
     createDirectory: editTools.createDirectory,
     preparePatchBundle: editTools.preparePatchBundle,
     preparePatch: editTools.preparePatch,
