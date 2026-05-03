@@ -12,6 +12,7 @@ import {
 } from "@opentui/core";
 import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
 import type { AgentStep, RunSummary } from "@xeq/shared";
+import { PromptHistory } from "./prompt-history.js";
 
 export interface ApprovalPromptState {
   message: string;
@@ -210,6 +211,8 @@ export class PiTui implements Tui {
   private slashMenuScrollOffset = 0;
   private slashLineCount = 0;
   private currentInput = "";
+  private readonly promptHistory = new PromptHistory();
+  private applyingPromptHistoryValue = false;
   private assistantStreamText = "";
   private pendingReadResolve: ((line: string) => void) | null = null;
   private pendingApprovalResolve: ((choice: string) => void) | null = null;
@@ -435,6 +438,14 @@ export class PiTui implements Tui {
       ],
       onContentChange: () => {
         const value = this.input?.plainText ?? "";
+        if (this.applyingPromptHistoryValue) {
+          this.applyingPromptHistoryValue = false;
+        } else {
+          if (this.promptHistory.isNavigating()) {
+            this.promptHistory.clearNavigation();
+          }
+          this.promptHistory.syncDraft(value);
+        }
         this.currentInput = value;
         this.setInputValue?.(value);
         this.updateSlashMenu(value);
@@ -467,6 +478,9 @@ export class PiTui implements Tui {
         return true;
       }
       if (this.handleSlashMenuInput(seq)) {
+        return true;
+      }
+      if (this.handlePromptHistoryInput(seq)) {
         return true;
       }
       if (seq === "\x1b" && this.pendingModal) {
@@ -932,6 +946,7 @@ export class PiTui implements Tui {
   }
 
   private submitComposerValue(submit: string): void {
+    this.promptHistory.record(submit);
     this.currentInput = "";
     if (this.input) {
       this.input.setText("");
@@ -951,6 +966,40 @@ export class PiTui implements Tui {
       const match = this.slashCommands.find((item) => item.name === `/${command}`);
       if (match) this.renderUserMessage(submit);
     }
+  }
+
+  private handlePromptHistoryInput(seq: string): boolean {
+    if (this.pendingModal) return false;
+    if (this.currentInput.trim().startsWith("/") && this.slashMenuItems.length > 0) return false;
+
+    if (seq === "\x1b[A") {
+      return this.applyPromptHistoryValue(this.promptHistory.previous(this.currentInput));
+    }
+
+    if (seq === "\x1b[B") {
+      return this.applyPromptHistoryValue(this.promptHistory.next());
+    }
+
+    return false;
+  }
+
+  private applyPromptHistoryValue(value: string | null): boolean {
+    const input = this.input;
+    const renderer = this.renderer;
+    if (!input || !renderer || value == null) {
+      return false;
+    }
+
+    this.applyingPromptHistoryValue = true;
+    input.setText(value);
+    input.cursorOffset = input.plainText.length;
+    this.currentInput = value;
+    this.setInputValue?.(value);
+    this.updateSlashMenu(value);
+    this.syncComposerLayout();
+    input.focus();
+    renderer.requestRender();
+    return true;
   }
 
   private updateSlashMenu(value: string): void {
@@ -1149,7 +1198,7 @@ export class PiTui implements Tui {
     if (hasDetails) {
       box.add(new TextRenderable(this.renderer, {
         id: "approval-details",
-        content: normalizeText(prompt.details!),
+        content: normalizeText(prompt.details ?? ""),
         width: "100%",
         height: 1,
         fg: col.step,
