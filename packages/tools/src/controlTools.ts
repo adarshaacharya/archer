@@ -27,7 +27,7 @@ export const VerificationReportSchema = z.object({
 export type SubmittedVerificationReport = z.infer<typeof VerificationReportSchema>;
 
 export const TurnDecisionSchema = z.object({
-  mode: z.enum(["answer", "change"]),
+  mode: z.enum(["direct-answer", "repo-context", "answer", "change"]),
   rationale: z.string().min(1),
 });
 
@@ -62,7 +62,7 @@ export function createSubmitVerificationReportTool() {
 export function createSubmitTurnDecisionTool() {
   return tool({
     description:
-      "Submit the structured routing decision for the current task after inspecting repository context.",
+      "Submit the structured routing decision for the current task, either before repository inspection or after context has been gathered.",
     inputSchema: TurnDecisionSchema,
     execute: async (input) => input,
   });

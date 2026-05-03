@@ -18,6 +18,8 @@ import {
   type TurnObservedFacts,
   buildPriorTurnPlanningGuidance,
   buildContextGatheringPrompt,
+  buildDirectAnswerPrompt,
+  buildDirectAnswerSystemPrompt,
   buildQuestionStrategy,
   buildResearchAnswerPrompt,
   createQuestionExplorationState,
@@ -46,6 +48,7 @@ import { createWebSearchProvider } from "@xeq/web";
 import { requestApproval, withApprovalQueue } from "./approvals.js";
 import { createEvalMetricsCollector } from "./eval-metrics.js";
 import { resolveActiveWebProvider } from "./auth-store.js";
+import { planPreRoute, preRouteResultFromMode, type PreRouteResult } from "./intent-router.js";
 import { pruneSessionAfterTurn } from "./recovery/prune.js";
 import type { SessionState } from "./session-state.js";
 import { webFetchRuleForUrl } from "./settings-store.js";
@@ -465,6 +468,15 @@ export async function runTask(
   const planningMaxSteps = Math.min(24, Math.max(10, Math.floor(request.maxSteps / 6)));
   const verificationMaxSteps = Math.min(24, Math.max(8, Math.floor(request.maxSteps / 6)));
   const compactionMaxSteps = Math.min(18, Math.max(8, Math.floor(request.maxSteps / 10)));
+  const preRoutePlan =
+    taskOptions?.workflowKind == null || taskOptions.workflowKind === "default"
+      ? planPreRoute(request.task)
+      : null;
+  if (preRoutePlan?.status === "resolved" && preRoutePlan.result.mode === "change" && declaredIntent !== "change") {
+    isChangeTurn = true;
+    isAnswerTurn = false;
+    observedFacts.changeFlowEntered = true;
+  }
   const questionStrategy = isAnswerTurn ? buildQuestionStrategy(request.task, "question") : null;
   const questionExploration = questionStrategy ? createQuestionExplorationState() : null;
   let questionAnswerReadyReason: string | null = null;
@@ -495,6 +507,7 @@ export async function runTask(
     maxSteps: number,
     options: {
       allowTools?: boolean;
+      allowedToolNames?: string[];
       instructions?: string;
       onToolEvent?: (event: OpenHarnessToolEvent) => void;
     } = {},
@@ -508,9 +521,17 @@ export async function runTask(
           ...env,
           webSearch,
         },
-        approveToolCall:
-          options.allowTools === false ? () => false : approveToolCallWithQuestionReadiness,
-        approvePatchApply: options.allowTools === false ? () => false : approvePatchApply,
+        approveToolCall: (toolCall) => {
+          if (options.allowTools === false) {
+            return false;
+          }
+          if (options.allowedToolNames && !options.allowedToolNames.includes(toolCall.toolName)) {
+            return false;
+          }
+          return approveToolCallWithQuestionReadiness(toolCall);
+        },
+        approvePatchApply:
+          options.allowTools === false || options.allowedToolNames != null ? () => false : approvePatchApply,
         onStep: (step) => {
           if (questionExploration && persistTranscript) {
             recordQuestionStep(questionExploration, step);
@@ -568,7 +589,102 @@ export async function runTask(
       },
     );
 
+  const classifyPreRouteDecision = async (): Promise<PreRouteResult | null> => {
+    let submittedDecision: ReturnType<typeof validateTurnDecision> = null;
+    const decisionResult = await runPhase(
+      [
+        "Route the user's input before any repository inspection.",
+        "Do not inspect files, search the repository, run shell commands, or call any tool other than submitTurnDecision.",
+        "Submit the routing decision with the submitTurnDecision tool.",
+        "Do not return raw JSON when the tool is available.",
+        "The decision shape is:",
+        '{ mode: "direct-answer" | "repo-context" | "change", rationale: string }',
+        "",
+        'Use "direct-answer" for casual conversation or general questions answerable without local repository context.',
+        'Use "repo-context" when answering correctly requires inspecting the local repository or files.',
+        'Use "change" when the user is asking for code or file modifications.',
+        "",
+        "Task:",
+        request.task,
+      ].join("\n"),
+      false,
+      8,
+      {
+        allowedToolNames: preRoutePlan?.status === "needs-classification"
+          ? preRoutePlan.allowedToolNames
+          : ["submitTurnDecision"],
+        instructions: [
+          "You are classifying the user's next turn before any repository work begins.",
+          "Do not inspect the repository and do not call any tools except submitTurnDecision.",
+        ].join(" "),
+        onToolEvent: (event) => {
+          if (event.phase !== "done" || event.toolName !== "submitTurnDecision") {
+            return;
+          }
+          const validated = validateTurnDecision(event.output);
+          if (validated) {
+            submittedDecision = validated;
+          }
+        },
+      },
+    );
+
+    const decision = submittedDecision ?? parseTurnDecision(decisionResult.outputText);
+    if (!decision) {
+      return null;
+    }
+    const mode = decision.mode === "answer" ? "repo-context" : decision.mode;
+    return preRouteResultFromMode(mode, decision.rationale, "classifier");
+  };
+
   try {
+    const resolvedPreRoute =
+      preRoutePlan?.status === "resolved"
+        ? preRoutePlan.result
+        : preRoutePlan?.status === "needs-classification"
+          ? declaredIntent === "change" || taskOptions?.workflowKind === "commit"
+            ? null
+            : await classifyPreRouteDecision()
+          : null;
+
+    if (resolvedPreRoute?.mode === "change") {
+      isChangeTurn = true;
+      isAnswerTurn = false;
+      observedFacts.changeFlowEntered = true;
+    }
+
+    if (resolvedPreRoute?.shouldQuery === false && declaredIntent !== "change") {
+      renderApprovalMessage("Answering directly...");
+      const directResult = await runPhase(buildDirectAnswerPrompt(request.task), true, 8, {
+        allowTools: false,
+        allowedToolNames: resolvedPreRoute.allowedToolNames,
+        instructions: buildDirectAnswerSystemPrompt(),
+      });
+
+      if (directResult.status === "completed") {
+        turn.finish();
+        const summary = buildSummary({
+          success: true,
+          steps: directResult.steps,
+          durationMs: elapsedMs(),
+          promptTokens: directResult.usage?.promptTokens ?? 0,
+          completionTokens: directResult.usage?.completionTokens ?? 0,
+          estimatedCostUsd: directResult.estimatedCostUsd ?? 0,
+        });
+        renderSummary(summary);
+        pruneAfterTurn();
+        return buildTurnResult("completed", summary, directResult.outputText);
+      }
+
+      if (directResult.status === "cancelled") {
+        turn.cancel();
+        return buildTurnResult("cancelled", undefined, directResult.outputText);
+      }
+
+      turn.fail();
+      return buildTurnResult("failed", undefined, directResult.outputText);
+    }
+
     turn.beginResearch();
     if (questionStrategy) {
       tui.renderApprovalPrompt({

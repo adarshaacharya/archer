@@ -13,7 +13,7 @@ export type TurnState =
 
 const ALLOWED_TRANSITIONS: Record<TurnState, TurnState[]> = {
   idle: ["routing"],
-  routing: ["researching", "planning", "failed", "cancelled"],
+  routing: ["researching", "planning", "done", "failed", "cancelled"],
   researching: ["planning", "implementing", "done", "failed", "cancelled"],
   planning: ["implementing", "failed", "cancelled"],
   implementing: ["verifying", "compacting", "done", "failed", "cancelled"],

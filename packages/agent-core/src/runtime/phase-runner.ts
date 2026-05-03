@@ -17,6 +17,7 @@ export type RuntimePhaseResult = {
 
 export type RuntimePhaseOptions = {
   allowTools?: boolean;
+  allowedToolNames?: string[];
   instructions?: string;
   onToolEvent?: (event: OpenHarnessToolEvent) => void;
 };

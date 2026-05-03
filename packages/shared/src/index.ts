@@ -82,7 +82,7 @@ export const RunSummarySchema = z.object({
 export type RunSummary = z.infer<typeof RunSummarySchema>;
 
 export const TurnDecisionSchema = z.object({
-  mode: z.enum(["answer", "change"]),
+  mode: z.enum(["direct-answer", "repo-context", "answer", "change"]),
   rationale: z.string().min(1),
 });
 export type TurnDecision = z.infer<typeof TurnDecisionSchema>;
