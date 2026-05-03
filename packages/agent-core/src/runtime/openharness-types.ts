@@ -1,5 +1,6 @@
 import type { FsProvider, ShellProvider, ToolCallInfo } from "@openharness/core";
 import type { WebCapability } from "@xeq/tools";
+import type { OpenHarnessRuntimeConfig } from "@xeq/shared";
 
 export interface OpenHarnessRuntimeStepEvent {
   step: number;
@@ -56,6 +57,7 @@ export type PatchPreview = {
 export interface OpenHarnessRuntimeDeps {
   modelId?: string;
   instructions?: string;
+  runtimeConfig?: OpenHarnessRuntimeConfig;
   onStep?: (event: OpenHarnessRuntimeStepEvent) => void;
   onToolEvent?: (event: OpenHarnessToolEvent) => void;
   onTextDelta?: (delta: string) => void;

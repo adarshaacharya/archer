@@ -40,7 +40,9 @@ import {
 } from "./auth-store.js";
 import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.js";
 import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compact.js";
+import { bootstrapWorkspace, initSlashCommandItem } from "./commands/init.js";
 import { KeybindManager } from "./keybinds.js";
+import { loadOpenHarnessConfig } from "./openharness-config.js";
 import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
 import { titleFromTask } from "./task-title.js";
 import { runTask } from "./task-runner.js";
@@ -836,12 +838,30 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message:
-        "Commands: /help, /new, /resume, /commit, /compact, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+        "Commands: /help, /new, /resume, /init, /commit, /compact, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
     };
   }
 
   if (command === "new") {
     return startNewSession(state);
+  }
+
+  if (command === "init") {
+    const result = await bootstrapWorkspace(state.projectRoot);
+    const lines = [
+      { text: `Initialized ${state.projectRoot}.`, color: "green" },
+      ...(result.created.length > 0
+        ? [{ text: `Created: ${result.created.join(", ")}`, color: "cyan" }]
+        : []),
+      ...(result.skipped.length > 0
+        ? [{ text: `Skipped existing: ${result.skipped.join(", ")}`, color: "yellow" }]
+        : []),
+    ];
+    return {
+      type: "continue",
+      message: lines.map((line) => line.text).join("\n"),
+      lines,
+    };
   }
 
   if (command === "commit") {
@@ -1121,6 +1141,7 @@ async function main(): Promise<void> {
   const sessionId = newSessionId();
   const cwd = process.cwd();
   const projectRoot = resolveProjectRoot(cwd);
+  const openHarnessConfig = await loadOpenHarnessConfig(projectRoot);
   const state: SessionState = {
     sessionId,
     sessionTitle: null,
@@ -1131,6 +1152,7 @@ async function main(): Promise<void> {
     authSource: null,
     webProvider: null,
     webAuthSource: null,
+    openHarnessConfig,
   };
 
   const tuiConfig = await loadTuiConfig(cwd);
@@ -1144,6 +1166,7 @@ async function main(): Promise<void> {
     { name: "/providers", description: "show provider connection status" },
     { name: "/new", description: "start a fresh session" },
     { name: "/resume", description: "pick and resume a saved session" },
+    initSlashCommandItem,
     commitSlashCommandItem,
     compactSlashCommandItem,
     { name: "/connect", description: "connect a model provider" },

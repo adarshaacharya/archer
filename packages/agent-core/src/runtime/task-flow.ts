@@ -42,6 +42,8 @@ export function buildSystemPrompt(): string {
     "If you must ask, do all non-blocked work first, ask exactly one targeted question, include your recommended default, and say what changes based on the answer.",
     "Never ask permission questions like 'Should I proceed?' or 'Do you want me to run tests?'; proceed with the most reasonable option and mention what you did.",
     "Make minimal safe edits and use tools deliberately.",
+    "Use the skill tool when a named skill would materially improve the task.",
+    "Use subagents for focused exploration or external research when it would reduce context pressure or narrow the main turn.",
     "If the user asks you to add a file in a missing folder inside the workspace, create the parent directory as part of the implementation instead of treating it as a blocker.",
     "Use createDirectory for explicit folder creation when needed, then use preparePatch or preparePatchBundle for file contents.",
     "Prefer preparePatchBundle for multi-file changes and preparePatch for single-file changes.",

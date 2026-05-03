@@ -593,6 +593,7 @@ export async function runTask(
         modelId: state.modelId,
         sessionId: state.sessionId,
         instructions: options.instructions,
+        runtimeConfig: state.openHarnessConfig,
         providers: {
           ...env,
           web,

@@ -250,6 +250,43 @@ export const TuiConfigSchema = z.object({
 });
 export type TuiConfig = z.infer<typeof TuiConfigSchema>;
 
+export const OpenHarnessMCPServerSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("stdio"),
+    command: z.string().min(1),
+    args: z.array(z.string()).optional(),
+    env: z.record(z.string()).optional(),
+    cwd: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal("http"),
+    url: z.string().url(),
+    headers: z.record(z.string()).optional(),
+  }),
+  z.object({
+    type: z.literal("sse"),
+    url: z.string().url(),
+    headers: z.record(z.string()).optional(),
+  }),
+]);
+export type OpenHarnessMCPServer = z.infer<typeof OpenHarnessMCPServerSchema>;
+
+export const OpenHarnessRuntimeConfigSchema = z.object({
+  projectInstructions: z.boolean().default(true),
+  skills: z
+    .object({
+      paths: z.array(z.string().min(1)).default([]),
+    })
+    .optional(),
+  mcpServers: z.record(OpenHarnessMCPServerSchema).optional(),
+  subagents: z
+    .object({
+      enabled: z.boolean().default(true),
+    })
+    .optional(),
+});
+export type OpenHarnessRuntimeConfig = z.infer<typeof OpenHarnessRuntimeConfigSchema>;
+
 export class PolicyError extends Error {
   readonly kind = "PolicyError";
 }

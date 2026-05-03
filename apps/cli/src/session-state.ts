@@ -1,4 +1,5 @@
 import type { ApprovalMode } from "@xeq/shared";
+import type { OpenHarnessRuntimeConfig } from "@xeq/shared";
 import type { SupportedProvider } from "@xeq/model-providers";
 import type { SupportedWebProvider } from "@xeq/web";
 
@@ -12,4 +13,5 @@ export type SessionState = {
   authSource: "env" | "saved" | null;
   webProvider: SupportedWebProvider | null;
   webAuthSource: "env" | "saved" | null;
+  openHarnessConfig: OpenHarnessRuntimeConfig;
 };
