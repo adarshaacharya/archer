@@ -1,44 +1,63 @@
 # XEQ
 
-Pronunciation: `eks-ee-kyoo` (`X-E-Q`).
+Terminal-first AI coding agent for macOS, Linux, and WSL.
 
-`XEQ` is derived from “execute,” condensed through “exeqt” into its final form.
+XEQ is built for local, policy-aware agent workflows with:
 
-Terminal-first AI coding agent monorepo (Bun + Turborepo).
+- approval modes for safe execution
+- patch-first editing
+- sandboxed tool execution
+- usage and cost logging
+- Bun + Turborepo workspace support
 
-## Status
+## Install
 
-Early V1 scaffolding is in progress:
-- core package boundaries created
-- shared contracts and sandbox interfaces created
-- pi-tui-based `packages/tui` started
-- migration direction set: OpenHarness-first runtime with XEQ-specific CLI/TUI behavior preserved
+Planned release paths:
 
-See:
-- `AGENTS.md` for repo agent instructions
+- `npm install -g xeq`
+- `npx xeq`
+- `curl -fsSL https://example.com/install.sh | bash`
 
-## Workspace Packages
+## What It Is
 
-- `packages/agent-core`: XEQ orchestration adapter (target: OpenHarness-backed runtime)
-- `packages/model-providers`: provider abstraction + OpenRouter stub
-- `packages/sandbox`: policy decisions (`allow/ask/deny`)
-- `packages/shared`: zod contracts and shared types/errors
-- `packages/tools`: tool runtime (currently includes `readFileTool`)
-- `packages/tui`: terminal UI layer (pi-tui)
+XEQ is a terminal coding agent designed to work like a real developer tool, not a chat demo.
 
-## Commands
+It aims to provide:
+
+- fast CLI-first interaction
+- explicit tool approvals
+- safe file and command policy enforcement
+- model/provider switching
+- TUI support for interactive sessions
+
+## Repository Layout
+
+- `apps/*`: user-facing apps, currently CLI first
+- `packages/agent-core`: agent loop and orchestration
+- `packages/model-providers`: model and provider adapters
+- `packages/tools`: file, shell, and git tools
+- `packages/sandbox`: path and command policy engine
+- `packages/shared`: shared types, schemas, and error contracts
+
+## Current Status
+
+XEQ is still in early V1 scaffolding, with the main runtime direction set around an OpenHarness-backed core and XEQ-specific CLI/TUI behavior.
+
+## Development
 
 ```bash
 bun install
 bun run check-types
+bun run lint
+bun run build
 ```
 
 ## Provider Configuration
 
-Current runtime selection is env-driven:
+Runtime selection is env-driven:
 
 ```bash
-# default behavior (current-compatible): OpenRouter
+# default behavior
 XEQ_PROVIDER=openrouter
 OPENROUTER_API_KEY=...
 AGENT_MODEL=openai/gpt-4o-mini
@@ -59,7 +78,8 @@ GEMINI_API_KEY=...
 AGENT_MODEL=gemini-2.0-flash
 ```
 
-Provider aliases accepted by `XEQ_PROVIDER`:
+Accepted provider aliases:
+
 - `openrouter`
 - `openai` or `codex`
 - `anthropic` or `claude`
@@ -67,13 +87,12 @@ Provider aliases accepted by `XEQ_PROVIDER`:
 
 ## Web Search
 
-`xeq` now exposes `webSearch`, `webOpenPage`, and `webFindInPage` tools to the agent. Web search is configured lazily on first use, so startup does not require a web-search key.
+XEQ exposes `webSearch`, `webOpenPage`, and `webFindInPage` tools to the agent.
 
 Supported web providers:
+
 - `tavily`
 - `exa`
-
-You can still configure them with env vars:
 
 ```bash
 XEQ_WEB_PROVIDER=tavily
@@ -83,52 +102,8 @@ XEQ_WEB_PROVIDER=exa
 EXA_API_KEY=...
 ```
 
-In the CLI:
-- `/web` connects a web-search provider
-- `/web-provider` shows the current web-search provider
-- `/web-logout` removes the saved web-search key for the active provider
+## Docs
 
-Remembered network permissions:
-- `webOpenPage` and `webFindInPage` ask before fetching a new domain
-- choosing `always` stores a `domain:host` allow rule in `~/.local/share/xeq/settings.json`
+- [Agent instructions](./AGENTS.md)
+- [OpenHarness migration notes](./docs/replace-openharness-future.md)
 
-
-## Checklist:
-
-
-  1. Extend runAgent to iterative action loop
-
-  - model response -> decide action
-  - if tool action: execute tool
-  - append observation
-  - continue until done/maxSteps
-
-  2. Define internal action contract in agent-core
-
-  - type AgentAction = "respond" | "tool_call" | "done"
-  - keep it simple for now
-
-  3. Add tool executor interface to agent-core
-
-  - inject function like executeTool(name, input)
-  - don’t hardcode tools in core
-
-  4. Wire first 3 tools from @xeq/tools
-
-  - list_files
-  - search_files
-  - run_command (sandbox-gated)
-
-  5. Emit step events to TUI
-
-  - every model decision
-  - every tool execution result
-  - final summary
-
-  6. Add guardrails
-
-  - maxSteps
-  - repeated tool-call detection
-  - max runtime
-
-  After that you’ll have first real “coding-agent loop” instead of model-only display.
