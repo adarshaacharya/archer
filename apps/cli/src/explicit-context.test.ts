@@ -97,6 +97,52 @@ describe("buildExplicitFileContext", () => {
 
     expect(context.promptPrefix).toContain("skipped because it resolves outside the repository root");
   });
+
+  it("falls back to parsing visible @path text when hidden mention bindings are absent", async () => {
+    const repoRoot = await createRepo();
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src/example.ts"), "alpha\nbeta\ngamma\n");
+
+    const context = await buildExplicitFileContext(
+      {
+        text: "check @src/example.ts#L2-3 please",
+        textElements: [],
+        mentions: [],
+        attachments: [],
+      },
+      repoRoot,
+    );
+
+    expect(context.hasFileMentions).toBe(true);
+    expect(context.referencedPaths).toEqual(["src/example.ts"]);
+    expect(context.promptPrefix).toContain("File: src/example.ts#L2-3");
+    expect(context.promptPrefix).toContain("beta\ngamma");
+  });
+
+  it("deduplicates parsed @path text when a structured file mention already exists", async () => {
+    const repoRoot = await createRepo();
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src/example.ts"), "alpha\n");
+
+    const context = await buildExplicitFileContext(
+      {
+        text: "check @src/example.ts",
+        textElements: [],
+        mentions: [{
+          id: "m1",
+          label: "@src/example.ts",
+          start: 6,
+          end: 21,
+          target: { type: "file", path: "src/example.ts" },
+        }],
+        attachments: [],
+      },
+      repoRoot,
+    );
+
+    expect(context.referencedPaths).toEqual(["src/example.ts"]);
+    expect((context.promptPrefix?.match(/File: src\/example\.ts/g) ?? []).length).toBe(1);
+  });
 });
 
 describe("prependExplicitFileContext", () => {

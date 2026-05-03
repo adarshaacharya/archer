@@ -3,11 +3,13 @@ import "./ai-sdk-warnings.js";
 import type { SupportedProvider } from "@xeq/model-providers";
 import { createPlainComposerSubmission, type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
 import {
+  appendPromptHistoryEntry,
   appendTurnResult,
   createSession,
   getMessages,
   getSession,
   getTurnResults,
+  listPromptHistory,
   listSessions,
   updateSessionTitle,
 } from "@xeq/storage";
@@ -77,6 +79,20 @@ function renderGreetingReply(tui: Tui, greeting: string): void {
 
 function newSessionId(): string {
   return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function persistPromptHistory(projectRoot: string, sessionId: string, text: string): Promise<void> {
+  const value = text.trim();
+  if (!value || value.startsWith("/")) {
+    return;
+  }
+
+  await appendPromptHistoryEntry({
+    id: `prompt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    projectRoot,
+    sessionId,
+    text: value,
+  });
 }
 
 function resolveProjectRoot(startDir: string): string {
@@ -1071,11 +1087,13 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
     }
 
     if (isCasualGreeting(line)) {
+      await persistPromptHistory(state.projectRoot, state.sessionId, line);
       renderGreetingReply(tui, line);
       continue;
     }
 
     try {
+      await persistPromptHistory(state.projectRoot, state.sessionId, submission.text);
       await runTurn(submission, tui, state);
     } catch (error) {
       tui.renderApprovalPrompt({
@@ -1134,6 +1152,7 @@ async function main(): Promise<void> {
   const tui: Tui = new PiTui();
   await tui.start();
   tui.setSlashCommands(slashCommandOptions);
+  tui.loadPersistentPromptHistory(await listPromptHistory(projectRoot));
 
   const handleSigint = () => {
     tui.stop();
@@ -1165,8 +1184,10 @@ async function main(): Promise<void> {
 
     if (initialTask) {
       if (isCasualGreeting(initialTask)) {
+        await persistPromptHistory(state.projectRoot, state.sessionId, initialTask);
         renderGreetingReply(tui, initialTask);
       } else {
+        await persistPromptHistory(state.projectRoot, state.sessionId, initialTask);
         await runTurn(createPlainComposerSubmission(initialTask), tui, state);
       }
     }

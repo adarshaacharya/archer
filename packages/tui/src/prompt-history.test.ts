@@ -69,4 +69,14 @@ describe("PromptHistory", () => {
       }],
     });
   });
+
+  it("falls back to persistent text-only history after local entries", () => {
+    const history = new PromptHistory();
+    history.loadPersistentTexts(["persistent one", "persistent two"]);
+    history.record("local");
+
+    expect(history.previous("draft")).toEqual({ text: "local", mentions: [] });
+    expect(history.previous("draft")).toEqual({ text: "persistent two", mentions: [] });
+    expect(history.previous("draft")).toEqual({ text: "persistent one", mentions: [] });
+  });
 });

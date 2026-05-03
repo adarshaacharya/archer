@@ -22,11 +22,20 @@ function normalizeEntry(entry: PromptHistoryEntry | string): PromptHistoryEntry 
 }
 
 export class PromptHistory {
-  private readonly entries: PromptHistoryEntry[] = [];
+  private readonly localEntries: PromptHistoryEntry[] = [];
+  private persistentTexts: string[] = [];
   private draft: PromptHistoryEntry = { text: "", mentions: [] };
   private cursor: number | null = null;
 
   constructor(private readonly limit: number = DEFAULT_HISTORY_LIMIT) {}
+
+  loadPersistentTexts(entries: string[]): void {
+    this.persistentTexts = entries
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .slice(-this.limit);
+    this.cursor = null;
+  }
 
   record(submit: PromptHistoryEntry | string): void {
     const entry = normalizeEntry(submit);
@@ -38,12 +47,12 @@ export class PromptHistory {
       return;
     }
 
-    this.entries.push({
+    this.localEntries.push({
       text: value,
       mentions: entry.mentions.slice(),
     });
-    if (this.entries.length > this.limit) {
-      this.entries.splice(0, this.entries.length - this.limit);
+    if (this.localEntries.length > this.limit) {
+      this.localEntries.splice(0, this.localEntries.length - this.limit);
     }
   }
 
@@ -57,30 +66,32 @@ export class PromptHistory {
   }
 
   previous(current: PromptHistoryEntry | string): PromptHistoryEntry | null {
-    if (this.entries.length === 0) {
+    const entries = this.combinedEntries();
+    if (entries.length === 0) {
       return null;
     }
 
     if (this.cursor === null) {
       this.draft = normalizeEntry(current);
-      this.cursor = this.entries.length - 1;
-      const entry = this.entries[this.cursor];
+      this.cursor = entries.length - 1;
+      const entry = entries[this.cursor];
       return entry ? { text: entry.text, mentions: entry.mentions.slice() } : null;
     }
 
     this.cursor = Math.max(0, this.cursor - 1);
-    const entry = this.entries[this.cursor];
+    const entry = entries[this.cursor];
     return entry ? { text: entry.text, mentions: entry.mentions.slice() } : null;
   }
 
   next(): PromptHistoryEntry | null {
+    const entries = this.combinedEntries();
     if (this.cursor === null) {
       return null;
     }
 
-    if (this.cursor < this.entries.length - 1) {
+    if (this.cursor < entries.length - 1) {
       this.cursor += 1;
-      const entry = this.entries[this.cursor];
+      const entry = entries[this.cursor];
       return entry ? { text: entry.text, mentions: entry.mentions.slice() } : null;
     }
 
@@ -97,5 +108,12 @@ export class PromptHistory {
 
   isNavigating(): boolean {
     return this.cursor !== null;
+  }
+
+  private combinedEntries(): PromptHistoryEntry[] {
+    return [
+      ...this.persistentTexts.map((text) => ({ text, mentions: [] as ComposerMentionBinding[] })),
+      ...this.localEntries,
+    ].slice(-this.limit);
   }
 }

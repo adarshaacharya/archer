@@ -33,6 +33,7 @@ export interface Tui {
   start(): Promise<void>;
   renderStartupBanner(): void;
   setActiveModel(modelId: string): void;
+  loadPersistentPromptHistory(entries: string[]): void;
   renderUserMessage(message: string): void;
   renderAssistantMessage(message: string): void;
   renderInfoMessage(message: string): void;
@@ -591,6 +592,10 @@ export class PiTui implements Tui {
     const value = modelId.trim();
     this.activeModelLabel = value ? `model=${value}` : "model=unconfigured";
     this.setStatus("", col.muted, "", col.muted);
+  }
+
+  loadPersistentPromptHistory(entries: string[]): void {
+    this.promptHistory.loadPersistentTexts(entries);
   }
 
   renderUserMessage(message: string): void {
