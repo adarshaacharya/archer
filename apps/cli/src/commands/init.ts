@@ -4,7 +4,7 @@ import type { SlashCommandItem } from "@xeq/tui";
 
 export const initSlashCommandItem: SlashCommandItem = {
   name: "/init",
-  description: "bootstrap AGENTS.md, .agents/skills/, and optional .agents/openharness.json",
+  description: "bootstrap AGENTS.md and .agents/skills/",
 };
 
 export type BootstrapResult = {
@@ -24,7 +24,6 @@ const DEFAULT_AGENTS_MD = [
   "- Keep instructions short and actionable.",
   "- Add repo-specific conventions, test commands, and safety rules.",
   "- Keep skills in `.agents/skills/`.",
-  "- Use `.agents/openharness.json` only for repo-specific overrides; global defaults live in `~/.config/xeq/openharness.json`.",
   "",
   "## Notes for Agents",
   "",
@@ -32,16 +31,6 @@ const DEFAULT_AGENTS_MD = [
   "- Prefer repo-local guidance over generic assumptions.",
   "",
 ].join("\n");
-
-const DEFAULT_OPENHARNESS_CONFIG = {
-  projectInstructions: true,
-  skills: {
-    paths: [".agents/skills"],
-  },
-  subagents: {
-    enabled: true,
-  },
-};
 
 export async function bootstrapWorkspace(cwd: string): Promise<BootstrapResult> {
   const created: string[] = [];
@@ -51,12 +40,6 @@ export async function bootstrapWorkspace(cwd: string): Promise<BootstrapResult> 
   await ensureDir(join(cwd, ".agents/skills"));
 
   await writeIfMissing(join(cwd, "AGENTS.md"), DEFAULT_AGENTS_MD, created, skipped);
-  await writeIfMissing(
-    join(cwd, ".agents/openharness.json"),
-    `${JSON.stringify(DEFAULT_OPENHARNESS_CONFIG, null, 2)}\n`,
-    created,
-    skipped,
-  );
 
   return { created, skipped };
 }

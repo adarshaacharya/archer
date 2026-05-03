@@ -14,7 +14,7 @@ describe("bootstrapWorkspace", () => {
     await Bun.write(existingAgents, "custom agents");
 
     const first = await bootstrapWorkspace(cwd);
-    expect(first.created).toContain(join(cwd, ".agents/openharness.json"));
+    expect(first.created).toEqual([]);
     expect(first.skipped).toContain(existingAgents);
     expect(existsSync(join(cwd, ".agents/skills"))).toBe(true);
 

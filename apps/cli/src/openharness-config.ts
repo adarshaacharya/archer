@@ -6,28 +6,21 @@ import {
   type OpenHarnessRuntimeConfig,
 } from "@xeq/shared";
 
-const DEFAULT_OPEN_HARNESS_CONFIG_FILE = ".agents/openharness.json";
-const OPEN_HARNESS_CONFIG_ENV_VAR = "XEQ_OPENHARNESS_CONFIG";
+export async function loadOpenHarnessConfig(): Promise<OpenHarnessRuntimeConfig> {
+  const [globalProjectConfig, globalMcpConfig] = await Promise.all([
+    readOpenHarnessConfig(resolveGlobalOpenHarnessProjectConfigPath()),
+    readOpenHarnessConfig(resolveGlobalOpenHarnessMcpConfigPath()),
+  ]);
 
-export async function loadOpenHarnessConfig(cwd: string): Promise<OpenHarnessRuntimeConfig> {
-  const globalConfig = await readOpenHarnessConfig(resolveGlobalOpenHarnessConfigPath());
-  const localConfig = await readOpenHarnessConfig(resolveOpenHarnessConfigPath(cwd));
-  return mergeOpenHarnessConfigs(globalConfig, localConfig);
+  return mergeOpenHarnessConfigs(globalProjectConfig, globalMcpConfig);
 }
 
 async function readOpenHarnessConfig(path: string): Promise<OpenHarnessRuntimeConfig | null> {
-  const explicitPath = Boolean(process.env[OPEN_HARNESS_CONFIG_ENV_VAR]?.trim());
-
   let raw: string;
   try {
     raw = await readFile(path, "utf8");
   } catch (error) {
     if (isNotFoundError(error)) {
-      if (explicitPath) {
-        console.warn(
-          `[xeq] ${OPEN_HARNESS_CONFIG_ENV_VAR} points to a missing file: ${path}. Using built-in OpenHarness defaults.`,
-        );
-      }
       return null;
     }
 
@@ -56,36 +49,31 @@ async function readOpenHarnessConfig(path: string): Promise<OpenHarnessRuntimeCo
   return parsedConfig.data;
 }
 
-function resolveOpenHarnessConfigPath(cwd: string): string {
-  const configuredPath = process.env[OPEN_HARNESS_CONFIG_ENV_VAR]?.trim();
-  return resolve(
-    cwd,
-    configuredPath && configuredPath.length > 0 ? configuredPath : DEFAULT_OPEN_HARNESS_CONFIG_FILE,
-  );
-}
-
-function resolveGlobalOpenHarnessConfigPath(): string {
+function resolveGlobalOpenHarnessProjectConfigPath(): string {
   const xdgConfigHome = process.env.XDG_CONFIG_HOME?.trim();
   const baseDir =
     xdgConfigHome && xdgConfigHome.length > 0 ? xdgConfigHome : resolve(os.homedir(), ".config");
   return resolve(baseDir, "xeq", "openharness.json");
 }
 
+function resolveGlobalOpenHarnessMcpConfigPath(): string {
+  const xdgConfigHome = process.env.XDG_CONFIG_HOME?.trim();
+  const baseDir =
+    xdgConfigHome && xdgConfigHome.length > 0 ? xdgConfigHome : resolve(os.homedir(), ".config");
+  return resolve(baseDir, "xeq", "mcp.json");
+}
+
 function mergeOpenHarnessConfigs(
-  globalConfig: OpenHarnessRuntimeConfig | null,
-  localConfig: OpenHarnessRuntimeConfig | null,
+  globalProjectConfig: OpenHarnessRuntimeConfig | null,
+  globalMcpConfig: OpenHarnessRuntimeConfig | null,
 ): OpenHarnessRuntimeConfig {
   const mergedSkillPaths = new Set<string>();
-  for (const path of globalConfig?.skills?.paths ?? []) {
-    mergedSkillPaths.add(path);
-  }
-  for (const path of localConfig?.skills?.paths ?? []) {
+  for (const path of globalProjectConfig?.skills?.paths ?? []) {
     mergedSkillPaths.add(path);
   }
 
   return {
-    projectInstructions:
-      localConfig?.projectInstructions ?? globalConfig?.projectInstructions ?? true,
+    projectInstructions: globalProjectConfig?.projectInstructions ?? true,
     skills:
       mergedSkillPaths.size > 0
         ? {
@@ -93,11 +81,10 @@ function mergeOpenHarnessConfigs(
           }
         : { paths: [] },
     mcpServers: {
-      ...(globalConfig?.mcpServers ?? {}),
-      ...(localConfig?.mcpServers ?? {}),
+      ...(globalMcpConfig?.mcpServers ?? {}),
     },
     subagents: {
-      enabled: localConfig?.subagents?.enabled ?? globalConfig?.subagents?.enabled ?? true,
+      enabled: globalProjectConfig?.subagents?.enabled ?? true,
     },
   };
 }

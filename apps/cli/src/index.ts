@@ -2,6 +2,7 @@
 import "./ai-sdk-warnings.js";
 import type { SupportedProvider } from "@xeq/model-providers";
 import { createPlainComposerSubmission, type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
+import { join } from "node:path";
 import {
   appendPromptHistoryEntry,
   appendTurnResult,
@@ -43,6 +44,7 @@ import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compa
 import { bootstrapWorkspace, initSlashCommandItem } from "./commands/init.js";
 import { KeybindManager } from "./keybinds.js";
 import { loadOpenHarnessConfig } from "./openharness-config.js";
+import { renderInitHintMessage, shouldShowInitHint } from "./onboarding-hint.js";
 import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
 import { titleFromTask } from "./task-title.js";
 import { runTask } from "./task-runner.js";
@@ -1141,7 +1143,7 @@ async function main(): Promise<void> {
   const sessionId = newSessionId();
   const cwd = process.cwd();
   const projectRoot = resolveProjectRoot(cwd);
-  const openHarnessConfig = await loadOpenHarnessConfig(projectRoot);
+  const openHarnessConfig = await loadOpenHarnessConfig();
   const state: SessionState = {
     sessionId,
     sessionTitle: null,
@@ -1200,6 +1202,9 @@ async function main(): Promise<void> {
     if (!ready) return;
     tui.setActiveModel(state.modelId);
     tui.renderStartupBanner();
+    if (shouldShowInitHint(projectRoot)) {
+      tui.renderInfoMessage(renderInitHintMessage());
+    }
     const existing = await getSession(state.sessionId);
     if (!existing) {
       await createSession({
