@@ -10,5 +10,7 @@ export * from "./runtime/compaction-policy.js";
 export * from "./runtime/continuation-policy.js";
 export * from "./runtime/validation-policy.js";
 export * from "./runtime/turn-execution.js";
+export * from "./runtime/turn-decision.js";
+export * from "./runtime/phase-runner.js";
 export { resetSessionById } from "./runtime/session.js";
 export type { OpenHarnessRuntimeDeps, OpenHarnessToolEvent } from "./runtime/openharness-types.js";

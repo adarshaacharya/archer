@@ -10,8 +10,12 @@ import {
   handleAnswerContextOutcome,
   handleChangeContextOutcome,
   parseCompactionReport,
+  parseTurnDecision,
   recordCompactionAttempt,
+  resolveObservedTurnIntent,
   type OpenHarnessRuntimeDeps,
+  type RuntimePhaseRunner,
+  type TurnObservedFacts,
   buildPriorTurnPlanningGuidance,
   buildContextGatheringPrompt,
   buildQuestionStrategy,
@@ -28,7 +32,7 @@ import {
   summarizeQuestionExploration,
 } from "@xeq/agent-core";
 import { createSandboxEnvironment } from "@xeq/sandbox";
-import { AgentRequestSchema, TurnDecisionSchema, autoApproveEditsInApprovalMode } from "@xeq/shared";
+import { AgentRequestSchema, autoApproveEditsInApprovalMode } from "@xeq/shared";
 import {
   appendMessage,
   getTurnResults,
@@ -78,38 +82,6 @@ function shellOutputText(output: unknown): string {
 function isSuccessfulGitCommitOutput(output: unknown): boolean {
   const text = shellOutputText(output);
   return /^\[[^\]]+\s+[0-9a-f]{7,}\]/m.test(text);
-}
-
-function parseTurnDecision(outputText: string) {
-  try {
-    return TurnDecisionSchema.parse(JSON.parse(outputText));
-  } catch {
-    // fall through
-  }
-
-  return null;
-}
-
-type TurnObservedFacts = {
-  changeFlowEntered: boolean;
-  implementationAttempted: boolean;
-  verificationAttempted: boolean;
-};
-
-function resolveObservedTurnIntent(
-  facts: TurnObservedFacts,
-  changedPaths: string[],
-): TurnResult["intent"] {
-  if (
-    facts.changeFlowEntered ||
-    facts.implementationAttempted ||
-    facts.verificationAttempted ||
-    changedPaths.length > 0
-  ) {
-    return "change";
-  }
-
-  return "question";
 }
 
 function updateWebSessionState(
@@ -347,6 +319,75 @@ export async function runTask(
     message,
   });
 
+  const elapsedMs = () => Math.round(performance.now() - started);
+  const renderSummary = (summary: TurnSummary) => {
+    tui.renderSummary(summary);
+  };
+  const renderApprovalMessage = (message: string) => {
+    tui.renderApprovalPrompt({
+      message,
+      options: ["running"],
+    });
+  };
+  const persistAssistantTranscript = (message: string) => {
+    tui.finalizeAssistantStream(message);
+    void appendMessage({
+      id: newMessageId(state.sessionId, "assistant"),
+      session_id: state.sessionId,
+      role: "assistant",
+      kind: "transcript",
+      content: message,
+    });
+  };
+  const pruneAfterTurn = () => {
+    void pruneSessionAfterTurn(state.sessionId);
+  };
+  const updateCompactionMetadata = (input: {
+    trigger: "context-pressure";
+    completed: boolean;
+    report: {
+      summary: string;
+      criticalFiles: string[];
+      openRisks: string[];
+    } | null;
+  }) => {
+    compactionMetadata = recordCompactionAttempt(compactionMetadata, input);
+  };
+  const saveCompactionStarted = () =>
+    saveCompactionEvent({
+      sessionId: state.sessionId,
+      event: {
+        trigger: "context-pressure",
+        status: "started",
+        summary: null,
+        criticalFiles: [],
+        openRisks: [],
+        createdAt: Date.now(),
+      },
+    });
+  const saveCompactionCompleted = (input: {
+    completed: boolean;
+    summary: string | null;
+    criticalFiles: string[];
+    openRisks: string[];
+  }) =>
+    saveCompactionEvent({
+      sessionId: state.sessionId,
+      event: {
+        trigger: "context-pressure",
+        status: input.completed ? "succeeded" : "failed",
+        summary: input.summary,
+        criticalFiles: input.criticalFiles,
+        openRisks: input.openRisks,
+        createdAt: Date.now(),
+      },
+    });
+  const deriveCurrentValidationScope = () =>
+    deriveValidationScope({
+      workflowKind: taskOptions?.workflowKind,
+      changedPaths: evalMetrics.currentChangedPaths(),
+    });
+
   const approveToolCall = createToolApprovalHandler({
     approvalMode: state.approvalMode,
     phase,
@@ -446,7 +487,7 @@ export async function runTask(
     return approveToolCall(toolCall);
   };
 
-  const runPhase = async (
+  const runPhase: RuntimePhaseRunner = async (
     prompt: string,
     persistTranscript: boolean,
     maxSteps: number,
@@ -611,30 +652,17 @@ export async function runTask(
         explorationSummary: questionExploration
           ? summarizeQuestionExploration(questionExploration)
           : undefined,
-        elapsedMs: () => Math.round(performance.now() - started),
+        elapsedMs,
         runPhase,
         turn,
         buildSummary,
         buildTurnResult,
-        renderSummary: (summary) => {
-          tui.renderSummary(summary);
-        },
+        renderSummary,
         renderAssistantError: (message) => {
           tui.renderAssistantMessage(message);
         },
-        persistAssistantTranscript: (message) => {
-          tui.finalizeAssistantStream(message);
-          void appendMessage({
-            id: newMessageId(state.sessionId, "assistant"),
-            session_id: state.sessionId,
-            role: "assistant",
-            kind: "transcript",
-            content: message,
-          });
-        },
-        pruneAfterTurn: () => {
-          void pruneSessionAfterTurn(state.sessionId);
-        },
+        persistAssistantTranscript,
+        pruneAfterTurn,
       });
     }
     return await handleChangeContextOutcome({
@@ -646,7 +674,7 @@ export async function runTask(
       compactionMaxSteps,
       maxSteps: request.maxSteps,
       workflowKind: taskOptions?.workflowKind,
-      elapsedMs: () => Math.round(performance.now() - started),
+      elapsedMs,
       runPhase,
       turn,
       beginImplementationPhase: () => phase.beginImplementation(),
@@ -662,56 +690,15 @@ export async function runTask(
       },
       buildSummary,
       buildTurnResult,
-      renderSummary: (summary) => {
-        tui.renderSummary(summary);
-      },
-      renderApprovalMessage: (message) => {
-        tui.renderApprovalPrompt({
-          message,
-          options: ["running"],
-        });
-      },
-      pruneAfterTurn: () => {
-        void pruneSessionAfterTurn(state.sessionId);
-      },
-      deriveValidationScope: () =>
-        deriveValidationScope({
-          workflowKind: taskOptions?.workflowKind,
-          changedPaths: evalMetrics.currentChangedPaths(),
-        }),
+      renderSummary,
+      renderApprovalMessage,
+      pruneAfterTurn,
+      deriveValidationScope: deriveCurrentValidationScope,
       isContextBudgetResult,
       shouldAttemptVerification,
-      saveCompactionStarted: () =>
-        saveCompactionEvent({
-          sessionId: state.sessionId,
-          event: {
-            trigger: "context-pressure",
-            status: "started",
-            summary: null,
-            criticalFiles: [],
-            openRisks: [],
-            createdAt: Date.now(),
-          },
-        }),
-      saveCompactionCompleted: ({ completed, summary, criticalFiles, openRisks }) =>
-        saveCompactionEvent({
-          sessionId: state.sessionId,
-          event: {
-            trigger: "context-pressure",
-            status: completed ? "succeeded" : "failed",
-            summary,
-            criticalFiles,
-            openRisks,
-            createdAt: Date.now(),
-          },
-        }),
-      updateCompactionMetadata: ({ trigger, completed, report }) => {
-        compactionMetadata = recordCompactionAttempt(compactionMetadata, {
-          trigger,
-          completed,
-          report,
-        });
-      },
+      saveCompactionStarted,
+      saveCompactionCompleted,
+      updateCompactionMetadata,
       parseCompactionReport,
       isContextPressureFailure,
     });

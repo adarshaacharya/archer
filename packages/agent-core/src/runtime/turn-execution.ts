@@ -16,21 +16,7 @@ import { shouldRetryWithCompactedContext, shouldAttemptRepair } from "./continua
 import { buildVerificationScopeInstruction } from "./validation-policy.js";
 import type { ImplementationRunOutcome } from "./implementation-policy.js";
 import type { VerificationReport } from "./planning-artifacts.js";
-
-type Usage = {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-};
-
-export type RuntimePhaseResult = {
-  status: string;
-  steps: number;
-  outputText: string;
-  error?: string;
-  usage?: Usage;
-  estimatedCostUsd?: number;
-};
+import type { RuntimePhaseResult, RuntimePhaseRunner } from "./phase-runner.js";
 
 export type RuntimeSummaryFields = {
   success: boolean;
@@ -60,12 +46,7 @@ export async function handleAnswerContextOutcome<TResult, TSummary>(deps: {
   questionAnswerReadyReason: string | null;
   explorationSummary?: unknown;
   elapsedMs: () => number;
-  runPhase: (
-    prompt: string,
-    persistTranscript: boolean,
-    maxSteps: number,
-    options?: { allowTools?: boolean; instructions?: string },
-  ) => Promise<RuntimePhaseResult>;
+  runPhase: RuntimePhaseRunner;
   turn: Pick<TurnLifecycle, "finish" | "cancel" | "fail">;
   buildSummary: (fields: RuntimeSummaryFields) => TSummary;
   buildTurnResult: (
@@ -197,12 +178,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
   maxSteps: number;
   workflowKind?: "default" | "commit" | "compact";
   elapsedMs: () => number;
-  runPhase: (
-    prompt: string,
-    persistTranscript: boolean,
-    maxSteps: number,
-    options?: { allowTools?: boolean; instructions?: string },
-  ) => Promise<RuntimePhaseResult>;
+  runPhase: RuntimePhaseRunner;
   turn: TurnLifecycle;
   beginImplementationPhase: () => void;
   beginVerificationPhase: () => void;
