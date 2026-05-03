@@ -58,6 +58,7 @@ import { resolveActiveWebProvider } from "./auth-store.js";
 import { planPreRoute, preRouteResultFromMode, type PreRouteResult } from "./intent-router.js";
 import { pruneSessionAfterTurn } from "./recovery/prune.js";
 import type { SessionState } from "./session-state.js";
+import { formatSubagentRuntimeEvent } from "./subagent-events.js";
 import { webFetchRuleForUrl } from "./settings-store.js";
 import { titleFromTask } from "./task-title.js";
 import { createTurnStateMachine } from "./turn-state-machine.js";
@@ -640,6 +641,10 @@ export async function runTask(
         },
         onToolEvent: (event) => {
           evalMetrics.onToolEvent(event);
+          const subagentMessage = formatSubagentRuntimeEvent(event);
+          if (subagentMessage) {
+            persistEventMessage(subagentMessage);
+          }
           if (
             taskOptions?.workflowKind === "commit" &&
             event.phase === "done" &&

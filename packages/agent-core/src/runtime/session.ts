@@ -1,4 +1,10 @@
-import { Agent, Session, createFsTools, createLocalTools } from "@openharness/core";
+import {
+  Agent,
+  AgentRegistry,
+  Session,
+  createFsTools,
+  createLocalTools,
+} from "@openharness/core";
 import { resolveModelConfig } from "@xeq/model-providers";
 import { loadEffectiveModelMessages, replaceMessages } from "@xeq/storage";
 import {
@@ -8,6 +14,9 @@ import {
   createSubmitTurnDecisionTool,
   createSubmitVerificationReportTool,
   createSpawnSubagentTool,
+  createSubagentAwaitTool,
+  createSubagentCancelTool,
+  createSubagentStatusTool,
   createWebFindInPageTool,
   createWebOpenPageTool,
   createWebSearchTool,
@@ -85,6 +94,66 @@ function createSession({
     approveToolCall,
     approvePatchApply,
   };
+  const backgroundRegistry =
+    runtimeConfig?.subagents?.enabled === false
+      ? undefined
+      : new AgentRegistry({
+          maxConcurrent: 8,
+          timeout: undefined,
+          autoCancel: true,
+          tools: {
+            status: true,
+            cancel: true,
+            await: ["all", "allSettled", "any", "race"],
+          },
+        });
+  const backgroundRegistryLike = backgroundRegistry
+    ? {
+        getStatus(subagentId: string) {
+          const status = backgroundRegistry.getStatus(subagentId);
+          return status ? { subagentId, ...status } : undefined;
+        },
+        cancel(subagentId: string) {
+          return backgroundRegistry.cancel(subagentId);
+        },
+        async awaitAll(subagentIds: string[]) {
+          return backgroundRegistry.awaitAll(subagentIds);
+        },
+        async awaitAllSettled(subagentIds: string[]) {
+          return new Map(
+            [...(await backgroundRegistry.awaitAllSettled(subagentIds)).entries()].map(
+              ([subagentId, result]) => [
+                subagentId,
+                {
+                  subagentId,
+                  status: result.status,
+                  sessionId: result.sessionId,
+                  result: result.result,
+                  error: result.error,
+                },
+              ],
+            ),
+          );
+        },
+        async awaitAny(subagentIds: string[]) {
+          const result = await backgroundRegistry.awaitAny(subagentIds);
+          return {
+            id: result.id,
+            sessionId: result.sessionId,
+            result: result.result,
+          };
+        },
+        async awaitRace(subagentIds: string[]) {
+          const result = await backgroundRegistry.awaitRace(subagentIds);
+          return {
+            id: result.id,
+            sessionId: result.sessionId,
+            result: result.result,
+            error: result.error,
+          };
+        },
+      }
+    : undefined;
   const readOnlyFsTools = createFsTools(trackedFs);
   const explorerTools = {
     readFile: readOnlyFsTools.readFile,
@@ -178,6 +247,7 @@ function createSession({
     modelId: model.modelId,
     approveToolCall,
     approvePatchApply,
+    backgroundRegistry,
   });
   const tools = {
     ...createLocalTools({ fs: trackedFs, shell: providers.shell }),
@@ -185,7 +255,14 @@ function createSession({
     submitTurnDecision: createSubmitTurnDecisionTool(),
     submitPlan: createSubmitPlanTool(),
     submitVerificationReport: createSubmitVerificationReportTool(),
-    ...(runtimeConfig?.subagents?.enabled === false ? {} : { spawnSubagent: createSpawnSubagentTool(spawnSubagent) }),
+    ...(runtimeConfig?.subagents?.enabled === false || !backgroundRegistryLike
+      ? {}
+      : {
+          spawnSubagent: createSpawnSubagentTool(spawnSubagent),
+          subagentStatus: createSubagentStatusTool(backgroundRegistryLike),
+          subagentCancel: createSubagentCancelTool(backgroundRegistryLike),
+          subagentAwait: createSubagentAwaitTool(backgroundRegistryLike),
+        }),
     createDirectory: editTools.createDirectory,
     preparePatchBundle: editTools.preparePatchBundle,
     preparePatch: editTools.preparePatch,

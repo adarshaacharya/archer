@@ -1,5 +1,6 @@
 import {
   Agent,
+  AgentRegistry,
   Session,
   createFsTools,
   createLocalTools,
@@ -37,6 +38,7 @@ type SpawnSubagentExecutorOptions = {
   modelId?: string;
   approveToolCall?: ApproveFn;
   approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
+  backgroundRegistry?: AgentRegistry;
 };
 
 type ToolSetLike = Partial<ToolSet>;
@@ -262,6 +264,53 @@ function buildChildSystemPrompt(input: SpawnSubagentInput, cwd: string): string 
   ].join("\n");
 }
 
+function createChildAgent(
+  input: SpawnSubagentInput,
+  cwd: string,
+  sessionId: string,
+  providers: RuntimeProviders,
+  approveToolCall?: ApproveFn,
+  approvePatchApply?: SpawnSubagentExecutorOptions["approvePatchApply"],
+  modelId?: string,
+  instructionsEnabled = true,
+) {
+  const model = resolveModel(modelId);
+  const trackedFs = createTrackedFsProvider(providers.fs, sessionId);
+  const childTools = buildChildToolSet(
+    input,
+    {
+      ...providers,
+      fs: trackedFs,
+    },
+    approvePatchApply,
+  );
+
+  const childAgent = new Agent({
+    name: input.name?.trim() || `xeq-${input.kind}`,
+    description:
+      input.kind === "research"
+        ? "Delegated research subagent"
+        : input.kind === "verify"
+          ? "Delegated verification subagent"
+          : input.kind === "implement"
+            ? "Delegated implementation subagent"
+            : "Delegated subagent",
+    model: model.model,
+    systemPrompt: buildChildSystemPrompt(input, cwd),
+    tools: childTools,
+    maxSteps: input.maxSteps ?? DEFAULT_MAX_STEPS,
+    instructions: instructionsEnabled,
+    approve: async (toolCall) => {
+      return approveToolCall ? approveToolCall(toolCall) : true;
+    },
+  });
+
+  return {
+    childAgent,
+    trackedFs,
+  };
+}
+
 export function createSpawnSubagentExecutor(options: SpawnSubagentExecutorOptions) {
   const model = resolveModel(options.modelId);
 
@@ -276,6 +325,7 @@ export function createSpawnSubagentExecutor(options: SpawnSubagentExecutorOption
     if (input.scope.type === "web" && !options.providers.web) {
       return {
         subagentId: childSessionId,
+        sessionId: childSessionId,
         status: "failed",
         summary: "Web subagents are unavailable because no web provider is configured.",
         findings: ["No web provider was configured for this runtime."],
@@ -291,35 +341,40 @@ export function createSpawnSubagentExecutor(options: SpawnSubagentExecutorOption
       };
     }
 
-    const trackedFs = createTrackedFsProvider(options.providers.fs, childSessionId);
-    const childTools = buildChildToolSet(
+    const { childAgent } = createChildAgent(
       input,
+      options.cwd,
+      childSessionId,
       {
         ...options.providers,
-        fs: trackedFs,
+        fs: createTrackedFsProvider(options.providers.fs, childSessionId),
       },
+      options.approveToolCall,
       options.approvePatchApply,
+      options.modelId,
+      options.runtimeConfig?.projectInstructions ?? true,
     );
 
-    const childAgent = new Agent({
-      name: input.name?.trim() || `xeq-${input.kind}`,
-      description:
-        input.kind === "research"
-          ? "Delegated research subagent"
-          : input.kind === "verify"
-            ? "Delegated verification subagent"
-            : input.kind === "implement"
-              ? "Delegated implementation subagent"
-              : "Delegated subagent",
-      model: model.model,
-      systemPrompt: buildChildSystemPrompt(input, options.cwd),
-      tools: childTools,
-      maxSteps: input.maxSteps ?? DEFAULT_MAX_STEPS,
-      instructions: options.runtimeConfig?.projectInstructions ?? true,
-      approve: async (toolCall) => {
-        return options.approveToolCall ? options.approveToolCall(toolCall) : true;
-      },
-    });
+    if (input.background && options.backgroundRegistry) {
+      const runId = options.backgroundRegistry.spawn(input.name?.trim() || `xeq-${input.kind}`, childAgent, input.prompt, {
+        sessionId: childSessionId,
+      });
+      return {
+        subagentId: runId,
+        sessionId: childSessionId,
+        status: "running",
+        summary: "Background subagent spawned and running.",
+        findings: [],
+        citations: [],
+        artifacts: [],
+        trace: {
+          parentTurnId,
+          childTurnId: runId,
+          kind: input.kind,
+          startedAt: toIsoString(startedAt),
+        },
+      };
+    }
 
     const session = new Session({
       agent: childAgent,
@@ -347,6 +402,7 @@ export function createSpawnSubagentExecutor(options: SpawnSubagentExecutorOption
       await childAgent.close();
       return {
         subagentId: childSessionId,
+        sessionId: childSessionId,
         status: "failed",
         summary: message,
         findings: [message],
@@ -372,6 +428,7 @@ export function createSpawnSubagentExecutor(options: SpawnSubagentExecutorOption
 
     return {
       subagentId: childSessionId,
+      sessionId: childSessionId,
       status: "completed",
       summary,
       findings,
