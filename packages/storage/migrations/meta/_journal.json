@@ -15,6 +15,20 @@
       "when": 1777740973488,
       "tag": "0001_add_turn_results",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1777755022950,
+      "tag": "0002_spotty_kree",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1777760400000,
+      "tag": "0003_add_prompt_history",
+      "breakpoints": true
     }
   ]
 }

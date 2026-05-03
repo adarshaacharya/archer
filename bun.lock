@@ -21,6 +21,7 @@
         "@xeq/model-providers": "workspace:*",
         "@xeq/sandbox": "workspace:*",
         "@xeq/shared": "workspace:*",
+        "@xeq/storage": "workspace:*",
         "@xeq/tui": "workspace:*",
         "@xeq/web": "workspace:*",
       },
@@ -29,9 +30,11 @@
       "name": "@xeq/agent-core",
       "version": "0.0.1",
       "dependencies": {
-        "@openharness/core": "^0.6.0",
+        "@openharness/core": "^0.6.2",
         "@xeq/model-providers": "workspace:*",
+        "@xeq/sandbox": "workspace:*",
         "@xeq/shared": "workspace:*",
+        "@xeq/storage": "workspace:*",
         "@xeq/tools": "workspace:*",
       },
     },
@@ -50,6 +53,14 @@
         "globals": "^16.5.0",
         "typescript": "^5.9.2",
         "typescript-eslint": "^8.50.0",
+      },
+    },
+    "packages/evals": {
+      "name": "@xeq/evals",
+      "version": "0.0.1",
+      "dependencies": {
+        "@xeq/storage": "workspace:*",
+        "zod": "^4.3.6",
       },
     },
     "packages/model-providers": {
@@ -84,6 +95,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@xeq/shared": "workspace:*",
+        "ai": "^6.0.97",
         "drizzle-orm": "^0.45.2",
       },
       "devDependencies": {
@@ -120,6 +132,7 @@
       "name": "@xeq/web",
       "version": "0.0.1",
       "dependencies": {
+        "@xeq/shared": "workspace:*",
         "@xeq/tools": "workspace:*",
       },
     },
@@ -323,7 +336,7 @@
 
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
-    "@openharness/core": ["@openharness/core@0.6.0", "", { "dependencies": { "@ai-sdk/mcp": "^1.0.21", "ai": "^6.0.97", "zod": "^4.3.6" } }, "sha512-ZnWwGrGpqhxvL78tzN15xi7qJgAW08WsT3noYX/RcPKZ1kcESbesaFrodt4lMzTEWU5XymWU2aHXVnZLj5VPGQ=="],
+    "@openharness/core": ["@openharness/core@0.6.2", "", { "dependencies": { "@ai-sdk/mcp": "^1.0.21", "ai": "^6.0.97", "zod": "^4.3.6" } }, "sha512-532Wqdj+D3or7EsiwsQBJc667muV07BCWlqBzA78mKYkdi71RqiiPtsb/9QhBNy9eW9zWkGTTzNTV7rh8b36SQ=="],
 
     "@openrouter/ai-sdk-provider": ["@openrouter/ai-sdk-provider@2.3.3", "", { "peerDependencies": { "ai": "^6.0.0", "zod": "^3.25.0 || ^4.0.0" } }, "sha512-4fVteGkVedc7fGoA9+qJs4tpYwALezMq14m2Sjub3KmyRlksCbK+WJf67NPdGem8+NZrV2tAN42A1NU3+SiV3w=="],
 
@@ -400,6 +413,8 @@
     "@xeq/agent-core": ["@xeq/agent-core@workspace:packages/agent-core"],
 
     "@xeq/cli": ["@xeq/cli@workspace:apps/cli"],
+
+    "@xeq/evals": ["@xeq/evals@workspace:packages/evals"],
 
     "@xeq/model-providers": ["@xeq/model-providers@workspace:packages/model-providers"],
 

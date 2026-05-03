@@ -15,8 +15,6 @@ Early V1 scaffolding is in progress:
 - migration direction set: OpenHarness-first runtime with XEQ-specific CLI/TUI behavior preserved
 
 See:
-- `PLAN.md` for architecture decisions
-- `STEPS.md` for V1 implementation order
 - `AGENTS.md` for repo agent instructions
 
 ## Workspace Packages
@@ -69,7 +67,7 @@ Provider aliases accepted by `XEQ_PROVIDER`:
 
 ## Web Search
 
-`xeq` now exposes `webSearch` and `webFetch` tools to the agent. Web search is configured lazily on first use, so startup does not require a web-search key.
+`xeq` now exposes `webSearch`, `webOpenPage`, and `webFindInPage` tools to the agent. Web search is configured lazily on first use, so startup does not require a web-search key.
 
 Supported web providers:
 - `tavily`
@@ -91,7 +89,7 @@ In the CLI:
 - `/web-logout` removes the saved web-search key for the active provider
 
 Remembered network permissions:
-- `webFetch` asks before fetching a new domain
+- `webOpenPage` and `webFindInPage` ask before fetching a new domain
 - choosing `always` stores a `domain:host` allow rule in `~/.local/share/xeq/settings.json`
 
 

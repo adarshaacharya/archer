@@ -1,0 +1,1 @@
+ALTER TABLE `turn_results` ADD `turn_kind` text DEFAULT 'user' NOT NULL;

@@ -6,6 +6,7 @@ import { turn_results } from "./schema.js";
 export type PersistedTurnResult = {
   id: string;
   sessionId: string;
+  turnKind?: "user" | "compact" | "commit";
   intent: string;
   status: string;
   task: string;
@@ -19,6 +20,7 @@ export async function appendTurnResult(input: PersistedTurnResult): Promise<void
   await getDb().insert(turn_results).values({
     id: input.id,
     session_id: input.sessionId,
+    turn_kind: input.turnKind ?? "user",
     intent: input.intent,
     status: input.status,
     task: input.task,
@@ -44,6 +46,7 @@ export async function getTurnResults(sessionId: string, limit?: number) {
 
   return sliced.map((row) => ({
     ...row,
+    turnKind: row.turn_kind,
     summary:
       row.summary_json == null
         ? null

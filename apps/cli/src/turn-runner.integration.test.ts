@@ -30,12 +30,17 @@ function createState(): SessionState {
     sessionId: "session_test",
     sessionTitle: "test",
     projectRoot: "/tmp/project",
-    approvalMode: "suggest",
+    approvalMode: "workspace-write",
     provider: "openai",
     modelId: "gpt-4o-mini",
     authSource: null,
     webProvider: null,
     webAuthSource: null,
+    openHarnessConfig: {
+      projectInstructions: true,
+      skills: { paths: [] },
+      subagents: { enabled: true },
+    },
   };
 }
 
@@ -58,7 +63,7 @@ describe("runTurn integration", () => {
     resetSessionByIdMock.mockClear();
   });
 
-  it("routes question turns through the main task runner with question intent", async () => {
+  it("runs normal turns through the main task runner with the default intent", async () => {
     const tui = createTui();
     const state = createState();
 
@@ -76,11 +81,17 @@ describe("runTurn integration", () => {
     );
 
     expect(runTaskMock).toHaveBeenCalledTimes(1);
-    expect(runTaskMock.mock.calls[0]?.[0]).toBe("what is the code doing right now");
-    expect(runTaskMock.mock.calls[0]?.[4]).toBe("question");
+    const runTaskCalls = runTaskMock.mock.calls as unknown[][];
+    expect(runTaskCalls[0]?.[0]).toMatchObject({
+      text: "what is the code doing right now",
+      mentions: [],
+      attachments: [],
+    });
+    expect(runTaskCalls[0]?.[4]).toBeUndefined();
     expect(result.status).toBe("completed");
     expect(appendTurnResultMock).toHaveBeenCalledTimes(1);
-    expect(appendTurnResultMock.mock.calls[0]?.[0]).toMatchObject({
+    const appendTurnResultCalls = appendTurnResultMock.mock.calls as unknown[][];
+    expect(appendTurnResultCalls[0]?.[0]).toMatchObject({
       sessionId: "session_test",
       intent: "question",
       status: "completed",
@@ -88,7 +99,7 @@ describe("runTurn integration", () => {
     });
   });
 
-  it("returns clarify for ambiguous input without invoking the task runner", async () => {
+  it("runs non-empty input through the main task runner without CLI intent inference", async () => {
     const tui = createTui();
     const state = createState();
 
@@ -105,9 +116,16 @@ describe("runTurn integration", () => {
       state,
     );
 
-    expect(runTaskMock).not.toHaveBeenCalled();
-    expect(result.status).toBe("clarify");
-    expect(tui.renderAssistantMessage).toHaveBeenCalledTimes(1);
+    expect(runTaskMock).toHaveBeenCalledTimes(1);
+    const runTaskCalls = runTaskMock.mock.calls as unknown[][];
+    expect(runTaskCalls[0]?.[0]).toMatchObject({
+      text: "yo",
+      mentions: [],
+      attachments: [],
+    });
+    expect(runTaskCalls[0]?.[4]).toBeUndefined();
+    expect(result.status).toBe("completed");
+    expect(tui.renderAssistantMessage).not.toHaveBeenCalled();
     expect(appendTurnResultMock).toHaveBeenCalledTimes(1);
   });
 
@@ -138,7 +156,7 @@ describe("runTurn integration", () => {
     expect(tui.renderApprovalPrompt).toHaveBeenCalled();
   });
 
-  it("persists clarify turn results with the original task text", async () => {
+  it("persists turn results with the original task text", async () => {
     const tui = createTui();
     const state = createState();
 
@@ -155,11 +173,41 @@ describe("runTurn integration", () => {
       state,
     );
 
-    expect(appendTurnResultMock.mock.calls[0]?.[0]).toMatchObject({
+    const appendTurnResultCalls = appendTurnResultMock.mock.calls as unknown[][];
+    expect(appendTurnResultCalls[0]?.[0]).toMatchObject({
       sessionId: "session_test",
-      intent: "ambiguous",
+      intent: "question",
+      status: "completed",
+      task: "what is the code doing right now",
+    });
+  });
+
+  it("still clarifies truly empty input", async () => {
+    const tui = createTui();
+    const state = createState();
+
+    const result = await runTurnWithDeps(
+      {
+        getTurnResults: getTurnResultsMock as never,
+        maybePruneSessionBeforeTurn: maybePruneSessionBeforeTurnMock as never,
+        resetSessionById: resetSessionByIdMock as never,
+        runTask: runTaskMock as never,
+        appendTurnResult: appendTurnResultMock as never,
+      },
+      "   ",
+      tui as never,
+      state,
+    );
+
+    expect(runTaskMock).not.toHaveBeenCalled();
+    expect(result.status).toBe("clarify");
+    expect(tui.renderAssistantMessage).toHaveBeenCalledTimes(1);
+    const appendTurnResultCalls = appendTurnResultMock.mock.calls as unknown[][];
+    expect(appendTurnResultCalls[0]?.[0]).toMatchObject({
+      sessionId: "session_test",
+      intent: "question",
       status: "clarify",
-      task: "yo",
+      task: "",
     });
   });
 });

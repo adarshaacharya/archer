@@ -1,12 +1,17 @@
 import type {
-  WebFetchParams,
-  WebFetchResponse,
-  WebSearchParams,
-  WebSearchProvider,
-  WebSearchResponse,
+  WebAction,
+  WebActionResult,
+  WebFindMatch,
+  WebOpenPageAction,
+  WebSearchAction,
   WebSearchResultItem,
   WebSearchTopic,
-} from "@xeq/tools";
+} from "@xeq/shared";
+import type { WebCapability } from "@xeq/tools";
+
+type WebSearchResult = Extract<WebActionResult, { type: "search" }>;
+type WebOpenPageResult = Extract<WebActionResult, { type: "openPage" }>;
+type WebFindInPageResult = Extract<WebActionResult, { type: "findInPage" }>;
 
 export type SupportedWebProvider = "tavily" | "exa";
 
@@ -107,7 +112,7 @@ function stripHtml(html: string): { title?: string; content: string } {
   return { title, content };
 }
 
-async function searchTavily(apiKey: string, input: WebSearchParams): Promise<WebSearchResponse> {
+async function searchTavily(apiKey: string, input: WebSearchAction): Promise<WebSearchResult> {
   const payload = await fetchJson("https://api.tavily.com/search", {
     method: "POST",
     headers: {
@@ -126,6 +131,7 @@ async function searchTavily(apiKey: string, input: WebSearchParams): Promise<Web
   });
 
   return {
+    type: "search",
     provider: "tavily",
     query: typeof payload.query === "string" ? payload.query : input.query,
     answer: typeof payload.answer === "string" ? payload.answer : undefined,
@@ -142,7 +148,7 @@ async function searchTavily(apiKey: string, input: WebSearchParams): Promise<Web
   };
 }
 
-async function searchExa(apiKey: string, input: WebSearchParams): Promise<WebSearchResponse> {
+async function searchExa(apiKey: string, input: WebSearchAction): Promise<WebSearchResult> {
   const payload = await fetchJson("https://api.exa.ai/search", {
     method: "POST",
     headers: {
@@ -180,47 +186,97 @@ async function searchExa(apiKey: string, input: WebSearchParams): Promise<WebSea
   });
 
   return {
+    type: "search",
     provider: "exa",
     query: input.query,
     results,
   };
 }
 
-export function createWebSearchProvider(
+async function openPage(
+  input: WebOpenPageAction,
+  permissions?: WebPermissions,
+): Promise<WebOpenPageResult> {
+  await permissions?.allowUrl(input.url);
+
+  const response = await fetch(input.url, {
+    headers: {
+      "User-Agent": "xeq/0.1",
+    },
+    signal: timeoutSignal(20_000),
+  });
+  const html = await response.text();
+  if (!response.ok) {
+    throw new Error(`Fetch failed with status ${response.status}`);
+  }
+
+  const extracted = stripHtml(html);
+  return {
+    type: "openPage",
+    provider: "direct",
+    url: input.url,
+    title: extracted.title,
+    content: extracted.content.slice(0, input.maxChars ?? 8000),
+  };
+}
+
+function findMatches(content: string, pattern: string): WebFindMatch[] {
+  const loweredPattern = pattern.toLowerCase();
+  return content
+    .split(/\n+/)
+    .map((line, index) => ({
+      line: index + 1,
+      text: line.trim(),
+    }))
+    .filter((match) => match.text.length > 0 && match.text.toLowerCase().includes(loweredPattern))
+    .slice(0, 20);
+}
+
+async function findInPage(
+  input: Extract<WebAction, { type: "findInPage" }>,
+  permissions?: WebPermissions,
+): Promise<WebFindInPageResult> {
+  const page = await openPage(
+    {
+      type: "openPage",
+      url: input.url,
+      maxChars: input.maxChars,
+    },
+    permissions,
+  );
+
+  const matches = findMatches(page.content, input.pattern);
+  return {
+    type: "findInPage",
+    provider: page.provider,
+    url: input.url,
+    pattern: input.pattern,
+    matchCount: matches.length,
+    matches,
+  };
+}
+
+export function createWebCapability(
   resolveConfig: () => Promise<ActiveWebConfig>,
   permissions?: WebPermissions,
-): WebSearchProvider {
+): WebCapability {
   return {
-    async search(input: WebSearchParams): Promise<WebSearchResponse> {
-      const config = await resolveConfig();
-      switch (config.provider) {
-        case "exa":
-          return searchExa(config.apiKey, input);
-        default:
-          return searchTavily(config.apiKey, input);
+    async execute(action: WebAction): Promise<WebActionResult> {
+      switch (action.type) {
+        case "search": {
+          const config = await resolveConfig();
+          switch (config.provider) {
+            case "exa":
+              return searchExa(config.apiKey, action);
+            default:
+              return searchTavily(config.apiKey, action);
+          }
+        }
+        case "openPage":
+          return openPage(action, permissions);
+        case "findInPage":
+          return findInPage(action, permissions);
       }
-    },
-    async fetch(input: WebFetchParams): Promise<WebFetchResponse> {
-      await permissions?.allowUrl(input.url);
-
-      const response = await fetch(input.url, {
-        headers: {
-          "User-Agent": "xeq/0.1",
-        },
-        signal: timeoutSignal(20_000),
-      });
-      const html = await response.text();
-      if (!response.ok) {
-        throw new Error(`Fetch failed with status ${response.status}`);
-      }
-
-      const extracted = stripHtml(html);
-      return {
-        provider: "direct",
-        url: input.url,
-        title: extracted.title,
-        content: extracted.content.slice(0, input.maxChars ?? 8000),
-      };
     },
   };
 }

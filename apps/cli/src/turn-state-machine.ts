@@ -1,5 +1,3 @@
-import type { TurnIntent } from "./turn-types.js";
-
 export type TurnState =
   | "idle"
   | "routing"
@@ -15,7 +13,7 @@ export type TurnState =
 
 const ALLOWED_TRANSITIONS: Record<TurnState, TurnState[]> = {
   idle: ["routing"],
-  routing: ["researching", "planning", "failed", "cancelled"],
+  routing: ["researching", "planning", "done", "failed", "cancelled"],
   researching: ["planning", "implementing", "done", "failed", "cancelled"],
   planning: ["implementing", "failed", "cancelled"],
   implementing: ["verifying", "compacting", "done", "failed", "cancelled"],
@@ -28,7 +26,6 @@ const ALLOWED_TRANSITIONS: Record<TurnState, TurnState[]> = {
 };
 
 export interface TurnStateMachine {
-  readonly intent: TurnIntent;
   readonly state: TurnState;
   transition(next: TurnState): void;
   beginResearch(): void;
@@ -42,7 +39,7 @@ export interface TurnStateMachine {
   cancel(): void;
 }
 
-export function createTurnStateMachine(intent: TurnIntent): TurnStateMachine {
+export function createTurnStateMachine(): TurnStateMachine {
   let state: TurnState = "idle";
 
   const transition = (next: TurnState) => {
@@ -54,7 +51,6 @@ export function createTurnStateMachine(intent: TurnIntent): TurnStateMachine {
   };
 
   return {
-    intent,
     get state() {
       return state;
     },

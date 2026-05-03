@@ -12,6 +12,7 @@
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@xeq/shared": "workspace:*",
     "@xeq/tools": "workspace:*"
   },
   "exports": {

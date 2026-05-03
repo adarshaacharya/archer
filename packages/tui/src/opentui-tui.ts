@@ -11,7 +11,15 @@ import {
   type TextChunk,
 } from "@opentui/core";
 import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
-import type { AgentStep, RunSummary } from "@xeq/shared";
+import { createPlainComposerSubmission, type AgentStep, type ComposerMentionBinding, type ComposerSubmission, type RunSummary } from "@xeq/shared";
+import { buildComposerTextElements, findActiveMentionQuery, insertFileMention, MentionFileIndex, type ActiveMentionQuery, type MentionSuggestion, reconcileMentionBindings } from "./mention-state.js";
+import { PromptHistory, type PromptHistoryEntry } from "./prompt-history.js";
+
+type SummaryLike = RunSummary & {
+  evalMetrics?: {
+    webEventCount?: unknown;
+  };
+};
 
 export interface ApprovalPromptState {
   message: string;
@@ -31,9 +39,11 @@ export interface Tui {
   start(): Promise<void>;
   renderStartupBanner(): void;
   setActiveModel(modelId: string): void;
+  loadPersistentPromptHistory(entries: string[]): void;
   renderUserMessage(message: string): void;
   renderAssistantMessage(message: string): void;
   renderInfoMessage(message: string): void;
+  renderEventMessage(message: string): void;
   renderInfoLines(lines: Array<{ text: string; color?: string }>): void;
   renderStep(step: AgentStep): void;
   renderAssistantDelta(delta: string): void;
@@ -42,6 +52,7 @@ export interface Tui {
   promptApproval(prompt: ApprovalPromptState): Promise<string>;
   renderSummary(summary: RunSummary): void;
   setSlashCommands(commands: SlashCommandItem[]): void;
+  readInput(): Promise<ComposerSubmission>;
   readInputLine(): Promise<string>;
   onCancelRunning(handler: (() => void) | null): void;
   stop(): void;
@@ -82,6 +93,7 @@ const col = {
 // Footer sizing: status(2) + composer box(5) = 7 before slash menu or dialogs.
 const BASE_FOOTER = 7;
 const MAX_SLASH_ROWS = 6;
+const MAX_MENTION_ROWS = 8;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -116,6 +128,12 @@ function truncateMiddle(value: string, max: number): string {
 
 function padRight(value: string, width: number): string {
   return value.length >= width ? value : `${value}${" ".repeat(width - value.length)}`;
+}
+
+function wrappedLineCount(value: string, width: number): number {
+  const safeWidth = Math.max(1, width);
+  const lines = value.length === 0 ? [""] : value.split("\n");
+  return lines.reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / safeWidth)), 0);
 }
 
 function compactDiff(diff: string, maxLines = 16): string {
@@ -203,9 +221,24 @@ export class PiTui implements Tui {
   private slashMenuIndex = 0;
   private slashMenuScrollOffset = 0;
   private slashLineCount = 0;
+  private mentionMenuBox: BoxRenderable | null = null;
+  private mentionMenuSelect: SelectRenderable | null = null;
+  private mentionMenuItems: MentionSuggestion[] = [];
+  private mentionMenuIndex = 0;
+  private mentionMenuScrollOffset = 0;
+  private mentionLineCount = 0;
+  private activeMentionQuery: ActiveMentionQuery | null = null;
+  private readonly mentionFileIndex = new MentionFileIndex(process.cwd());
+  private mentionQueryRequestId = 0;
   private currentInput = "";
+  private currentMentionBindings: ComposerMentionBinding[] = [];
+  private readonly promptHistory = new PromptHistory();
+  private applyingPromptHistoryValue = false;
+  private applyingComposerUpdate = false;
+  private nextMentionBindingsOverride: ComposerMentionBinding[] | null = null;
   private assistantStreamText = "";
   private pendingReadResolve: ((line: string) => void) | null = null;
+  private pendingSubmissionResolve: ((submission: ComposerSubmission) => void) | null = null;
   private pendingApprovalResolve: ((choice: string) => void) | null = null;
   private pendingModal: PendingModal | null = null;
   private cancelRunningHandler: (() => void) | null = null;
@@ -245,6 +278,24 @@ export class PiTui implements Tui {
     this.syncSlashMenuViewport();
     this.syncSlashMenuSelect();
     this.submitSlashMenuSelection();
+  }
+
+  private handleMentionMenuClick(screenY: number): void {
+    if (!this.activeMentionQuery || this.mentionMenuItems.length === 0 || !this.mentionMenuSelect) {
+      return;
+    }
+    const row = screenY - this.mentionMenuSelect.screenY;
+    if (row < 0 || row >= this.mentionLineCount) {
+      return;
+    }
+    const absoluteIndex = this.mentionMenuScrollOffset + row;
+    if (absoluteIndex < 0 || absoluteIndex >= this.mentionMenuItems.length) {
+      return;
+    }
+    this.mentionMenuIndex = absoluteIndex;
+    this.syncMentionMenuViewport();
+    this.syncMentionMenuSelect();
+    void this.submitMentionMenuSelection();
   }
 
   private syncScrollbackViewport(): void {
@@ -287,7 +338,7 @@ export class PiTui implements Tui {
       createEffect(() => {
         const renderer = this.renderer
         if (!renderer) return
-        const nextHeight = BASE_FOOTER + this.slashLineCount + approvalRows()
+        const nextHeight = BASE_FOOTER + this.slashLineCount + this.mentionLineCount + approvalRows()
         if (renderer.footerHeight === nextHeight) return
         renderer.footerHeight = nextHeight
         renderer.requestRender()
@@ -378,6 +429,45 @@ export class PiTui implements Tui {
     });
     this.slashMenuBox.add(this.slashMenuSelect);
 
+    this.mentionMenuBox = new BoxRenderable(this.renderer, {
+      id: "mention-menu-box",
+      width: "100%",
+      height: 0,
+      flexShrink: 0,
+      paddingLeft: 1,
+      paddingRight: 1,
+      onMouseDown: (event) => {
+        this.handleMentionMenuClick(event.y);
+        event.stopPropagation();
+      },
+    });
+    this.mentionMenuSelect = new SelectRenderable(this.renderer, {
+      id: "mention-menu-select",
+      width: "100%",
+      height: 0,
+      options: [],
+      showDescription: false,
+      showScrollIndicator: this.mentionMenuItems.length > MAX_MENTION_ROWS,
+      wrapSelection: true,
+      textColor: col.muted,
+      descriptionColor: col.muted,
+      selectedBackgroundColor: col.userBg,
+      selectedTextColor: col.text,
+      selectedDescriptionColor: col.muted,
+      onMouseDown: (event) => {
+        this.handleMentionMenuClick(event.y);
+        event.stopPropagation();
+      },
+    });
+    this.mentionMenuSelect.on(SelectRenderableEvents.ITEM_SELECTED, (_i: number, item: { value: number }) => {
+      if (typeof item.value !== "number") return;
+      this.mentionMenuIndex = item.value;
+      this.syncMentionMenuViewport();
+      this.syncMentionMenuSelect();
+      void this.submitMentionMenuSelection();
+    });
+    this.mentionMenuBox.add(this.mentionMenuSelect);
+
     // Composer box: just the border + input row (no slash inside)
     const composerBox = new BoxRenderable(this.renderer, {
       id: "composer",
@@ -429,9 +519,25 @@ export class PiTui implements Tui {
       ],
       onContentChange: () => {
         const value = this.input?.plainText ?? "";
+        if (this.applyingComposerUpdate) {
+          this.applyingComposerUpdate = false;
+          this.applyingPromptHistoryValue = false;
+          this.currentMentionBindings = this.nextMentionBindingsOverride ?? this.currentMentionBindings;
+          this.nextMentionBindingsOverride = null;
+        } else if (this.applyingPromptHistoryValue) {
+          this.applyingPromptHistoryValue = false;
+          this.currentMentionBindings = [];
+        } else {
+          this.currentMentionBindings = reconcileMentionBindings(this.currentInput, value, this.currentMentionBindings);
+          if (this.promptHistory.isNavigating()) {
+            this.promptHistory.clearNavigation();
+          }
+          this.promptHistory.syncDraft(value, this.currentMentionBindings);
+        }
         this.currentInput = value;
         this.setInputValue?.(value);
         this.updateSlashMenu(value);
+        void this.updateMentionMenu(value);
         this.syncComposerLayout();
       },
       onSubmit: () => {
@@ -449,6 +555,7 @@ export class PiTui implements Tui {
     this.footerRoot.add(statusRow);
     this.footerRoot.add(composerBox);
     this.footerRoot.add(this.slashMenuBox);
+    this.footerRoot.add(this.mentionMenuBox);
     this.renderer.root.add(this.footerRoot);
     this.renderer.start();
     this.syncComposerLayout();
@@ -461,6 +568,12 @@ export class PiTui implements Tui {
         return true;
       }
       if (this.handleSlashMenuInput(seq)) {
+        return true;
+      }
+      if (this.handleMentionMenuInput(seq)) {
+        return true;
+      }
+      if (this.handlePromptHistoryInput(seq)) {
         return true;
       }
       if (seq === "\x1b" && this.pendingModal) {
@@ -486,6 +599,10 @@ export class PiTui implements Tui {
     const value = modelId.trim();
     this.activeModelLabel = value ? `model=${value}` : "model=unconfigured";
     this.setStatus("", col.muted, "", col.muted);
+  }
+
+  loadPersistentPromptHistory(entries: string[]): void {
+    this.promptHistory.loadPersistentTexts(entries);
   }
 
   renderUserMessage(message: string): void {
@@ -520,6 +637,13 @@ export class PiTui implements Tui {
     for (const line of text.split("\n")) {
       this.print(line, col.muted);
     }
+  }
+
+  renderEventMessage(message: string): void {
+    const text = normalizeText(message);
+    if (!text) return;
+    this.renderInfoCard(`◇ ${text}`, col.accent);
+    this.print("");
   }
 
   renderInfoLines(lines: Array<{ text: string; color?: string }>): void {
@@ -598,7 +722,9 @@ export class PiTui implements Tui {
     });
   }
 
-  renderSummary(summary: RunSummary): void {
+  renderSummary(summary: SummaryLike): void {
+    const webEventCount =
+      typeof summary.evalMetrics?.webEventCount === "number" ? summary.evalMetrics.webEventCount : 0;
     const line = [
       summary.success ? "done" : "failed",
       `steps=${summary.steps}`,
@@ -607,6 +733,7 @@ export class PiTui implements Tui {
         ? `tokens=${summary.promptTokens + summary.completionTokens}`
         : "",
       summary.estimatedCostUsd > 0 ? `cost=$${summary.estimatedCostUsd.toFixed(4)}` : "",
+      webEventCount > 0 ? `web=${webEventCount}` : "",
     ].filter(Boolean).join("  ");
     this.renderTranscriptCard(`◆ ${line}`, {
       boxId: "run-summary-box",
@@ -631,6 +758,13 @@ export class PiTui implements Tui {
     });
   }
 
+  readInput(): Promise<ComposerSubmission> {
+    this.input?.focus();
+    return new Promise<ComposerSubmission>((resolve) => {
+      this.pendingSubmissionResolve = resolve;
+    });
+  }
+
   onCancelRunning(handler: (() => void) | null): void {
     this.cancelRunningHandler = handler;
   }
@@ -647,15 +781,17 @@ export class PiTui implements Tui {
   /** Write a styled line to the scrollback area above the footer. */
   private print(content: string, fg: string = col.text): void {
     this.writeScrollback((ctx) => {
+      const height = wrappedLineCount(content, ctx.width);
       const text = new TextRenderable(ctx.renderContext, {
         id: "sb-line",
         content,
         width: ctx.width,
+        height,
         wrapMode: "word",
         truncate: false,
         fg,
       });
-      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      return { root: text, width: ctx.width, height, startOnNewLine: true, trailingNewline: true };
     });
   }
 
@@ -673,41 +809,53 @@ export class PiTui implements Tui {
     },
   ): void {
     this.writeScrollback((ctx) => {
+      const messageContent = `${opts.prefix}${content}`;
+      const paddingLeft = opts.paddingLeft ?? 0;
+      const paddingRight = opts.paddingRight ?? 0;
+      const paddingTop = opts.paddingTop ?? 0;
+      const paddingBottom = opts.paddingBottom ?? 0;
+      const contentWidth = Math.max(1, ctx.width - paddingLeft - paddingRight);
+      const contentHeight = wrappedLineCount(messageContent, contentWidth);
+      const height = contentHeight + paddingTop + paddingBottom;
+
       if (opts.backgroundColor && opts.fullWidthBackground) {
         const box = new BoxRenderable(ctx.renderContext, {
           id: "sb-message-block-bg",
           width: ctx.width,
+          height,
           backgroundColor: opts.backgroundColor,
-          paddingLeft: opts.paddingLeft ?? 0,
-          paddingRight: opts.paddingRight ?? 0,
-          paddingTop: opts.paddingTop ?? 0,
-          paddingBottom: opts.paddingBottom ?? 0,
+          paddingLeft,
+          paddingRight,
+          paddingTop,
+          paddingBottom,
         });
         box.add(new TextRenderable(ctx.renderContext, {
           id: "sb-message-block",
-          content: `${opts.prefix}${content}`,
-          width: Math.max(1, ctx.width - (opts.paddingLeft ?? 0) - (opts.paddingRight ?? 0)),
+          content: messageContent,
+          width: contentWidth,
+          height: contentHeight,
           wrapMode: "word",
           truncate: false,
           fg: opts.textColor,
         }));
-        return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+        return { root: box, width: ctx.width, height, startOnNewLine: true, trailingNewline: true };
       }
 
       const text = new TextRenderable(ctx.renderContext, {
         id: "sb-message-block",
-        content: `${opts.prefix}${content}`,
+        content: messageContent,
         width: ctx.width,
+        height,
         wrapMode: "word",
         truncate: false,
         fg: opts.textColor,
         bg: opts.backgroundColor,
-        paddingLeft: opts.paddingLeft ?? 0,
-        paddingRight: opts.paddingRight ?? 0,
-        paddingTop: opts.paddingTop ?? 0,
-        paddingBottom: opts.paddingBottom ?? 0,
+        paddingLeft,
+        paddingRight,
+        paddingTop,
+        paddingBottom,
       });
-      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      return { root: text, width: ctx.width, height, startOnNewLine: true, trailingNewline: true };
     });
   }
 
@@ -718,11 +866,12 @@ export class PiTui implements Tui {
         id: "sb-message-separator",
         content: line,
         width: ctx.width,
-        wrapMode: "truncate",
+        height: 1,
+        wrapMode: "none",
         truncate: true,
         fg: col.border,
       });
-      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      return { root: text, width: ctx.width, height: 1, startOnNewLine: true, trailingNewline: true };
     });
   }
 
@@ -738,9 +887,12 @@ export class PiTui implements Tui {
   ): void {
     this.writeScrollback((ctx) => {
       const contentWidth = Math.max(1, ctx.width - 5);
+      const contentHeight = wrappedLineCount(content, contentWidth);
+      const height = contentHeight + 2;
       const box = new BoxRenderable(ctx.renderContext, {
         id: opts.boxId,
         width: ctx.width,
+        height,
         border: ["left"],
         borderColor: opts.borderColor,
         backgroundColor: opts.backgroundColor,
@@ -754,21 +906,25 @@ export class PiTui implements Tui {
           id: opts.textId,
           content,
           width: contentWidth,
+          height: contentHeight,
           wrapMode: "word",
           truncate: false,
           fg: opts.textColor ?? col.text,
         }),
       );
-      return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      return { root: box, width: ctx.width, height, startOnNewLine: true, trailingNewline: true };
     });
   }
 
   private renderInfoCard(content: string, textColor: string = col.muted): void {
     this.writeScrollback((ctx) => {
       const contentWidth = Math.max(1, ctx.width - 5);
+      const contentHeight = wrappedLineCount(content, contentWidth);
+      const height = contentHeight + 2;
       const box = new BoxRenderable(ctx.renderContext, {
         id: "info-msg-box",
         width: ctx.width,
+        height,
         border: ["left"],
         borderColor: col.border,
         backgroundColor: "#0b1016",
@@ -782,12 +938,13 @@ export class PiTui implements Tui {
           id: "info-msg-text",
           content,
           width: contentWidth,
+          height: contentHeight,
           wrapMode: "word",
           truncate: false,
           fg: textColor,
         }),
       );
-      return { root: box, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+      return { root: box, width: ctx.width, height, startOnNewLine: true, trailingNewline: true };
     });
   }
 
@@ -872,7 +1029,7 @@ export class PiTui implements Tui {
     const renderer = this.renderer;
     if (!renderer) return;
     const modalHeight = this.pendingModal?.box.height ?? 0;
-    const nextHeight = BASE_FOOTER + this.slashLineCount + modalHeight;
+    const nextHeight = BASE_FOOTER + this.slashLineCount + this.mentionLineCount + modalHeight;
     if (renderer.footerHeight !== nextHeight) {
       renderer.footerHeight = nextHeight;
     }
@@ -903,12 +1060,34 @@ export class PiTui implements Tui {
   }
 
   private submitComposerValue(submit: string): void {
+    this.promptHistory.record({
+      text: submit,
+      mentions: this.currentMentionBindings,
+    });
+    const submission = submit
+      ? {
+          text: submit,
+          textElements: buildComposerTextElements(this.currentMentionBindings),
+          mentions: this.currentMentionBindings.slice(),
+          attachments: [],
+        }
+      : createPlainComposerSubmission(submit);
     this.currentInput = "";
+    this.currentMentionBindings = [];
+    this.activeMentionQuery = null;
     if (this.input) {
       this.input.setText("");
     }
     this.setInputValue?.("");
     this.updateSlashMenu("");
+    this.clearMentionMenu();
+
+    if (this.pendingSubmissionResolve) {
+      const resolve = this.pendingSubmissionResolve;
+      this.pendingSubmissionResolve = null;
+      resolve(submission);
+      return;
+    }
 
     if (this.pendingReadResolve) {
       const resolve = this.pendingReadResolve;
@@ -924,18 +1103,65 @@ export class PiTui implements Tui {
     }
   }
 
+  private handlePromptHistoryInput(seq: string): boolean {
+    if (this.pendingModal) return false;
+    if (this.currentInput.trim().startsWith("/") && this.slashMenuItems.length > 0) return false;
+    if (this.activeMentionQuery && this.mentionMenuItems.length > 0) return false;
+
+    if (seq === "\x1b[A") {
+      return this.applyPromptHistoryValue(this.promptHistory.previous({
+        text: this.currentInput,
+        mentions: this.currentMentionBindings,
+      }));
+    }
+
+    if (seq === "\x1b[B") {
+      return this.applyPromptHistoryValue(this.promptHistory.next());
+    }
+
+    return false;
+  }
+
+  private applyPromptHistoryValue(entry: PromptHistoryEntry | null): boolean {
+    if (!this.input || !this.renderer || entry == null) {
+      return false;
+    }
+
+    this.applyingPromptHistoryValue = true;
+    this.setComposerValue(entry.text, {
+      cursorOffset: entry.text.length,
+      mentions: entry.mentions,
+      focusInput: true,
+    });
+    return true;
+  }
+
   private updateSlashMenu(value: string): void {
     const menuSelect = this.slashMenuSelect;
     const menuBox = this.slashMenuBox;
     const renderer = this.renderer;
     if (!menuSelect || !menuBox || !renderer) return;
 
+    if (!value.trim().startsWith("/")) {
+      this.slashMenuItems = [];
+      this.slashMenuIndex = 0;
+      this.slashMenuScrollOffset = 0;
+      this.slashLineCount = 0;
+      batch(() => {
+        menuSelect.options = [];
+        menuSelect.selectedIndex = 0;
+        menuSelect.height = 0;
+        menuBox.height = 0;
+      });
+      this.syncFooterHeight();
+      return;
+    }
+
     const items = slashCommandMatches(this.slashCommands, value);
     const previous = this.slashMenuItems[this.slashMenuIndex];
     const nextIndex = previous
       ? Math.max(0, items.findIndex((item) => item.name === previous.name))
       : 0;
-    const lineCount = items.length;
 
     this.slashMenuItems = items;
     this.slashMenuIndex = items.length > 0 ? (nextIndex >= 0 ? nextIndex : 0) : 0;
@@ -945,6 +1171,48 @@ export class PiTui implements Tui {
       this.syncSlashMenuSelect();
       menuSelect.height = this.slashLineCount;
       menuBox.height = this.slashLineCount;
+    });
+    this.syncFooterHeight();
+  }
+
+  private async updateMentionMenu(value: string): Promise<void> {
+    const menuSelect = this.mentionMenuSelect;
+    const menuBox = this.mentionMenuBox;
+    const renderer = this.renderer;
+    const input = this.input;
+    if (!menuSelect || !menuBox || !renderer || !input) return;
+
+    if (value.trim().startsWith("/")) {
+      this.clearMentionMenu();
+      return;
+    }
+
+    const mentionQuery = findActiveMentionQuery(value, input.cursorOffset);
+    if (!mentionQuery) {
+      this.clearMentionMenu();
+      return;
+    }
+
+    const requestId = ++this.mentionQueryRequestId;
+    const items = await this.mentionFileIndex.search(mentionQuery.query, MAX_MENTION_ROWS);
+    if (requestId !== this.mentionQueryRequestId || this.currentInput !== value) {
+      return;
+    }
+
+    this.activeMentionQuery = mentionQuery;
+    const previous = this.mentionMenuItems[this.mentionMenuIndex];
+    const nextIndex = previous
+      ? Math.max(0, items.findIndex((item) => item.path === previous.path))
+      : 0;
+
+    this.mentionMenuItems = items;
+    this.mentionMenuIndex = items.length > 0 ? (nextIndex >= 0 ? nextIndex : 0) : 0;
+    this.syncMentionMenuViewport();
+
+    batch(() => {
+      this.syncMentionMenuSelect();
+      menuSelect.height = this.mentionLineCount;
+      menuBox.height = this.mentionLineCount;
     });
     this.syncFooterHeight();
   }
@@ -998,6 +1266,46 @@ export class PiTui implements Tui {
     return false;
   }
 
+  private handleMentionMenuInput(seq: string): boolean {
+    if (this.pendingModal) return false;
+    if (!this.activeMentionQuery || this.mentionMenuItems.length === 0) return false;
+    if (this.currentInput.trim().startsWith("/")) return false;
+
+    const renderer = this.renderer;
+    if (!renderer) return false;
+
+    if (seq === "\x1b[A") {
+      this.mentionMenuIndex =
+        this.mentionMenuIndex <= 0 ? this.mentionMenuItems.length - 1 : this.mentionMenuIndex - 1;
+      this.syncMentionMenuViewport();
+      this.syncMentionMenuSelect();
+      renderer.requestRender();
+      return true;
+    }
+
+    if (seq === "\x1b[B") {
+      this.mentionMenuIndex =
+        this.mentionMenuIndex >= this.mentionMenuItems.length - 1 ? 0 : this.mentionMenuIndex + 1;
+      this.syncMentionMenuViewport();
+      this.syncMentionMenuSelect();
+      renderer.requestRender();
+      return true;
+    }
+
+    if (seq === "\t" || seq === "\r") {
+      void this.submitMentionMenuSelection();
+      return true;
+    }
+
+    if (seq === "\x1b") {
+      this.clearMentionMenu();
+      renderer.requestRender();
+      return true;
+    }
+
+    return false;
+  }
+
   private syncSlashMenuViewport(): void {
     const total = this.slashMenuItems.length;
     const visibleRows = Math.min(total, MAX_SLASH_ROWS);
@@ -1020,6 +1328,28 @@ export class PiTui implements Tui {
     }
   }
 
+  private syncMentionMenuViewport(): void {
+    const total = this.mentionMenuItems.length;
+    const visibleRows = Math.min(total, MAX_MENTION_ROWS);
+    this.mentionLineCount = visibleRows;
+
+    if (visibleRows === 0) {
+      this.mentionMenuScrollOffset = 0;
+      return;
+    }
+
+    if (this.mentionMenuIndex < this.mentionMenuScrollOffset) {
+      this.mentionMenuScrollOffset = this.mentionMenuIndex;
+    } else if (this.mentionMenuIndex >= this.mentionMenuScrollOffset + visibleRows) {
+      this.mentionMenuScrollOffset = this.mentionMenuIndex - visibleRows + 1;
+    }
+
+    const maxOffset = Math.max(0, total - visibleRows);
+    if (this.mentionMenuScrollOffset > maxOffset) {
+      this.mentionMenuScrollOffset = maxOffset;
+    }
+  }
+
   private syncSlashMenuSelect(): void {
     if (!this.slashMenuSelect) return;
     const visibleItems = this.slashMenuItems
@@ -1034,6 +1364,20 @@ export class PiTui implements Tui {
     this.slashMenuSelect.showScrollIndicator = this.slashMenuItems.length > MAX_SLASH_ROWS;
   }
 
+  private syncMentionMenuSelect(): void {
+    if (!this.mentionMenuSelect) return;
+    const visibleItems = this.mentionMenuItems
+      .slice(this.mentionMenuScrollOffset, this.mentionMenuScrollOffset + MAX_MENTION_ROWS)
+      .map((item, index) => ({
+        name: item.label,
+        description: "",
+        value: this.mentionMenuScrollOffset + index,
+      }));
+    this.mentionMenuSelect.options = visibleItems;
+    this.mentionMenuSelect.selectedIndex = Math.max(0, this.mentionMenuIndex - this.mentionMenuScrollOffset);
+    this.mentionMenuSelect.showScrollIndicator = this.mentionMenuItems.length > MAX_MENTION_ROWS;
+  }
+
   private submitSlashMenuSelection(): void {
     const selected = this.slashMenuItems[this.slashMenuIndex];
     const renderer = this.renderer;
@@ -1041,6 +1385,84 @@ export class PiTui implements Tui {
     if (!selected || !renderer || !input) return;
 
     this.submitComposerValue(selected.name);
+    renderer.requestRender();
+  }
+
+  private async submitMentionMenuSelection(): Promise<void> {
+    const selected = this.mentionMenuItems[this.mentionMenuIndex];
+    const mentionQuery = this.activeMentionQuery;
+    if (!selected || !mentionQuery) return;
+
+    if (this.promptHistory.isNavigating()) {
+      this.promptHistory.clearNavigation();
+    }
+
+    const result = insertFileMention(this.currentInput, mentionQuery, this.currentMentionBindings, selected.path);
+    this.setComposerValue(result.text, {
+      cursorOffset: result.cursorOffset,
+      mentions: result.mentions,
+      focusInput: true,
+    });
+  }
+
+  private clearMentionMenu(): void {
+    this.mentionQueryRequestId += 1;
+    this.activeMentionQuery = null;
+    this.mentionMenuItems = [];
+    this.mentionMenuIndex = 0;
+    this.mentionMenuScrollOffset = 0;
+    this.mentionLineCount = 0;
+
+    if (!this.mentionMenuSelect || !this.mentionMenuBox) {
+      return;
+    }
+
+    const mentionMenuSelect = this.mentionMenuSelect;
+    const mentionMenuBox = this.mentionMenuBox;
+
+    batch(() => {
+      mentionMenuSelect.options = [];
+      mentionMenuSelect.selectedIndex = 0;
+      mentionMenuSelect.height = 0;
+      mentionMenuBox.height = 0;
+    });
+    this.syncFooterHeight();
+  }
+
+  private setComposerValue(
+    value: string,
+    options: {
+      cursorOffset?: number;
+      mentions?: ComposerMentionBinding[];
+      clearMentions?: boolean;
+      focusInput?: boolean;
+    } = {},
+  ): void {
+    const input = this.input;
+    const renderer = this.renderer;
+    if (!input || !renderer) {
+      return;
+    }
+
+    this.applyingComposerUpdate = true;
+    if (options.clearMentions) {
+      this.nextMentionBindingsOverride = [];
+    } else if (options.mentions) {
+      this.nextMentionBindingsOverride = options.mentions;
+    } else {
+      this.nextMentionBindingsOverride = this.currentMentionBindings;
+    }
+
+    input.setText(value);
+    input.cursorOffset = options.cursorOffset ?? input.plainText.length;
+    this.currentInput = value;
+    this.setInputValue?.(value);
+    this.updateSlashMenu(value);
+    void this.updateMentionMenu(value);
+    this.syncComposerLayout();
+    if (options.focusInput) {
+      input.focus();
+    }
     renderer.requestRender();
   }
 
@@ -1120,7 +1542,7 @@ export class PiTui implements Tui {
     if (hasDetails) {
       box.add(new TextRenderable(this.renderer, {
         id: "approval-details",
-        content: normalizeText(prompt.details!),
+        content: normalizeText(prompt.details ?? ""),
         width: "100%",
         height: 1,
         fg: col.step,

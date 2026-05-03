@@ -1,111 +1,161 @@
-export type InputIntent = "question" | "research" | "change" | "ambiguous";
+export type InputIntent = "question" | "research" | "change";
+export type PreRouteKind = "direct-answer" | "web-context" | "repo-context" | "change";
 
-export type RoutedInput =
+export type PreRouteResult = {
+  shouldQuery: boolean;
+  mode: PreRouteKind;
+  allowedToolNames?: string[];
+  source: "fast-path" | "classifier";
+  rationale: string;
+};
+
+export type PreRoutePlan =
   | {
-      intent: "question" | "research" | "change";
-      task: string;
+      status: "resolved";
+      result: PreRouteResult;
     }
   | {
-      intent: "ambiguous";
-      reason: string;
+      status: "needs-classification";
+      rationale: string;
+      allowedToolNames: ["submitTurnDecision"];
     };
 
-const CHANGE_VERBS = [
-  "add",
-  "build",
-  "change",
-  "create",
-  "delete",
-  "fix",
-  "implement",
-  "improve",
-  "make",
-  "patch",
-  "refactor",
-  "remove",
-  "rename",
-  "replace",
-  "update",
-  "write",
+// Keep only cheap, high-confidence syntax-like signals here.
+// Anything semantic or ambiguous should fall through to the classifier.
+const CASUAL_PATTERNS = [
+  /^(hi|hello|hey|yo|howdy)\b/,
+  /^(good (morning|afternoon|evening)|gm|gn)\b/,
+  /^how are you\b/,
+  /^(thanks|thank you|thx)\b/,
+  /^(ok|okay|cool|nice|great|awesome)\b[!. ]*$/,
 ];
-
-const QUESTION_OPENERS = [
-  "what",
-  "why",
-  "how",
-  "which",
-  "who",
-  "where",
-  "when",
-  "is",
-  "are",
-  "can",
-  "could",
-  "should",
-  "does",
-  "do",
+const CHANGE_PATTERNS = [
+  /^(please\s+)?(fix|implement|add|create|update|refactor|remove|delete|rename|move|edit|change|write|make|build|patch|replace)\b/,
 ];
+const URL_PATTERN = /\bhttps?:\/\/[^\s)]+/i;
+const PATHLIKE_PATTERN = /(?:^|[\s(])(?:[a-z0-9_.-]+\/)+[a-z0-9_.-]+/i;
 
-const RESEARCH_PHRASES = [
-  "check current state",
-  "compare",
-  "investigate",
-  "look through",
-  "read through",
-  "research",
-  "review",
-  "understand",
-];
+export function inferExplicitIntent(raw: string): InputIntent | null {
+  const task = raw.trim();
+  if (!task) {
+    return null;
+  }
 
-export function routeInput(raw: string): RoutedInput {
+  const plan = planPreRoute(task);
+  if (plan.status !== "resolved") {
+    return null;
+  }
+  if (plan.result.mode === "change") {
+    return "change";
+  }
+  if (
+    plan.result.mode === "direct-answer" ||
+    plan.result.mode === "web-context" ||
+    plan.result.mode === "repo-context"
+  ) {
+    return "question";
+  }
+  return null;
+}
+
+export function prerouteInput(raw: string): PreRouteResult | null {
+  const plan = planPreRoute(raw);
+  return plan.status === "resolved" ? plan.result : null;
+}
+
+export function planPreRoute(raw: string): PreRoutePlan {
   const task = raw.trim();
   if (!task) {
     return {
-      intent: "ambiguous",
-      reason: "Empty input.",
+      status: "resolved",
+      result: createPreRouteResult(
+        "direct-answer",
+        "empty input should not trigger repository inspection",
+        "fast-path",
+      ),
     };
   }
 
   const normalized = normalize(task);
-  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
-  const hasQuestionMark = task.includes("?");
-  const startsWithQuestion = QUESTION_OPENERS.some(
-    (opener) => normalized === opener || normalized.startsWith(`${opener} `),
-  );
-  const mentionsCode = /\b(code|repo|repository|app|project|file|folder|function|harness|agent)\b/.test(
-    normalized,
-  );
-  const mentionsChange = CHANGE_VERBS.some(
-    (verb) => normalized === verb || normalized.startsWith(`${verb} `) || normalized.includes(` ${verb} `),
-  );
-  const mentionsResearch = RESEARCH_PHRASES.some((phrase) => normalized.includes(phrase));
+  const isCasual = CASUAL_PATTERNS.some((pattern) => pattern.test(normalized));
+  const isChangeRequest = CHANGE_PATTERNS.some((pattern) => pattern.test(normalized));
+  const mentionsRepoContext = PATHLIKE_PATTERN.test(task) || /`[^`]+`/.test(task);
 
-  if (mentionsResearch && !mentionsChange) {
-    return { intent: "research", task };
-  }
-
-  if (hasQuestionMark || startsWithQuestion) {
-    return { intent: "question", task };
-  }
-
-  if (mentionsChange) {
-    return { intent: "change", task };
-  }
-
-  if (wordCount <= 3 && !mentionsCode) {
+  if (isCasual) {
     return {
-      intent: "ambiguous",
-      reason: "Short input without a concrete task or question.",
+      status: "resolved",
+      result: createPreRouteResult(
+        "direct-answer",
+        "casual or social input does not need repository context",
+        "fast-path",
+      ),
     };
   }
 
-  if (mentionsCode) {
-    return { intent: "research", task };
+  if (URL_PATTERN.test(task)) {
+    return {
+      status: "resolved",
+      result: createPreRouteResult(
+        "web-context",
+        "message includes an external URL that should be inspected with web tools",
+        "fast-path",
+      ),
+    };
+  }
+
+  if (isChangeRequest) {
+    return {
+      status: "resolved",
+      result: createPreRouteResult(
+        "change",
+        "explicit edit verb suggests a code modification task",
+        "fast-path",
+      ),
+    };
+  }
+
+  if (mentionsRepoContext) {
+    return {
+      status: "resolved",
+      result: createPreRouteResult(
+        "repo-context",
+        "message references repository-specific concepts or paths",
+        "fast-path",
+      ),
+    };
   }
 
   return {
-    intent: "ambiguous",
-    reason: "Input does not clearly ask a question, research request, or code change.",
+    status: "needs-classification",
+    rationale: "ambiguous input should be classified before any repository inspection",
+    allowedToolNames: ["submitTurnDecision"],
+  };
+}
+
+export function preRouteResultFromMode(
+  mode: PreRouteKind,
+  rationale: string,
+  source: "fast-path" | "classifier",
+): PreRouteResult {
+  return createPreRouteResult(mode, rationale, source);
+}
+
+function createPreRouteResult(
+  mode: PreRouteKind,
+  rationale: string,
+  source: "fast-path" | "classifier",
+): PreRouteResult {
+  return {
+    shouldQuery: mode !== "direct-answer",
+    mode,
+    allowedToolNames:
+      mode === "direct-answer"
+        ? []
+        : mode === "web-context"
+          ? ["webSearch", "webOpenPage", "webFindInPage"]
+          : undefined,
+    source,
+    rationale,
   };
 }
 

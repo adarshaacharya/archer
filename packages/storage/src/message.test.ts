@@ -5,11 +5,13 @@ import {
   buildCompactContinuationArtifact,
   createSession,
   deleteSession,
+  loadCompactionEvents,
   loadEffectiveModelMessages,
   loadLatestCompactContinuationArtifact,
   loadModelMessages,
   pruneModelMessagesWithArtifact,
   replaceMessages,
+  saveCompactionEvent,
   saveCompactContinuationArtifact,
 } from "./index.js";
 
@@ -147,5 +149,39 @@ describe("storage messages", () => {
     expect(String(nextMessages[0]?.content)).toContain("apps/cli/src/task-runner.ts");
     expect(String(nextMessages[1]?.content)).toContain("Message 4");
     expect(String(nextMessages[2]?.content)).toContain("Message 5");
+  });
+
+  test("persists explicit compaction events in session history", async () => {
+    const sessionId = await createTestSession("compaction-events");
+
+    await saveCompactionEvent({
+      sessionId,
+      event: {
+        trigger: "context-pressure",
+        status: "started",
+        summary: null,
+        criticalFiles: [],
+        openRisks: [],
+        createdAt: Date.now(),
+      },
+    });
+
+    await saveCompactionEvent({
+      sessionId,
+      event: {
+        trigger: "context-pressure",
+        status: "succeeded",
+        summary: "Compacted prior implementation context.",
+        criticalFiles: ["apps/cli/src/task-runner.ts"],
+        openRisks: ["verification still pending"],
+        createdAt: Date.now() + 1,
+      },
+    });
+
+    const events = await loadCompactionEvents(sessionId);
+    expect(events).toHaveLength(2);
+    expect(events[0]?.status).toBe("started");
+    expect(events[1]?.status).toBe("succeeded");
+    expect(events[1]?.criticalFiles).toContain("apps/cli/src/task-runner.ts");
   });
 });

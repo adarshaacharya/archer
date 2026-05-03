@@ -1,13 +1,10 @@
 import type { InputIntent } from "./intent-router.js";
 
-export type TurnIntent = Exclude<InputIntent, "ambiguous">;
-
 export type TurnStatus = "completed" | "failed" | "cancelled" | "clarify";
 
 export interface TurnContext {
   sessionId: string;
   task: string;
-  intent: TurnIntent;
   projectRoot: string;
   approvalMode: string;
   modelId: string;
@@ -21,6 +18,31 @@ export interface TurnSummary {
   promptTokens: number;
   completionTokens: number;
   estimatedCostUsd: number;
+  compaction?: {
+    policy: {
+      protectTokens: number;
+      prunableTokens: number;
+    };
+    attempted: boolean;
+    attempts: number;
+    trigger: "context-pressure" | null;
+    status: "not-needed" | "succeeded" | "failed";
+    report: {
+      summary: string;
+      criticalFiles: string[];
+      openRisks: string[];
+    } | null;
+  };
+  evalMetrics?: {
+    approvalCount: number;
+    fileReadCount: number;
+    changedPaths: string[];
+    toolNames: string[];
+    webEventCount: number;
+    webQueries: string[];
+    webUrls: string[];
+    finalMessage: string;
+  };
 }
 
 export interface TurnResult {

@@ -1,65 +1,73 @@
 import { performance } from "node:perf_hooks";
 import {
+  createCompactionMetadata,
+  shouldAttemptVerification,
+  shouldContinueAfterContextFailure,
+  shouldStopCommitWorkflowAfterContext,
+  deriveValidationScope,
+  deriveCompactionPolicy,
+  isContextPressureFailure,
+  handleTaskContextOutcome,
+  parseCompactionReport,
+  parseTurnDecision,
+  recordCompactionAttempt,
+  resolveObservedTurnIntent,
+  validateTurnDecision,
+  type OpenHarnessRuntimeDeps,
+  type RuntimePhaseRunner,
+  type TurnObservedFacts,
+  buildPriorTurnPlanningGuidance,
   buildContextGatheringPrompt,
+  buildDirectAnswerPrompt,
+  buildDirectAnswerSystemPrompt,
+  buildQuestionStrategy,
   buildResearchAnswerPrompt,
-  buildPlanningPrompt,
-  buildImplementationPrompt,
-  buildVerificationPrompt,
-  buildCompactionPrompt,
+  buildWebAnswerPrompt,
+  buildWebAnswerSystemPrompt,
+  createQuestionExplorationState,
   createTaskPhaseController,
   createToolApprovalHandler,
+  createOpenHarnessEngineAdapter,
+  createWebCompletedEvent,
+  createWebFailedEvent,
+  createWebStartedEvent,
+  formatWebRuntimeEvent,
+  expandedContextSteps,
+  evaluateQuestionAnswerReadiness,
+  isContextBudgetResult,
   prependContinuationBrief,
-  type OpenHarnessRuntimeDeps,
-  runOpenHarnessRuntime,
+  recordQuestionStep,
+  summarizeQuestionExploration,
+  type OpenHarnessToolEvent,
 } from "@xeq/agent-core";
 import { createSandboxEnvironment } from "@xeq/sandbox";
-import { AgentRequestSchema } from "@xeq/shared";
+import { AgentRequestSchema, autoApproveEditsInApprovalMode, type ComposerSubmission } from "@xeq/shared";
 import {
   appendMessage,
   getTurnResults,
   loadLatestCompactContinuationArtifact,
+  saveCompactionEvent,
   updateSessionTitle,
 } from "@xeq/storage";
-import { createWebSearchProvider } from "@xeq/web";
-import { requestApproval, withApprovalQueue } from "./approvals.js";
-import { webFetchRuleForUrl } from "./settings-store.js";
-import type { SessionState } from "./session-state.js";
 import type { Tui } from "@xeq/tui";
+import { createWebCapability } from "@xeq/web";
+import { requestApproval, withApprovalQueue } from "./approvals.js";
+import { createEvalMetricsCollector } from "./eval-metrics.js";
+import { buildExplicitFileContext, prependExplicitFileContext } from "./explicit-context.js";
 import { resolveActiveWebProvider } from "./auth-store.js";
-import {
-  isContextPressureFailure,
-  parseCompactionReport,
-} from "./recovery/compaction.js";
-import { createTurnStateMachine } from "./turn-state-machine.js";
-import { titleFromTask } from "./task-title.js";
+import { planPreRoute, preRouteResultFromMode, type PreRouteResult } from "./intent-router.js";
 import { pruneSessionAfterTurn } from "./recovery/prune.js";
-import type { TurnContext, TurnResult } from "./turn-types.js";
+import type { SessionState } from "./session-state.js";
+import { formatSubagentRuntimeEvent } from "./subagent-events.js";
+import { webFetchRuleForUrl } from "./settings-store.js";
+import { titleFromTask } from "./task-title.js";
+import { createTurnStateMachine } from "./turn-state-machine.js";
+import type { TurnContext, TurnResult, TurnSummary } from "./turn-types.js";
+
+export type TaskExecutionRoute = "direct-answer" | "web-context" | "research" | "change";
 
 function newMessageId(sessionId: string, role: string): string {
   return `${sessionId}_${role}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function mergeUsage(
-  left:
-    | {
-        promptTokens: number;
-        completionTokens: number;
-        totalTokens: number;
-      }
-    | undefined,
-  right:
-    | {
-        promptTokens: number;
-        completionTokens: number;
-        totalTokens: number;
-      }
-    | undefined,
-) {
-  return {
-    promptTokens: (left?.promptTokens ?? 0) + (right?.promptTokens ?? 0),
-    completionTokens: (left?.completionTokens ?? 0) + (right?.completionTokens ?? 0),
-    totalTokens: (left?.totalTokens ?? 0) + (right?.totalTokens ?? 0),
-  };
 }
 
 type PatchPreview = NonNullable<OpenHarnessRuntimeDeps["approvePatchApply"]> extends (
@@ -68,258 +76,48 @@ type PatchPreview = NonNullable<OpenHarnessRuntimeDeps["approvePatchApply"]> ext
   ? T
   : never;
 
-function isContextBudgetResult(
-  result: { status: string; error?: string } | null | undefined,
-): boolean {
-  if (!result || result.status !== "failed" || !result.error) {
-    return false;
-  }
+type RuntimeToolCall = Parameters<NonNullable<OpenHarnessRuntimeDeps["approveToolCall"]>>[0];
 
-  return (
-    result.error.startsWith("Run exceeded maxSteps=") ||
-    result.error === "Run cancelled" ||
-    result.error.toLowerCase().includes("timeout")
-  );
+export function resolveTaskExecutionRoute(
+  resolvedPreRoute: PreRouteResult | null,
+  declaredIntent: TurnResult["intent"],
+): TaskExecutionRoute {
+  if (declaredIntent === "change") {
+    return "change";
+  }
+  if (!resolvedPreRoute) {
+    return "research";
+  }
+  if (resolvedPreRoute.mode === "change") {
+    return "change";
+  }
+  if (resolvedPreRoute.mode === "direct-answer") {
+    return "direct-answer";
+  }
+  if (resolvedPreRoute.mode === "web-context") {
+    return "web-context";
+  }
+  return "research";
 }
 
-function expandedContextSteps(maxSteps: number, initialContextSteps: number): number {
-  const cap = Math.min(64, Math.max(24, Math.floor(maxSteps / 3)));
-  return Math.max(initialContextSteps + 8, cap);
+function shellOutputText(output: unknown): string {
+  if (!output || typeof output !== "object") {
+    return typeof output === "string" ? output : "";
+  }
+
+  const stdout = typeof (output as { stdout?: unknown }).stdout === "string"
+    ? (output as { stdout: string }).stdout
+    : "";
+  const stderr = typeof (output as { stderr?: unknown }).stderr === "string"
+    ? (output as { stderr: string }).stderr
+    : "";
+
+  return [stdout, stderr].filter(Boolean).join("\n");
 }
 
-type ExecutionPlan = {
-  goal: string;
-  steps: Array<{
-    id: string;
-    title: string;
-    targets: string[];
-    rationale: string;
-    verification: string;
-  }>;
-};
-
-type VerificationReport = {
-  passed: boolean;
-  commands: string[];
-  findings: string[];
-};
-
-export function buildPriorTurnPlanningGuidance(
-  turns: Array<{
-    status: string;
-    task: string;
-    summary?: unknown;
-    message?: string | null;
-  }>,
-): string | null {
-  const relevant = turns
-    .filter((turn) => turn.status === "failed" || turn.status === "cancelled")
-    .slice(-3);
-
-  const lines: string[] = [];
-  for (const turn of relevant) {
-    const summary = turn.summary as
-      | {
-          steps?: unknown;
-          durationMs?: unknown;
-        }
-      | null
-      | undefined;
-    const parts = [`- Prior ${turn.status} turn on: ${turn.task.replace(/\s+/g, " ").trim().slice(0, 120)}`];
-    if (typeof summary?.steps === "number") {
-      parts.push(`steps=${summary.steps}`);
-    }
-    if (typeof summary?.durationMs === "number") {
-      parts.push(`durationMs=${Math.round(summary.durationMs)}`);
-    }
-    if (turn.message) {
-      parts.push(`message=${turn.message.slice(0, 180)}`);
-    }
-    lines.push(parts.join("  "));
-  }
-
-  const heavyTurns = turns.filter((turn) => {
-    const summary = turn.summary as { steps?: unknown } | null | undefined;
-    return typeof summary?.steps === "number" && summary.steps >= 40;
-  });
-  if (heavyTurns.length >= 2) {
-    lines.push("- Recent turns were step-heavy. Prefer a tighter plan, fewer exploratory reads, and earlier verification.");
-  }
-
-  return lines.length > 0 ? lines.join("\n") : null;
-}
-
-function extractJsonObject(text: string): string | null {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const directStart = trimmed.indexOf("{");
-  if (directStart === -1) {
-    return null;
-  }
-
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  let start = -1;
-
-  for (let i = directStart; i < trimmed.length; i += 1) {
-    const ch = trimmed[i];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-
-    if (ch === "\\") {
-      escaped = true;
-      continue;
-    }
-
-    if (ch === "\"") {
-      inString = !inString;
-      continue;
-    }
-
-    if (inString) {
-      continue;
-    }
-
-    if (ch === "{") {
-      if (depth === 0) {
-        start = i;
-      }
-      depth += 1;
-      continue;
-    }
-
-    if (ch === "}") {
-      depth -= 1;
-      if (depth === 0 && start >= 0) {
-        return trimmed.slice(start, i + 1);
-      }
-    }
-  }
-
-  return null;
-}
-
-function parseVerificationReport(raw: string): VerificationReport | null {
-  const jsonText = extractJsonObject(raw);
-  if (!jsonText) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(jsonText) as {
-      passed?: unknown;
-      commands?: unknown;
-      findings?: unknown;
-    };
-    if (
-      typeof parsed.passed !== "boolean" ||
-      !Array.isArray(parsed.commands) ||
-      !Array.isArray(parsed.findings)
-    ) {
-      return null;
-    }
-
-    const commands = parsed.commands.filter((item): item is string => typeof item === "string");
-    const findings = parsed.findings.filter((item): item is string => typeof item === "string");
-    if (commands.length !== parsed.commands.length || findings.length !== parsed.findings.length) {
-      return null;
-    }
-
-    return {
-      passed: parsed.passed,
-      commands,
-      findings,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function validateExecutionPlan(value: unknown): ExecutionPlan | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const data = value as {
-    goal?: unknown;
-    steps?: unknown;
-  };
-
-  if (typeof data.goal !== "string" || data.goal.trim() === "") {
-    return null;
-  }
-
-  if (!Array.isArray(data.steps) || data.steps.length === 0) {
-    return null;
-  }
-
-  const steps = data.steps
-    .map((step) => {
-      if (!step || typeof step !== "object") {
-        return null;
-      }
-
-      const s = step as {
-        id?: unknown;
-        title?: unknown;
-        targets?: unknown;
-        rationale?: unknown;
-        verification?: unknown;
-      };
-
-      if (
-        typeof s.id !== "string" ||
-        typeof s.title !== "string" ||
-        typeof s.rationale !== "string" ||
-        typeof s.verification !== "string" ||
-        !Array.isArray(s.targets)
-      ) {
-        return null;
-      }
-
-      const targets = s.targets.filter((target): target is string => typeof target === "string");
-      if (targets.length !== s.targets.length) {
-        return null;
-      }
-
-      return {
-        id: s.id.trim(),
-        title: s.title.trim(),
-        targets: targets.map((target) => target.trim()).filter(Boolean),
-        rationale: s.rationale.trim(),
-        verification: s.verification.trim(),
-      };
-    })
-    .filter((step): step is NonNullable<typeof step> => !!step);
-
-  if (steps.length === 0 || steps.length !== data.steps.length) {
-    return null;
-  }
-
-  return {
-    goal: data.goal.trim(),
-    steps,
-  };
-}
-
-function parseExecutionPlan(raw: string): ExecutionPlan | null {
-  const jsonText = extractJsonObject(raw);
-  if (!jsonText) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(jsonText) as unknown;
-    return validateExecutionPlan(parsed);
-  } catch {
-    return null;
-  }
+function isSuccessfulGitCommitOutput(output: unknown): boolean {
+  const text = shellOutputText(output);
+  return /^\[[^\]]+\s+[0-9a-f]{7,}\]/m.test(text);
 }
 
 function updateWebSessionState(
@@ -350,48 +148,91 @@ async function ensureWebProviderConnected(tui: Tui, state: SessionState): Promis
   return false;
 }
 
+function turnStatusLabel(stateName: string): string {
+  switch (stateName) {
+    case "routing":
+      return "Routing turn";
+    case "researching":
+      return "Gathering context";
+    case "planning":
+      return "Planning";
+    case "implementing":
+      return "Implementing";
+    case "verifying":
+      return "Verifying";
+    case "repairing":
+      return "Repairing";
+    case "compacting":
+      return "Compacting context";
+    default:
+      return "Processing task";
+  }
+}
+
 export async function runTask(
-  task: string,
+  submission: ComposerSubmission,
   tui: Tui,
   state: SessionState,
   abortController?: AbortController,
-  intent: TurnContext["intent"] = "change",
+  intent?: TurnResult["intent"],
+  taskOptions?: {
+    workflowKind?: "default" | "commit" | "compact";
+    displayTask?: string;
+  },
 ): Promise<TurnResult> {
   const activeAbortController = abortController ?? new AbortController();
   const request = AgentRequestSchema.parse({
-    task,
+    task: submission.text,
     repoRoot: state.projectRoot,
     approvalMode: state.approvalMode,
     maxSteps: 256,
     maxDurationMs: 120000,
   });
+  const explicitFileContext = await buildExplicitFileContext(submission, state.projectRoot);
 
   if (!state.sessionTitle) {
-    state.sessionTitle = titleFromTask(request.task);
+    state.sessionTitle = titleFromTask(taskOptions?.displayTask ?? request.task);
     await updateSessionTitle({
       id: state.sessionId,
       title: state.sessionTitle,
     });
   }
 
-  tui.renderApprovalPrompt({ message: request.task, options: ["running"] });
+  tui.renderApprovalPrompt({ message: taskOptions?.displayTask ?? request.task, options: ["running"] });
 
   const started = performance.now();
+  const unifiedTurn = intent == null;
+  const declaredIntent: TurnResult["intent"] = intent ?? "question";
   const continuationArtifact = await loadLatestCompactContinuationArtifact(state.sessionId);
   const recentTurns = await getTurnResults(state.sessionId, 5);
   const priorTurnGuidance = buildPriorTurnPlanningGuidance(recentTurns);
+  const compactionPolicy = deriveCompactionPolicy(recentTurns);
   const turnContext: TurnContext = {
     sessionId: state.sessionId,
     task: request.task,
-    intent,
     projectRoot: state.projectRoot,
     approvalMode: state.approvalMode,
     modelId: state.modelId,
     startedAt: started,
   };
+  const patchApprovedPaths = new Set<string>();
+  const evalMetrics = createEvalMetricsCollector();
+  let compactionMetadata = createCompactionMetadata(compactionPolicy);
+  let commitWorkflowCompleted = false;
+  let commitWorkflowOutput = "";
+  const observedFacts: TurnObservedFacts = {
+    changeFlowEntered: declaredIntent === "change" || taskOptions?.workflowKind === "commit",
+    implementationAttempted: false,
+    verificationAttempted: false,
+  };
+  const phase = createTaskPhaseController();
+  const turn = createTurnStateMachine();
+  turn.transition("routing");
   const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
   let frameIndex = 0;
   let promptPending = false;
+  let isChangeTurn = declaredIntent === "change";
+  let isAnswerTurn = !isChangeTurn;
   const spinner = setInterval(() => {
     if (promptPending) {
       return;
@@ -400,18 +241,14 @@ export async function runTask(
     const frame = spinnerFrames[frameIndex % spinnerFrames.length];
     frameIndex += 1;
     tui.renderApprovalPrompt({
-      message: `${frame} Processing task...`,
+      message: `${frame} ${turnStatusLabel(turn.state)}...`,
       options: ["esc=abort"],
     });
   }, 120);
 
-  const patchApprovedPaths = new Set<string>();
-  const phase = createTaskPhaseController();
-  const turn = createTurnStateMachine(intent);
-  turn.transition("routing");
-
   const env = createSandboxEnvironment({
     cwd: request.repoRoot,
+    approvalMode: state.approvalMode,
     approvals: async (approvalRequest) => {
       if (approvalRequest.kind === "file-write" && patchApprovedPaths.has(approvalRequest.target)) {
         patchApprovedPaths.delete(approvalRequest.target);
@@ -419,6 +256,7 @@ export async function runTask(
       }
       promptPending = true;
       try {
+        evalMetrics.recordApproval();
         return await requestApproval(tui, approvalRequest, state.sessionId);
       } finally {
         promptPending = false;
@@ -426,16 +264,16 @@ export async function runTask(
     },
   });
 
-  tui.renderUserMessage(request.task);
+  tui.renderUserMessage(taskOptions?.displayTask ?? request.task);
   await appendMessage({
     id: newMessageId(state.sessionId, "user"),
     session_id: state.sessionId,
     role: "user",
     kind: "transcript",
-    content: request.task,
+    content: taskOptions?.displayTask ?? request.task,
   });
 
-  const webSearch = createWebSearchProvider(
+  const baseWeb = createWebCapability(
     async () => {
       promptPending = true;
       try {
@@ -467,10 +305,14 @@ export async function runTask(
 
         promptPending = true;
         try {
-        const approval = await requestApproval(tui, {
-          kind: "web-fetch",
-          target: rule,
-        }, state.sessionId);
+          const approval = await requestApproval(
+            tui,
+            {
+              kind: "web-fetch",
+              target: rule,
+            },
+            state.sessionId,
+          );
           if (approval === "reject") {
             throw new Error(`Web fetch denied for ${rule}`);
           }
@@ -480,25 +322,154 @@ export async function runTask(
       },
     },
   );
+  const web = {
+    async execute(action: Parameters<typeof baseWeb.execute>[0]) {
+      const startedEvent = createWebStartedEvent(action);
+      evalMetrics.onWebEvent(startedEvent);
+      persistEventMessage(formatWebRuntimeEvent(startedEvent));
+      try {
+        const result = await baseWeb.execute(action);
+        const completedEvent = createWebCompletedEvent(result);
+        evalMetrics.onWebEvent(completedEvent);
+        persistEventMessage(formatWebRuntimeEvent(completedEvent));
+        return result;
+      } catch (error) {
+        const failedEvent = createWebFailedEvent(
+          action,
+          error instanceof Error ? error.message : String(error),
+        );
+        evalMetrics.onWebEvent(failedEvent);
+        persistEventMessage(formatWebRuntimeEvent(failedEvent));
+        throw error;
+      }
+    },
+  };
 
   const requestApprovalForTool = async (approvalRequest: Parameters<typeof requestApproval>[1]) => {
     promptPending = true;
     try {
+      evalMetrics.recordApproval();
       return await requestApproval(tui, approvalRequest, state.sessionId);
     } finally {
       promptPending = false;
     }
   };
 
+  const buildSummary = (
+    fields: Omit<TurnSummary, "compaction" | "evalMetrics"> & Partial<Pick<TurnSummary, "evalMetrics">>,
+  ): TurnSummary => ({
+    ...fields,
+    compaction: compactionMetadata,
+    evalMetrics: fields.evalMetrics ?? evalMetrics.summarize(),
+  });
+
+  const resolvedIntent = (): TurnResult["intent"] =>
+    resolveObservedTurnIntent(observedFacts, evalMetrics.currentChangedPaths());
+
+  const buildTurnResult = (
+    status: TurnResult["status"],
+    summary?: TurnSummary,
+    message?: string,
+  ): TurnResult => ({
+    status,
+    intent: resolvedIntent(),
+    task: turnContext.task,
+    summary,
+    message,
+  });
+
+  const elapsedMs = () => Math.round(performance.now() - started);
+  const renderSummary = (summary: TurnSummary) => {
+    tui.renderSummary(summary);
+  };
+  const renderApprovalMessage = (message: string) => {
+    tui.renderApprovalPrompt({
+      message,
+      options: ["running"],
+    });
+  };
+  const persistAssistantTranscript = (message: string) => {
+    tui.finalizeAssistantStream(message);
+    void appendMessage({
+      id: newMessageId(state.sessionId, "assistant"),
+      session_id: state.sessionId,
+      role: "assistant",
+      kind: "transcript",
+      content: message,
+    });
+  };
+  const persistEventMessage = (message: string) => {
+    if (!message.trim()) {
+      return;
+    }
+    tui.renderEventMessage(message);
+    void appendMessage({
+      id: newMessageId(state.sessionId, "event"),
+      session_id: state.sessionId,
+      role: "system",
+      kind: "event",
+      content: message,
+    });
+  };
+  const pruneAfterTurn = () => {
+    void pruneSessionAfterTurn(state.sessionId);
+  };
+  const updateCompactionMetadata = (input: {
+    trigger: "context-pressure";
+    completed: boolean;
+    report: {
+      summary: string;
+      criticalFiles: string[];
+      openRisks: string[];
+    } | null;
+  }) => {
+    compactionMetadata = recordCompactionAttempt(compactionMetadata, input);
+  };
+  const saveCompactionStarted = () =>
+    saveCompactionEvent({
+      sessionId: state.sessionId,
+      event: {
+        trigger: "context-pressure",
+        status: "started",
+        summary: null,
+        criticalFiles: [],
+        openRisks: [],
+        createdAt: Date.now(),
+      },
+    });
+  const saveCompactionCompleted = (input: {
+    completed: boolean;
+    summary: string | null;
+    criticalFiles: string[];
+    openRisks: string[];
+  }) =>
+    saveCompactionEvent({
+      sessionId: state.sessionId,
+      event: {
+        trigger: "context-pressure",
+        status: input.completed ? "succeeded" : "failed",
+        summary: input.summary,
+        criticalFiles: input.criticalFiles,
+        openRisks: input.openRisks,
+        createdAt: Date.now(),
+      },
+    });
+  const deriveCurrentValidationScope = () =>
+    deriveValidationScope({
+      workflowKind: taskOptions?.workflowKind,
+      changedPaths: evalMetrics.currentChangedPaths(),
+    });
+
   const approveToolCall = createToolApprovalHandler({
     approvalMode: state.approvalMode,
     phase,
     patchApprovedPaths,
     requestApproval: requestApprovalForTool,
+    allowBashInContext: taskOptions?.workflowKind === "commit",
   });
 
   const approvePatchApply = async (preview: PatchPreview) => {
-    if (intent !== "change") {
+    if (!isChangeTurn) {
       return false;
     }
 
@@ -506,7 +477,7 @@ export async function runTask(
       return false;
     }
 
-    if (state.approvalMode === "auto-edit") {
+    if (autoApproveEditsInApprovalMode(state.approvalMode)) {
       if (preview.files) {
         for (const f of preview.files) {
           patchApprovedPaths.add(f.filePath);
@@ -565,21 +536,87 @@ export async function runTask(
   const planningMaxSteps = Math.min(24, Math.max(10, Math.floor(request.maxSteps / 6)));
   const verificationMaxSteps = Math.min(24, Math.max(8, Math.floor(request.maxSteps / 6)));
   const compactionMaxSteps = Math.min(18, Math.max(8, Math.floor(request.maxSteps / 10)));
-  const researchMaxSteps = Math.min(192, Math.max(64, Math.floor(request.maxSteps * 0.75)));
+  const preRoutePlan =
+    taskOptions?.workflowKind == null || taskOptions.workflowKind === "default"
+      ? explicitFileContext.hasFileMentions
+        ? {
+            status: "resolved" as const,
+            result: preRouteResultFromMode(
+              "repo-context",
+              "structured file mentions require local repository context",
+              "fast-path",
+            ),
+          }
+        : planPreRoute(request.task)
+      : null;
+  if (preRoutePlan?.status === "resolved" && preRoutePlan.result.mode === "change" && declaredIntent !== "change") {
+    isChangeTurn = true;
+    isAnswerTurn = false;
+    observedFacts.changeFlowEntered = true;
+  }
+  const questionStrategy = isAnswerTurn ? buildQuestionStrategy(request.task, "question") : null;
+  const questionExploration = questionStrategy ? createQuestionExplorationState() : null;
+  let questionAnswerReadyReason: string | null = null;
+  const answerMaxSteps = request.maxSteps;
+  const engine = createOpenHarnessEngineAdapter();
 
-  const runPhase = async (prompt: string, persistTranscript: boolean, maxSteps: number) =>
-    runOpenHarnessRuntime(
+  const approveToolCallWithQuestionReadiness = async (
+    toolCall: RuntimeToolCall,
+  ): Promise<boolean> => {
+    if (questionStrategy && questionExploration && isAnswerTurn) {
+      const decision = evaluateQuestionAnswerReadiness(questionStrategy, questionExploration);
+      if (decision.ready) {
+        questionAnswerReadyReason ??= decision.reason;
+        tui.renderApprovalPrompt({
+          message: `Answer-ready: ${questionAnswerReadyReason}. Synthesizing...`,
+          options: ["esc=abort"],
+        });
+        return false;
+      }
+    }
+
+    return approveToolCall(toolCall);
+  };
+
+  const runPhase: RuntimePhaseRunner = async (
+    prompt: string,
+    persistTranscript: boolean,
+    maxSteps: number,
+    options: {
+      allowTools?: boolean;
+      allowedToolNames?: string[];
+      instructions?: string;
+      onToolEvent?: (event: OpenHarnessToolEvent) => void;
+    } = {},
+  ) =>
+    engine.run(
       {
         modelId: state.modelId,
         sessionId: state.sessionId,
+        instructions: options.instructions,
+        runtimeConfig: state.openHarnessConfig,
         providers: {
           ...env,
-          webSearch,
+          web,
         },
-        approveToolCall,
-        approvePatchApply,
+        approveToolCall: (toolCall) => {
+          if (options.allowTools === false) {
+            return false;
+          }
+          if (options.allowedToolNames && !options.allowedToolNames.includes(toolCall.toolName)) {
+            return false;
+          }
+          return approveToolCallWithQuestionReadiness(toolCall);
+        },
+        approvePatchApply:
+          options.allowTools === false || options.allowedToolNames != null ? () => false : approvePatchApply,
         onStep: (step) => {
+          if (questionExploration && persistTranscript) {
+            recordQuestionStep(questionExploration, step);
+          }
+
           if (step.action === "model.final") {
+            evalMetrics.recordFinalMessage(step.observation ?? "");
             if (persistTranscript) {
               tui.finalizeAssistantStream(step.observation);
               if (step.observation?.trim()) {
@@ -602,7 +639,28 @@ export async function runTask(
             observation: step.observation,
           });
         },
-        onTextDelta: persistTranscript ? (delta) => tui.renderAssistantDelta(delta) : undefined,
+        onToolEvent: (event) => {
+          evalMetrics.onToolEvent(event);
+          const subagentMessage = formatSubagentRuntimeEvent(event);
+          if (subagentMessage) {
+            persistEventMessage(subagentMessage);
+          }
+          if (
+            taskOptions?.workflowKind === "commit" &&
+            event.phase === "done" &&
+            event.toolName === "bash" &&
+            isSuccessfulGitCommitOutput(event.output)
+          ) {
+            commitWorkflowCompleted = true;
+            commitWorkflowOutput = shellOutputText(event.output).trim();
+          }
+          options.onToolEvent?.(event);
+        },
+        onTextDelta: persistTranscript
+          ? (delta) => {
+              tui.renderAssistantDelta(delta);
+            }
+          : undefined,
       },
       prompt,
       {
@@ -613,420 +671,285 @@ export async function runTask(
       },
     );
 
+  const classifyPreRouteDecision = async (): Promise<PreRouteResult | null> => {
+    let submittedDecision: ReturnType<typeof validateTurnDecision> = null;
+    const decisionResult = await runPhase(
+      [
+        "Route the user's input before any repository inspection.",
+        "Do not inspect files, search the repository, run shell commands, or call any tool other than submitTurnDecision.",
+        "Submit the routing decision with the submitTurnDecision tool.",
+        "Do not return raw JSON when the tool is available.",
+        "The decision shape is:",
+        '{ mode: "direct-answer" | "web-context" | "repo-context" | "change", rationale: string }',
+        "",
+        'Use "direct-answer" for casual conversation or general questions answerable without local repository context.',
+        'Use "web-context" when the user supplied a URL or needs external web content, but not local repository files.',
+        'Use "repo-context" when answering correctly requires inspecting the local repository or files.',
+        'Use "change" when the user is asking for code or file modifications.',
+        "",
+        "Task:",
+        request.task,
+      ].join("\n"),
+      false,
+      8,
+      {
+        allowedToolNames: preRoutePlan?.status === "needs-classification"
+          ? preRoutePlan.allowedToolNames
+          : ["submitTurnDecision"],
+        instructions: [
+          "You are classifying the user's next turn before any repository work begins.",
+          "Do not inspect the repository and do not call any tools except submitTurnDecision.",
+        ].join(" "),
+        onToolEvent: (event) => {
+          if (event.phase !== "done" || event.toolName !== "submitTurnDecision") {
+            return;
+          }
+          const validated = validateTurnDecision(event.output);
+          if (validated) {
+            submittedDecision = validated;
+          }
+        },
+      },
+    );
+
+    const decision = submittedDecision ?? parseTurnDecision(decisionResult.outputText);
+    if (!decision) {
+      return null;
+    }
+    const mode =
+      decision.mode === "answer"
+        ? "repo-context"
+        : decision.mode === "web-context"
+          ? "web-context"
+          : decision.mode;
+    return preRouteResultFromMode(mode, decision.rationale, "classifier");
+  };
+
   try {
+    const resolvedPreRoute =
+      preRoutePlan?.status === "resolved"
+        ? preRoutePlan.result
+        : preRoutePlan?.status === "needs-classification"
+          ? declaredIntent === "change" || taskOptions?.workflowKind === "commit"
+            ? null
+            : await classifyPreRouteDecision()
+          : null;
+
+    const executionRoute = resolveTaskExecutionRoute(resolvedPreRoute ?? null, declaredIntent);
+
+    if (executionRoute === "change") {
+      isChangeTurn = true;
+      isAnswerTurn = false;
+      observedFacts.changeFlowEntered = true;
+    }
+
+    if (executionRoute === "direct-answer") {
+      renderApprovalMessage("Answering directly...");
+      const directResult = await runPhase(buildDirectAnswerPrompt(request.task), true, 8, {
+        allowTools: false,
+        allowedToolNames: resolvedPreRoute!.allowedToolNames,
+        instructions: buildDirectAnswerSystemPrompt(),
+      });
+
+      if (directResult.status === "completed") {
+        turn.finish();
+        const summary = buildSummary({
+          success: true,
+          steps: directResult.steps,
+          durationMs: elapsedMs(),
+          promptTokens: directResult.usage?.promptTokens ?? 0,
+          completionTokens: directResult.usage?.completionTokens ?? 0,
+          estimatedCostUsd: directResult.estimatedCostUsd ?? 0,
+        });
+        renderSummary(summary);
+        pruneAfterTurn();
+        return buildTurnResult("completed", summary, directResult.outputText);
+      }
+
+      if (directResult.status === "cancelled") {
+        turn.cancel();
+        return buildTurnResult("cancelled", undefined, directResult.outputText);
+      }
+
+      turn.fail();
+      return buildTurnResult("failed", undefined, directResult.outputText);
+    }
+
+    if (executionRoute === "web-context") {
+      renderApprovalMessage("Inspecting web content...");
+      const webResult = await runPhase(buildWebAnswerPrompt(request.task), true, 8, {
+        allowedToolNames: resolvedPreRoute!.allowedToolNames,
+        instructions: buildWebAnswerSystemPrompt(),
+      });
+
+      if (webResult.status === "completed") {
+        turn.finish();
+        const summary = buildSummary({
+          success: true,
+          steps: webResult.steps,
+          durationMs: elapsedMs(),
+          promptTokens: webResult.usage?.promptTokens ?? 0,
+          completionTokens: webResult.usage?.completionTokens ?? 0,
+          estimatedCostUsd: webResult.estimatedCostUsd ?? 0,
+        });
+        renderSummary(summary);
+        pruneAfterTurn();
+        return buildTurnResult("completed", summary, webResult.outputText);
+      }
+
+      if (webResult.status === "cancelled") {
+        turn.cancel();
+        return buildTurnResult("cancelled", undefined, webResult.outputText);
+      }
+
+      turn.fail();
+      return buildTurnResult("failed", undefined, webResult.outputText);
+    }
+
     turn.beginResearch();
+    if (questionStrategy) {
+      tui.renderApprovalPrompt({
+        message: "Researching repository context...",
+        options: ["esc=abort"],
+      });
+    }
     const researchPrompt = prependContinuationBrief(
-      intent === "change"
-        ? buildContextGatheringPrompt(request.task)
-        : buildResearchAnswerPrompt(request.task, intent),
+      prependExplicitFileContext(
+        isChangeTurn
+          ? buildContextGatheringPrompt(request.task)
+          : buildResearchAnswerPrompt(request.task, "question", questionStrategy ?? undefined),
+        explicitFileContext,
+      ),
       continuationArtifact,
     );
     let contextResult = await runPhase(
       researchPrompt,
-      intent !== "change",
-      intent === "change" ? contextMaxSteps : researchMaxSteps,
+      isAnswerTurn,
+      isChangeTurn ? contextMaxSteps : answerMaxSteps,
+      {},
     );
 
-    if (intent === "change" && isContextBudgetResult(contextResult)) {
-      const retrySteps = expandedContextSteps(request.maxSteps, contextMaxSteps);
-      contextResult = await runPhase(
-        researchPrompt,
-        false,
-        retrySteps,
-      );
-    }
-
-    if (intent !== "change") {
-      const baseSummary = {
-        success: contextResult.status === "completed",
-        steps: contextResult.steps,
-        durationMs: Math.round(performance.now() - started),
-        promptTokens: contextResult.usage?.promptTokens ?? 0,
-        completionTokens: contextResult.usage?.completionTokens ?? 0,
-        estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
-      };
-
-      if (contextResult.status === "completed") {
-        turn.finish();
-        tui.renderSummary({ ...baseSummary, success: true });
-        void pruneSessionAfterTurn(state.sessionId);
-        return {
-          status: "completed",
-          intent: turnContext.intent,
-          task: turnContext.task,
-          summary: { ...baseSummary, success: true },
-        };
-      }
-
-      const partialAnswer = contextResult.outputText.trim();
-      if (partialAnswer) {
-        const message = `${partialAnswer}\n\nNote: the research turn hit its runtime limit before it could finish inspecting more files.`;
-        tui.finalizeAssistantStream(message);
-        void appendMessage({
-          id: newMessageId(state.sessionId, "assistant"),
-          session_id: state.sessionId,
-          role: "assistant",
-          kind: "transcript",
-          content: message,
-        });
-        turn.finish();
-        tui.renderSummary({ ...baseSummary, success: true });
-        void pruneSessionAfterTurn(state.sessionId);
-        return {
-          status: "completed",
-          intent: turnContext.intent,
-          task: turnContext.task,
-          summary: { ...baseSummary, success: true },
-          message,
-        };
-      }
-
-      if (contextResult.status === "cancelled") {
-        turn.cancel();
-        tui.renderSummary(baseSummary);
-        return {
-          status: "cancelled",
-          intent: turnContext.intent,
-          task: turnContext.task,
-          summary: baseSummary,
-          message: contextResult.error,
-        };
-      }
-
-      turn.fail();
-      tui.renderAssistantMessage(
-        contextResult.error
-          ? `Research failed: ${contextResult.error}`
-          : "Research failed before an answer could be produced.",
-      );
-      tui.renderSummary(baseSummary);
-      void pruneSessionAfterTurn(state.sessionId);
-      return {
-        status: "failed",
-        intent: turnContext.intent,
-        task: turnContext.task,
-        summary: baseSummary,
-        message: contextResult.error,
-      };
-    }
-
-    if (contextResult.status === "cancelled") {
-      turn.cancel();
-      const summary = {
-        success: false,
-        steps: contextResult.steps,
-        durationMs: Math.round(performance.now() - started),
-        promptTokens: contextResult.usage?.promptTokens ?? 0,
-        completionTokens: contextResult.usage?.completionTokens ?? 0,
-        estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
-      };
-      tui.renderSummary(summary);
-      return {
-        status: "cancelled",
-        intent: turnContext.intent,
-        task: turnContext.task,
-        summary,
-        message: contextResult.error,
-      };
-    }
-
-    if (contextResult.status !== "completed") {
-      if (!isContextBudgetResult(contextResult)) {
-        turn.fail();
-        const summary = {
-          success: false,
-          steps: contextResult.steps,
-          durationMs: Math.round(performance.now() - started),
-          promptTokens: contextResult.usage?.promptTokens ?? 0,
-          completionTokens: contextResult.usage?.completionTokens ?? 0,
-          estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
-        };
-        tui.renderSummary(summary);
-        return {
-          status: "failed",
-          intent: turnContext.intent,
-          task: turnContext.task,
-          summary,
-          message: contextResult.error,
-        };
-      }
-    }
-
-    turn.beginPlanning();
-    const planningPrompt = buildPlanningPrompt(
-      request.task,
-      contextResult.outputText,
-      priorTurnGuidance ?? undefined,
-    );
-    let planningResult = await runPhase(planningPrompt, false, planningMaxSteps);
-    if (planningResult.status === "cancelled") {
-      turn.cancel();
-      const summary = {
-        success: false,
-        steps: planningResult.steps,
-        durationMs: Math.round(performance.now() - started),
-        promptTokens: planningResult.usage?.promptTokens ?? 0,
-        completionTokens: planningResult.usage?.completionTokens ?? 0,
-        estimatedCostUsd: planningResult.estimatedCostUsd ?? 0,
-      };
-      tui.renderSummary(summary);
-      return { status: "cancelled", intent: turnContext.intent, task: turnContext.task, summary };
-    }
-
-    if (planningResult.status !== "completed") {
-      turn.fail();
-      const summary = {
-        success: false,
-        steps: planningResult.steps,
-        durationMs: Math.round(performance.now() - started),
-        promptTokens: planningResult.usage?.promptTokens ?? 0,
-        completionTokens: planningResult.usage?.completionTokens ?? 0,
-        estimatedCostUsd: planningResult.estimatedCostUsd ?? 0,
-      };
-      tui.renderSummary(summary);
-      return {
-        status: "failed",
-        intent: turnContext.intent,
-        task: turnContext.task,
-        summary,
-        message: planningResult.error,
-      };
-    }
-
-    let plan = parseExecutionPlan(planningResult.outputText);
-    if (!plan) {
-      planningResult = await runPhase(
-        [
-          "Your previous output was invalid.",
-          "Return only valid JSON in this exact shape:",
-          '{ "goal": string, "steps": [{ "id": string, "title": string, "targets": string[], "rationale": string, "verification": string }] }',
-          "No markdown fences and no extra text.",
-          "Original task:",
-          request.task,
-          "Previous invalid output:",
-          planningResult.outputText || "(empty)",
-        ].join("\n"),
-        false,
-        Math.max(8, Math.floor(planningMaxSteps / 2)),
-      );
-      plan = parseExecutionPlan(planningResult.outputText);
-    }
-
-    if (!plan) {
-      turn.fail();
-      const summary = {
-        success: false,
-        steps: Math.max(1, planningResult.steps),
-        durationMs: Math.round(performance.now() - started),
-        promptTokens:
-          (contextResult.usage?.promptTokens ?? 0) + (planningResult.usage?.promptTokens ?? 0),
-        completionTokens:
-          (contextResult.usage?.completionTokens ?? 0) +
-          (planningResult.usage?.completionTokens ?? 0),
-        estimatedCostUsd:
-          (contextResult.estimatedCostUsd ?? 0) + (planningResult.estimatedCostUsd ?? 0),
-      };
-      tui.renderSummary(summary);
-      return {
-        status: "failed",
-        intent: turnContext.intent,
-        task: turnContext.task,
-        summary,
-        message: "Planning output was invalid.",
-      };
-    }
-
-    tui.renderApprovalPrompt({
-      message: "Plan prepared. Starting implementation...",
-      options: ["running"],
-    });
-    const attemptImplementationAndVerification = async (implementationPrompt: string) => {
-      turn.beginImplementation();
-      phase.beginImplementation();
-      const implementationResult = await runPhase(implementationPrompt, true, request.maxSteps);
-
-      let verificationResult:
-        | {
-            status: string;
-            steps: number;
-            outputText: string;
-            usage?: {
-              promptTokens: number;
-              completionTokens: number;
-              totalTokens: number;
-            };
-            estimatedCostUsd?: number;
-          }
-        | null = null;
-      let verificationReport: VerificationReport | null = null;
-
-      if (implementationResult.status === "completed") {
-        turn.beginVerification();
-        phase.beginVerification();
-        tui.renderApprovalPrompt({
-          message: "Implementation completed. Running verification...",
-          options: ["running"],
-        });
-        verificationResult = await runPhase(
-          buildVerificationPrompt(request.task, JSON.stringify(plan, null, 2)),
-          false,
-          verificationMaxSteps,
-        );
-        if (verificationResult.status === "completed") {
-          verificationReport = parseVerificationReport(verificationResult.outputText);
-        }
-      }
-
-      return {
-        implementationResult,
-        verificationResult,
-        verificationReport,
-      };
-    };
-
-    let runOutcome = await attemptImplementationAndVerification(
-      buildImplementationPrompt(request.task, JSON.stringify(plan, null, 2)),
-    );
-
-    if (isContextPressureFailure(runOutcome.implementationResult)) {
-      turn.beginCompaction();
-      const compactRun = await runPhase(
-        buildCompactionPrompt(
-          request.task,
-          JSON.stringify(plan, null, 2),
-          runOutcome.implementationResult.outputText,
-        ),
-        false,
-        compactionMaxSteps,
-      );
-      const compacted = compactRun.status === "completed" ? parseCompactionReport(compactRun.outputText) : null;
-
-      if (compacted) {
-        tui.renderApprovalPrompt({
-          message: "Context pressure detected. Retrying with compacted context...",
-          options: ["running"],
-        });
-        runOutcome = await attemptImplementationAndVerification(
-          buildImplementationPrompt(
-            request.task,
-            [
-              JSON.stringify(plan, null, 2),
-              "Compacted continuation brief:",
-              JSON.stringify(compacted, null, 2),
-            ].join("\n\n"),
-          ),
-        );
-      }
-
-      planningResult = {
-        ...planningResult,
-        usage: mergeUsage(planningResult.usage, compactRun.usage),
-        estimatedCostUsd: (planningResult.estimatedCostUsd ?? 0) + (compactRun.estimatedCostUsd ?? 0),
-        steps: planningResult.steps + compactRun.steps,
-      };
-    }
-
-    const shouldRepair =
-      runOutcome.implementationResult.status === "completed" &&
-      runOutcome.verificationResult?.status === "completed" &&
-      runOutcome.verificationReport?.passed === false;
-
-    if (shouldRepair) {
-      turn.beginRepair();
-      const report = runOutcome.verificationReport!;
-      const repairPlanning = await runPhase(
-        [
-          "Create a repair plan from the failed verification report.",
-          "Return strict JSON only:",
-          '{ "goal": string, "steps": [{ "id": string, "title": string, "targets": string[], "rationale": string, "verification": string }] }',
-          "Original task:",
-          request.task,
-          "Current plan:",
-          JSON.stringify(plan),
-          "Verification report:",
-          JSON.stringify(report),
-        ].join("\n"),
-        false,
-        Math.max(8, Math.floor(planningMaxSteps / 2)),
-      );
-      const repairedPlan = parseExecutionPlan(repairPlanning.outputText);
-      if (repairPlanning.status === "completed" && repairedPlan) {
-        plan = repairedPlan;
-        tui.renderApprovalPrompt({
-          message: "Verification failed. Applying repair plan...",
-          options: ["running"],
-        });
-        const repairedOutcome = await attemptImplementationAndVerification(
-          buildImplementationPrompt(
-            request.task,
-            JSON.stringify(plan, null, 2) +
-              "\n\nApply this as a targeted repair pass using verification findings from the previous attempt.",
-          ),
-        );
-        runOutcome = {
-          implementationResult: repairedOutcome.implementationResult,
-          verificationResult: repairedOutcome.verificationResult,
-          verificationReport: repairedOutcome.verificationReport,
-        };
-        // Merge repair planning usage into context/planning bucket by shadowing planningResult usage later.
-        planningResult = {
-          ...planningResult,
-          usage: mergeUsage(planningResult.usage, repairPlanning.usage),
-          estimatedCostUsd:
-            (planningResult.estimatedCostUsd ?? 0) + (repairPlanning.estimatedCostUsd ?? 0),
-          steps: planningResult.steps + repairPlanning.steps,
-        };
-      }
-    }
-
-    const usage = mergeUsage(
-      mergeUsage(
-        mergeUsage(contextResult.usage, planningResult.usage),
-        runOutcome.implementationResult.usage,
-      ),
-      runOutcome.verificationResult?.usage,
-    );
-    const verificationPassed =
-      runOutcome.verificationResult == null
-        ? true
-        : runOutcome.verificationResult.status === "completed" &&
-          (runOutcome.verificationReport?.passed ?? false);
     if (
-      (runOutcome.implementationResult.status === "completed" ||
-        runOutcome.implementationResult.status === "cancelled") &&
-      verificationPassed
+      shouldContinueAfterContextFailure({
+        intent: declaredIntent,
+        status: contextResult.status,
+        isContextBudgetResult: isContextBudgetResult(contextResult),
+      })
+    ) {
+      const retrySteps = expandedContextSteps(request.maxSteps, contextMaxSteps);
+      contextResult = await runPhase(researchPrompt, false, retrySteps);
+    }
+
+    if (unifiedTurn && contextResult.status === "completed") {
+      let submittedDecision: ReturnType<typeof validateTurnDecision> = null;
+      const decisionResult = await runPhase(
+        [
+          "Decide what the task needs next based on the task and inspected repository context.",
+          "Submit the routing decision with the submitTurnDecision tool.",
+          "Do not return raw JSON when the tool is available.",
+          "The decision shape is:",
+          '{ mode: "answer" | "change", rationale: string }',
+          "",
+          'Use "answer" when the user primarily asked for inspection, explanation, review, or current state.',
+          'Use "change" when the user clearly wants code or file modifications.',
+          "",
+          "Task:",
+          request.task,
+          "",
+          "Inspected context summary:",
+          contextResult.outputText || "(empty)",
+        ].join("\n"),
+        false,
+        12,
+        {
+          onToolEvent: (event) => {
+            if (event.phase !== "done" || event.toolName !== "submitTurnDecision") {
+              return;
+            }
+            const validated = validateTurnDecision(event.output);
+            if (validated) {
+              submittedDecision = validated;
+            }
+          },
+        },
+      );
+      const decision = submittedDecision ?? parseTurnDecision(decisionResult.outputText);
+      if (decision?.mode === "change") {
+        isChangeTurn = true;
+        isAnswerTurn = false;
+        observedFacts.changeFlowEntered = true;
+      } else {
+        isChangeTurn = false;
+        isAnswerTurn = true;
+      }
+    }
+
+    if (
+      shouldStopCommitWorkflowAfterContext({
+        workflowKind: taskOptions?.workflowKind,
+        commitWorkflowCompleted,
+      })
     ) {
       turn.finish();
-    } else if (runOutcome.implementationResult.status === "cancelled") {
-      turn.cancel();
-    } else {
-      turn.fail();
+      const summary = buildSummary({
+        success: true,
+        steps: contextResult.steps,
+        durationMs: Math.round(performance.now() - started),
+        promptTokens: contextResult.usage?.promptTokens ?? 0,
+        completionTokens: contextResult.usage?.completionTokens ?? 0,
+        estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
+      });
+      tui.renderSummary(summary);
+      void pruneSessionAfterTurn(state.sessionId);
+      return buildTurnResult("completed", summary, commitWorkflowOutput || "Created the git commit successfully.");
     }
-    const summary = {
-      success: turn.state === "done",
-      steps: runOutcome.implementationResult.steps + (runOutcome.verificationResult?.steps ?? 0),
-      durationMs: Math.round(performance.now() - started),
-      promptTokens: usage.promptTokens,
-      completionTokens: usage.completionTokens,
-      estimatedCostUsd:
-        (contextResult.estimatedCostUsd ?? 0) +
-        (planningResult.estimatedCostUsd ?? 0) +
-        (runOutcome.implementationResult.estimatedCostUsd ?? 0) +
-        (runOutcome.verificationResult?.estimatedCostUsd ?? 0),
-    };
-    tui.renderSummary(summary);
-    void pruneSessionAfterTurn(state.sessionId);
-    return {
-      status:
-        turn.state === "done" ? "completed" : turn.state === "cancelled" ? "cancelled" : "failed",
-      intent: turnContext.intent,
-      task: turnContext.task,
-      summary,
-      message:
-        turn.state === "failed"
-          ? runOutcome.implementationResult.error
-          : undefined,
-    };
+
+    return await handleTaskContextOutcome({
+      mode: isAnswerTurn ? "answer" : "change",
+      contextResult,
+      task: request.task,
+      questionAnswerReadyReason,
+      explorationSummary: questionExploration
+        ? summarizeQuestionExploration(questionExploration)
+        : undefined,
+      priorTurnGuidance: priorTurnGuidance ?? undefined,
+      planningMaxSteps,
+      verificationMaxSteps,
+      compactionMaxSteps,
+      maxSteps: request.maxSteps,
+      workflowKind: taskOptions?.workflowKind,
+      elapsedMs,
+      runPhase,
+      turn,
+      beginImplementationPhase: () => phase.beginImplementation(),
+      beginVerificationPhase: () => phase.beginVerification(),
+      onImplementationAttempted: () => {
+        observedFacts.implementationAttempted = true;
+      },
+      onVerificationAttempted: () => {
+        observedFacts.verificationAttempted = true;
+      },
+      onChangeFlowEntered: () => {
+        observedFacts.changeFlowEntered = true;
+      },
+      buildSummary,
+      buildTurnResult,
+      renderSummary,
+      renderApprovalMessage,
+      renderAssistantError: (message) => {
+        tui.renderAssistantMessage(message);
+      },
+      persistAssistantTranscript,
+      pruneAfterTurn,
+      deriveValidationScope: deriveCurrentValidationScope,
+      isContextBudgetResult,
+      shouldAttemptVerification,
+      saveCompactionStarted,
+      saveCompactionCompleted,
+      updateCompactionMetadata,
+      parseCompactionReport,
+      isContextPressureFailure,
+    });
   } finally {
     clearInterval(spinner);
     tui.onCancelRunning(null);

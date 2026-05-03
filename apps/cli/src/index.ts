@@ -1,12 +1,16 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
 import type { SupportedProvider } from "@xeq/model-providers";
-import { type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
+import { createPlainComposerSubmission, type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
+import { join } from "node:path";
 import {
+  appendPromptHistoryEntry,
+  appendTurnResult,
   createSession,
   getMessages,
   getSession,
   getTurnResults,
+  listPromptHistory,
   listSessions,
   updateSessionTitle,
 } from "@xeq/storage";
@@ -37,13 +41,17 @@ import {
 } from "./auth-store.js";
 import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.js";
 import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compact.js";
+import { bootstrapWorkspace, initSlashCommandItem } from "./commands/init.js";
 import { KeybindManager } from "./keybinds.js";
+import { loadOpenHarnessConfig } from "./openharness-config.js";
+import { renderInitHintMessage, shouldShowInitHint } from "./onboarding-hint.js";
 import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
 import { titleFromTask } from "./task-title.js";
 import { runTask } from "./task-runner.js";
 import { runTurn } from "./turn-runner.js";
 import { loadTuiConfig } from "./tui-config.js";
 import type { SessionState } from "./session-state.js";
+import type { TurnResult } from "./turn-types.js";
 
 function parseInitialTask(argv: string[]): string | null {
   const task = argv.join(" ").trim();
@@ -77,6 +85,20 @@ function newSessionId(): string {
   return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+async function persistPromptHistory(projectRoot: string, sessionId: string, text: string): Promise<void> {
+  const value = text.trim();
+  if (!value || value.startsWith("/")) {
+    return;
+  }
+
+  await appendPromptHistoryEntry({
+    id: `prompt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    projectRoot,
+    sessionId,
+    text: value,
+  });
+}
+
 function resolveProjectRoot(startDir: string): string {
   const result = Bun.spawnSync({
     cmd: ["git", "rev-parse", "--show-toplevel"],
@@ -104,6 +126,23 @@ type SlashCommandResult =
     }
   | { type: "exit" }
   | { type: "none" };
+
+async function persistSlashTurnResult(
+  sessionId: string,
+  result: TurnResult,
+  turnKind: "user" | "compact" | "commit",
+): Promise<void> {
+  await appendTurnResult({
+    id: `${sessionId}_turn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+    sessionId,
+    turnKind,
+    intent: result.intent,
+    status: result.status,
+    task: result.task,
+    summary: result.summary,
+    message: result.message,
+  });
+}
 
 function activeProviderSummary(state: SessionState): string {
   if (!state.provider || !state.authSource) {
@@ -732,6 +771,11 @@ async function replaySessionTranscript(tui: Tui, sessionId: string): Promise<voi
       continue;
     }
 
+    if (message.kind === "event") {
+      tui.renderEventMessage(content);
+      continue;
+    }
+
     if (message.role === "user") {
       tui.renderUserMessage(content);
       continue;
@@ -758,6 +802,9 @@ function formatTurnResultLine(turn: {
         steps?: unknown;
         durationMs?: unknown;
         estimatedCostUsd?: unknown;
+        evalMetrics?: {
+          webEventCount?: unknown;
+        };
       }
     | null
     | undefined;
@@ -768,8 +815,12 @@ function formatTurnResultLine(turn: {
     typeof summary?.estimatedCostUsd === "number"
       ? ` cost=$${summary.estimatedCostUsd.toFixed(4)}`
       : "";
+  const web =
+    typeof summary?.evalMetrics?.webEventCount === "number" && summary.evalMetrics.webEventCount > 0
+      ? ` web=${summary.evalMetrics.webEventCount}`
+      : "";
   const task = turn.task.replace(/\s+/g, " ").trim().slice(0, 80);
-  return `[turn ${formatTimestamp(turn.created_at)}] ${turn.intent}/${turn.status}${steps}${duration}${cost}  ${task}`;
+  return `[turn ${formatTimestamp(turn.created_at)}] ${turn.intent}/${turn.status}${steps}${duration}${cost}${web}  ${task}`;
 }
 
 async function handleSlashCommand(
@@ -789,7 +840,7 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message:
-        "Commands: /help, /new, /resume, /commit, /compact, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+        "Commands: /help, /new, /resume, /init, /commit, /compact, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
     };
   }
 
@@ -797,8 +848,37 @@ async function handleSlashCommand(
     return startNewSession(state);
   }
 
+  if (command === "init") {
+    const result = await bootstrapWorkspace(state.projectRoot);
+    const lines = [
+      { text: `Initialized ${state.projectRoot}.`, color: "green" },
+      ...(result.created.length > 0
+        ? [{ text: `Created: ${result.created.join(", ")}`, color: "cyan" }]
+        : []),
+      ...(result.skipped.length > 0
+        ? [{ text: `Skipped existing: ${result.skipped.join(", ")}`, color: "yellow" }]
+        : []),
+    ];
+    return {
+      type: "continue",
+      message: lines.map((line) => line.text).join("\n"),
+      lines,
+    };
+  }
+
   if (command === "commit") {
-    await runTask(commitWorkflowPrompt(state.projectRoot), tui, state);
+    const result = await runTask(
+      createPlainComposerSubmission(commitWorkflowPrompt(state.projectRoot)),
+      tui,
+      state,
+      undefined,
+      "change",
+      {
+        workflowKind: "commit",
+        displayTask: "Create a single git commit for the current repository state.",
+      },
+    );
+    await persistSlashTurnResult(state.sessionId, result, "commit");
     return {
       type: "continue",
       message: "Commit workflow finished.",
@@ -806,7 +886,8 @@ async function handleSlashCommand(
   }
 
   if (command === "compact") {
-    await runTask(compactWorkflowPrompt(), tui, state);
+    const result = await runTask(createPlainComposerSubmission(compactWorkflowPrompt()), tui, state);
+    await persistSlashTurnResult(state.sessionId, result, "compact");
     return {
       type: "continue",
       message: "Compaction workflow finished.",
@@ -1008,7 +1089,8 @@ async function handleSlashCommand(
 
 async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
   while (true) {
-    const line = await tui.readInputLine();
+    const submission = await tui.readInput();
+    const line = submission.text;
     if (line.length === 0) continue;
 
     const slash = await handleSlashCommand(line, tui, state);
@@ -1039,12 +1121,14 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
     }
 
     if (isCasualGreeting(line)) {
+      await persistPromptHistory(state.projectRoot, state.sessionId, line);
       renderGreetingReply(tui, line);
       continue;
     }
 
     try {
-      await runTurn(line, tui, state);
+      await persistPromptHistory(state.projectRoot, state.sessionId, submission.text);
+      await runTurn(submission, tui, state);
     } catch (error) {
       tui.renderApprovalPrompt({
         message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -1059,16 +1143,18 @@ async function main(): Promise<void> {
   const sessionId = newSessionId();
   const cwd = process.cwd();
   const projectRoot = resolveProjectRoot(cwd);
+  const openHarnessConfig = await loadOpenHarnessConfig();
   const state: SessionState = {
     sessionId,
     sessionTitle: null,
     projectRoot,
-    approvalMode: "suggest",
+    approvalMode: "workspace-write",
     provider: null,
     modelId: "",
     authSource: null,
     webProvider: null,
     webAuthSource: null,
+    openHarnessConfig,
   };
 
   const tuiConfig = await loadTuiConfig(cwd);
@@ -1082,6 +1168,7 @@ async function main(): Promise<void> {
     { name: "/providers", description: "show provider connection status" },
     { name: "/new", description: "start a fresh session" },
     { name: "/resume", description: "pick and resume a saved session" },
+    initSlashCommandItem,
     commitSlashCommandItem,
     compactSlashCommandItem,
     { name: "/connect", description: "connect a model provider" },
@@ -1102,6 +1189,7 @@ async function main(): Promise<void> {
   const tui: Tui = new PiTui();
   await tui.start();
   tui.setSlashCommands(slashCommandOptions);
+  tui.loadPersistentPromptHistory(await listPromptHistory(projectRoot));
 
   const handleSigint = () => {
     tui.stop();
@@ -1114,6 +1202,9 @@ async function main(): Promise<void> {
     if (!ready) return;
     tui.setActiveModel(state.modelId);
     tui.renderStartupBanner();
+    if (shouldShowInitHint(projectRoot)) {
+      tui.renderInfoMessage(renderInitHintMessage());
+    }
     const existing = await getSession(state.sessionId);
     if (!existing) {
       await createSession({
@@ -1133,9 +1224,11 @@ async function main(): Promise<void> {
 
     if (initialTask) {
       if (isCasualGreeting(initialTask)) {
+        await persistPromptHistory(state.projectRoot, state.sessionId, initialTask);
         renderGreetingReply(tui, initialTask);
       } else {
-        await runTurn(initialTask, tui, state);
+        await persistPromptHistory(state.projectRoot, state.sessionId, initialTask);
+        await runTurn(createPlainComposerSubmission(initialTask), tui, state);
       }
     }
 

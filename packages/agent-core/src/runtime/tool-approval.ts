@@ -1,5 +1,10 @@
 import { classifyCommandRisk } from "@xeq/sandbox";
-import type { ApprovalMode } from "@xeq/shared";
+import {
+  autoApproveCommandsInApprovalMode,
+  autoApproveEditsInApprovalMode,
+  canWriteInApprovalMode,
+  type ApprovalMode,
+} from "@xeq/shared";
 import type { TaskPhaseController } from "./task-flow.js";
 
 export type ToolApprovalAction = "allow" | "ask" | "deny";
@@ -14,6 +19,26 @@ export function classifyToolCall(
 } {
   if (["readFile", "listFiles", "grep"].includes(toolName)) {
     return { permission: "read", pattern: "*", action: "allow" };
+  }
+
+  if (toolName === "submitPlan") {
+    return { permission: "read", pattern: "submitPlan", action: "allow" };
+  }
+
+  if (toolName === "submitTurnDecision") {
+    return { permission: "read", pattern: "submitTurnDecision", action: "allow" };
+  }
+
+  if (toolName === "submitCompactionReport") {
+    return { permission: "read", pattern: "submitCompactionReport", action: "allow" };
+  }
+
+  if (toolName === "submitVerificationReport") {
+    return { permission: "read", pattern: "submitVerificationReport", action: "allow" };
+  }
+
+  if (toolName === "createDirectory") {
+    return { permission: "edit", pattern: directoryPattern(input), action: "ask" };
   }
 
   if (["preparePatch", "preparePatchBundle"].includes(toolName)) {
@@ -33,7 +58,7 @@ export function classifyToolCall(
     };
   }
 
-  if (toolName === "webFetch") {
+  if (["webSearch", "webOpenPage", "webFindInPage"].includes(toolName)) {
     return { permission: "web_fetch", pattern: "*", action: "allow" };
   }
 
@@ -51,6 +76,7 @@ export function createToolApprovalHandler(opts: {
   phase: TaskPhaseController;
   patchApprovedPaths: Set<string>;
   requestApproval: ApprovalHandler;
+  allowBashInContext?: boolean;
 }) {
   let lastToolSignature: string | null = null;
   let repeatedToolCount = 0;
@@ -82,7 +108,12 @@ export function createToolApprovalHandler(opts: {
     }
 
     if (opts.phase.isContextPhase()) {
-      return decision.permission === "read" || decision.permission === "web_fetch";
+      return (
+        decision.permission === "read" ||
+        decision.permission === "web_fetch" ||
+        (decision.permission === "bash" &&
+          (decision.action === "allow" || opts.allowBashInContext === true))
+      );
     }
 
     if (opts.phase.isVerificationPhase()) {
@@ -105,8 +136,15 @@ export function createToolApprovalHandler(opts: {
     }
 
     if (decision.permission === "edit") {
+      if (!canWriteInApprovalMode(opts.approvalMode)) {
+        return false;
+      }
+
       const target = decision.pattern;
-      if (opts.approvalMode === "auto-edit" && opts.patchApprovedPaths.has(target)) {
+      if (autoApproveEditsInApprovalMode(opts.approvalMode)) {
+        return true;
+      }
+      if (opts.patchApprovedPaths.has(target)) {
         opts.patchApprovedPaths.delete(target);
         return true;
       }
@@ -119,6 +157,9 @@ export function createToolApprovalHandler(opts: {
     }
 
     if (decision.permission === "bash") {
+      if (autoApproveCommandsInApprovalMode(opts.approvalMode)) {
+        return true;
+      }
       const approval = await opts.requestApproval({
         kind: "command",
         target: decision.pattern,
@@ -136,6 +177,14 @@ function filePattern(input: unknown): string {
   if (typeof filePath !== "string" || filePath.trim() === "") return "*";
 
   return filePath;
+}
+
+function directoryPattern(input: unknown): string {
+  if (!input || typeof input !== "object") return "*";
+  const dirPath = (input as { dirPath?: unknown }).dirPath;
+  if (typeof dirPath !== "string" || dirPath.trim() === "") return "*";
+
+  return dirPath;
 }
 
 function commandPattern(input: unknown): string {

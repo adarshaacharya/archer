@@ -64,6 +64,7 @@ export const turn_results = sqliteTable(
     session_id: text("session_id")
       .notNull()
       .references(() => sessions.id, { onDelete: "cascade" }),
+    turn_kind: text("turn_kind").notNull().default("user"),
     intent: text("intent").notNull(),
     status: text("status").notNull(),
     task: text("task").notNull(),
@@ -76,6 +77,20 @@ export const turn_results = sqliteTable(
   ],
 );
 
+export const prompt_history = sqliteTable(
+  "prompt_history",
+  {
+    id: text("id").primaryKey(),
+    project_root: text("project_root").notNull(),
+    session_id: text("session_id"),
+    text: text("text").notNull(),
+    created_at: integer("created_at", { mode: "number" }).notNull(),
+  },
+  (table) => [
+    index("prompt_history_project_root_created_at_idx").on(table.project_root, table.created_at),
+  ],
+);
+
 export type SessionRow = typeof sessions.$inferSelect;
 export type NewSessionRow = typeof sessions.$inferInsert;
 export type MessageRow = typeof messages.$inferSelect;
@@ -84,3 +99,5 @@ export type ModelMessageRow = typeof model_messages.$inferSelect;
 export type NewModelMessageRow = typeof model_messages.$inferInsert;
 export type TurnResultRow = typeof turn_results.$inferSelect;
 export type NewTurnResultRow = typeof turn_results.$inferInsert;
+export type PromptHistoryRow = typeof prompt_history.$inferSelect;
+export type NewPromptHistoryRow = typeof prompt_history.$inferInsert;

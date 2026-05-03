@@ -3,6 +3,7 @@ import { newRunId, sanitizeId } from "./runtime/ids.js";
 import type { OpenHarnessRuntimeDeps } from "./runtime/openharness-types.js";
 import { getOrCreateSession } from "./runtime/session.js";
 import { withTimeout } from "./runtime/timeout.js";
+import type { SessionEvent } from "@openharness/core";
 import { estimateUsageCost } from "@xeq/model-providers";
 import { DEFAULT_MAX_STEPS, DEFAULT_TIMEOUT_MS, type RunOptions, type RunResult } from "./types.js";
 
@@ -38,6 +39,10 @@ function addUsage(
   };
 }
 
+function isBudgetedStep(event: SessionEvent): boolean {
+  return event.type === "tool.start";
+}
+
 export async function runOpenHarnessRuntime(
   deps: OpenHarnessRuntimeDeps,
   prompt: string,
@@ -67,6 +72,7 @@ export async function runOpenHarnessRuntime(
     sessionId: sessionKey,
   });
   let stepCounter = 0;
+  let streamEventCounter = 0;
   let finalText = "";
   let usage:
     | {
@@ -101,19 +107,25 @@ export async function runOpenHarnessRuntime(
         throw new Error(CANCELLED_ERROR);
       }
 
-      if (stepCounter >= maxSteps) {
+      const isStep = isBudgetedStep(event);
+      if (isStep && stepCounter >= maxSteps) {
         if (typeof stream.return === "function") {
           await stream.return(undefined);
         }
         throw new Error(MAX_STEPS_ERROR);
       }
+      if (isStep) {
+        stepCounter += 1;
+      }
+      streamEventCounter += 1;
 
       mapEvent(
         event,
         deps.onStep,
+        deps.onToolEvent,
         deps.onTextDelta,
         handleUsage,
-        ++stepCounter,
+        Math.max(1, stepCounter),
         (text) => {
           finalText += text;
         },
@@ -138,7 +150,7 @@ export async function runOpenHarnessRuntime(
 
     return {
       status: "completed",
-      steps: Math.max(1, Math.min(stepCounter + 1, maxSteps + 2)),
+      steps: Math.max(1, stepCounter),
       outputText: text,
       usage: resolvedUsage,
       estimatedCostUsd: estimateUsageCost({ pricing: runtime.pricing, usage: resolvedUsage }),
@@ -153,7 +165,7 @@ export async function runOpenHarnessRuntime(
       };
       return {
         status: "cancelled",
-        steps: Math.max(1, stepCounter),
+        steps: Math.max(1, stepCounter || streamEventCounter),
         outputText: "",
         error: "Run cancelled",
         usage: resolvedUsage,
@@ -184,7 +196,7 @@ export async function runOpenHarnessRuntime(
     };
     return {
       status: "failed",
-      steps: Math.max(1, stepCounter),
+      steps: Math.max(1, stepCounter || streamEventCounter),
       outputText: "",
       error: message,
       usage: resolvedUsage,
