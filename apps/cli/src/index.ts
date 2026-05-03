@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
 import type { SupportedProvider } from "@xeq/model-providers";
-import { type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
+import { createPlainComposerSubmission, type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
 import {
   appendTurnResult,
   createSession,
@@ -818,7 +818,7 @@ async function handleSlashCommand(
 
   if (command === "commit") {
     const result = await runTask(
-      commitWorkflowPrompt(state.projectRoot),
+      createPlainComposerSubmission(commitWorkflowPrompt(state.projectRoot)),
       tui,
       state,
       undefined,
@@ -836,7 +836,7 @@ async function handleSlashCommand(
   }
 
   if (command === "compact") {
-    const result = await runTask(compactWorkflowPrompt(), tui, state);
+    const result = await runTask(createPlainComposerSubmission(compactWorkflowPrompt()), tui, state);
     await persistSlashTurnResult(state.sessionId, result, "compact");
     return {
       type: "continue",
@@ -1039,7 +1039,8 @@ async function handleSlashCommand(
 
 async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
   while (true) {
-    const line = await tui.readInputLine();
+    const submission = await tui.readInput();
+    const line = submission.text;
     if (line.length === 0) continue;
 
     const slash = await handleSlashCommand(line, tui, state);
@@ -1075,7 +1076,7 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
     }
 
     try {
-      await runTurn(line, tui, state);
+      await runTurn(submission, tui, state);
     } catch (error) {
       tui.renderApprovalPrompt({
         message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -1166,7 +1167,7 @@ async function main(): Promise<void> {
       if (isCasualGreeting(initialTask)) {
         renderGreetingReply(tui, initialTask);
       } else {
-        await runTurn(initialTask, tui, state);
+        await runTurn(createPlainComposerSubmission(initialTask), tui, state);
       }
     }
 

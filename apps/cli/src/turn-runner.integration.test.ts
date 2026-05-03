@@ -77,7 +77,11 @@ describe("runTurn integration", () => {
 
     expect(runTaskMock).toHaveBeenCalledTimes(1);
     const runTaskCalls = runTaskMock.mock.calls as unknown[][];
-    expect(runTaskCalls[0]?.[0]).toBe("what is the code doing right now");
+    expect(runTaskCalls[0]?.[0]).toMatchObject({
+      text: "what is the code doing right now",
+      mentions: [],
+      attachments: [],
+    });
     expect(runTaskCalls[0]?.[4]).toBeUndefined();
     expect(result.status).toBe("completed");
     expect(appendTurnResultMock).toHaveBeenCalledTimes(1);
@@ -109,7 +113,11 @@ describe("runTurn integration", () => {
 
     expect(runTaskMock).toHaveBeenCalledTimes(1);
     const runTaskCalls = runTaskMock.mock.calls as unknown[][];
-    expect(runTaskCalls[0]?.[0]).toBe("yo");
+    expect(runTaskCalls[0]?.[0]).toMatchObject({
+      text: "yo",
+      mentions: [],
+      attachments: [],
+    });
     expect(runTaskCalls[0]?.[4]).toBeUndefined();
     expect(result.status).toBe("completed");
     expect(tui.renderAssistantMessage).not.toHaveBeenCalled();

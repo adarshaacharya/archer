@@ -1,60 +1,94 @@
+import type { ComposerMentionBinding } from "@xeq/shared";
+
 const DEFAULT_HISTORY_LIMIT = 100;
 
+export type PromptHistoryEntry = {
+  text: string;
+  mentions: ComposerMentionBinding[];
+};
+
+function normalizeEntry(entry: PromptHistoryEntry | string): PromptHistoryEntry {
+  if (typeof entry === "string") {
+    return {
+      text: entry,
+      mentions: [],
+    };
+  }
+
+  return {
+    text: entry.text,
+    mentions: entry.mentions.slice(),
+  };
+}
+
 export class PromptHistory {
-  private readonly entries: string[] = [];
-  private draft = "";
+  private readonly entries: PromptHistoryEntry[] = [];
+  private draft: PromptHistoryEntry = { text: "", mentions: [] };
   private cursor: number | null = null;
 
   constructor(private readonly limit: number = DEFAULT_HISTORY_LIMIT) {}
 
-  record(submit: string): void {
-    const value = submit.trim();
+  record(submit: PromptHistoryEntry | string): void {
+    const entry = normalizeEntry(submit);
+    const value = entry.text.trim();
     this.cursor = null;
-    this.draft = "";
+    this.draft = { text: "", mentions: [] };
 
     if (!value) {
       return;
     }
 
-    this.entries.push(value);
+    this.entries.push({
+      text: value,
+      mentions: entry.mentions.slice(),
+    });
     if (this.entries.length > this.limit) {
       this.entries.splice(0, this.entries.length - this.limit);
     }
   }
 
-  syncDraft(value: string): void {
+  syncDraft(value: string, mentions: ComposerMentionBinding[] = []): void {
     if (this.cursor === null) {
-      this.draft = value;
+      this.draft = {
+        text: value,
+        mentions: mentions.slice(),
+      };
     }
   }
 
-  previous(current: string): string | null {
+  previous(current: PromptHistoryEntry | string): PromptHistoryEntry | null {
     if (this.entries.length === 0) {
       return null;
     }
 
     if (this.cursor === null) {
-      this.draft = current;
+      this.draft = normalizeEntry(current);
       this.cursor = this.entries.length - 1;
-      return this.entries[this.cursor] ?? null;
+      const entry = this.entries[this.cursor];
+      return entry ? { text: entry.text, mentions: entry.mentions.slice() } : null;
     }
 
     this.cursor = Math.max(0, this.cursor - 1);
-    return this.entries[this.cursor] ?? null;
+    const entry = this.entries[this.cursor];
+    return entry ? { text: entry.text, mentions: entry.mentions.slice() } : null;
   }
 
-  next(): string | null {
+  next(): PromptHistoryEntry | null {
     if (this.cursor === null) {
       return null;
     }
 
     if (this.cursor < this.entries.length - 1) {
       this.cursor += 1;
-      return this.entries[this.cursor] ?? null;
+      const entry = this.entries[this.cursor];
+      return entry ? { text: entry.text, mentions: entry.mentions.slice() } : null;
     }
 
     this.cursor = null;
-    return this.draft;
+    return {
+      text: this.draft.text,
+      mentions: this.draft.mentions.slice(),
+    };
   }
 
   clearNavigation(): void {

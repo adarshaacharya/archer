@@ -35,7 +35,7 @@ import {
   type OpenHarnessToolEvent,
 } from "@xeq/agent-core";
 import { createSandboxEnvironment } from "@xeq/sandbox";
-import { AgentRequestSchema, autoApproveEditsInApprovalMode } from "@xeq/shared";
+import { AgentRequestSchema, autoApproveEditsInApprovalMode, type ComposerSubmission } from "@xeq/shared";
 import {
   appendMessage,
   getTurnResults,
@@ -47,6 +47,7 @@ import type { Tui } from "@xeq/tui";
 import { createWebSearchProvider } from "@xeq/web";
 import { requestApproval, withApprovalQueue } from "./approvals.js";
 import { createEvalMetricsCollector } from "./eval-metrics.js";
+import { buildExplicitFileContext, prependExplicitFileContext } from "./explicit-context.js";
 import { resolveActiveWebProvider } from "./auth-store.js";
 import { planPreRoute, preRouteResultFromMode, type PreRouteResult } from "./intent-router.js";
 import { pruneSessionAfterTurn } from "./recovery/prune.js";
@@ -138,7 +139,7 @@ function turnStatusLabel(stateName: string): string {
 }
 
 export async function runTask(
-  task: string,
+  submission: ComposerSubmission,
   tui: Tui,
   state: SessionState,
   abortController?: AbortController,
@@ -150,12 +151,13 @@ export async function runTask(
 ): Promise<TurnResult> {
   const activeAbortController = abortController ?? new AbortController();
   const request = AgentRequestSchema.parse({
-    task,
+    task: submission.text,
     repoRoot: state.projectRoot,
     approvalMode: state.approvalMode,
     maxSteps: 256,
     maxDurationMs: 120000,
   });
+  const explicitFileContext = await buildExplicitFileContext(submission, state.projectRoot);
 
   if (!state.sessionTitle) {
     state.sessionTitle = titleFromTask(taskOptions?.displayTask ?? request.task);
@@ -470,7 +472,16 @@ export async function runTask(
   const compactionMaxSteps = Math.min(18, Math.max(8, Math.floor(request.maxSteps / 10)));
   const preRoutePlan =
     taskOptions?.workflowKind == null || taskOptions.workflowKind === "default"
-      ? planPreRoute(request.task)
+      ? explicitFileContext.hasFileMentions
+        ? {
+            status: "resolved" as const,
+            result: preRouteResultFromMode(
+              "repo-context",
+              "structured file mentions require local repository context",
+              "fast-path",
+            ),
+          }
+        : planPreRoute(request.task)
       : null;
   if (preRoutePlan?.status === "resolved" && preRoutePlan.result.mode === "change" && declaredIntent !== "change") {
     isChangeTurn = true;
@@ -693,9 +704,12 @@ export async function runTask(
       });
     }
     const researchPrompt = prependContinuationBrief(
-      isChangeTurn
-        ? buildContextGatheringPrompt(request.task)
-        : buildResearchAnswerPrompt(request.task, "question", questionStrategy ?? undefined),
+      prependExplicitFileContext(
+        isChangeTurn
+          ? buildContextGatheringPrompt(request.task)
+          : buildResearchAnswerPrompt(request.task, "question", questionStrategy ?? undefined),
+        explicitFileContext,
+      ),
       continuationArtifact,
     );
     let contextResult = await runPhase(

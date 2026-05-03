@@ -1,6 +1,7 @@
 import type { SessionState } from "./session-state.js";
 import type { Tui } from "@xeq/tui";
 import { deriveCompactionPolicy, resetSessionById } from "@xeq/agent-core";
+import { createPlainComposerSubmission, type ComposerSubmission } from "@xeq/shared";
 import { appendTurnResult, getTurnResults } from "@xeq/storage";
 import { runTask } from "./task-runner.js";
 import { maybePruneSessionBeforeTurn } from "./recovery/prune.js";
@@ -15,7 +16,7 @@ type RunTurnDeps = {
 };
 
 export async function runTurn(
-  input: string,
+  input: ComposerSubmission,
   tui: Tui,
   state: SessionState,
   abortController?: AbortController,
@@ -37,12 +38,13 @@ export async function runTurn(
 
 export async function runTurnWithDeps(
   deps: RunTurnDeps,
-  input: string,
+  input: string | ComposerSubmission,
   tui: Tui,
   state: SessionState,
   abortController?: AbortController,
 ): Promise<TurnResult> {
-  const trimmedInput = input.trim();
+  const submission = typeof input === "string" ? createPlainComposerSubmission(input) : input;
+  const trimmedInput = submission.text.trim();
   if (!trimmedInput) {
     const message = "Please enter a task or question.";
     tui.renderAssistantMessage(message);
@@ -81,7 +83,7 @@ export async function runTurnWithDeps(
     });
   }
 
-  const result = await deps.runTask(trimmedInput, tui, state, abortController);
+  const result = await deps.runTask({ ...submission, text: trimmedInput }, tui, state, abortController);
 
   await persistTurnResult(deps.appendTurnResult, state.sessionId, result);
   return result;

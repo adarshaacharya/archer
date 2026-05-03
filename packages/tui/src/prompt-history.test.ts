@@ -7,10 +7,10 @@ describe("PromptHistory", () => {
     history.record("first");
     history.record("second");
 
-    expect(history.previous("draft")).toBe("second");
-    expect(history.previous("draft")).toBe("first");
-    expect(history.next()).toBe("second");
-    expect(history.next()).toBe("draft");
+    expect(history.previous("draft")).toEqual({ text: "second", mentions: [] });
+    expect(history.previous("draft")).toEqual({ text: "first", mentions: [] });
+    expect(history.next()).toEqual({ text: "second", mentions: [] });
+    expect(history.next()).toEqual({ text: "draft", mentions: [] });
     expect(history.next()).toBeNull();
   });
 
@@ -27,9 +27,9 @@ describe("PromptHistory", () => {
     history.record("two");
     history.record("three");
 
-    expect(history.previous("")).toBe("three");
-    expect(history.previous("")).toBe("two");
-    expect(history.previous("")).toBe("two");
+    expect(history.previous("")).toEqual({ text: "three", mentions: [] });
+    expect(history.previous("")).toEqual({ text: "two", mentions: [] });
+    expect(history.previous("")).toEqual({ text: "two", mentions: [] });
   });
 
   it("exits navigation when editing resumes", () => {
@@ -37,11 +37,36 @@ describe("PromptHistory", () => {
     history.record("one");
     history.record("two");
 
-    expect(history.previous("draft")).toBe("two");
+    expect(history.previous("draft")).toEqual({ text: "two", mentions: [] });
     history.clearNavigation();
     history.syncDraft("edited");
 
-    expect(history.previous("edited")).toBe("two");
-    expect(history.next()).toBe("edited");
+    expect(history.previous("edited")).toEqual({ text: "two", mentions: [] });
+    expect(history.next()).toEqual({ text: "edited", mentions: [] });
+  });
+
+  it("preserves mention bindings in local history entries", () => {
+    const history = new PromptHistory();
+    history.record({
+      text: "check @src/index.ts",
+      mentions: [{
+        id: "m1",
+        label: "@src/index.ts",
+        start: 6,
+        end: 19,
+        target: { type: "file", path: "src/index.ts" },
+      }],
+    });
+
+    expect(history.previous("draft")).toEqual({
+      text: "check @src/index.ts",
+      mentions: [{
+        id: "m1",
+        label: "@src/index.ts",
+        start: 6,
+        end: 19,
+        target: { type: "file", path: "src/index.ts" },
+      }],
+    });
   });
 });
