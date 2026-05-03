@@ -183,6 +183,80 @@ export const WebActionResultSchema = z.discriminatedUnion("type", [
 ]);
 export type WebActionResult = z.infer<typeof WebActionResultSchema>;
 
+export const SubagentKindSchema = z.enum(["explore", "research", "verify", "implement", "custom"]);
+export type SubagentKind = z.infer<typeof SubagentKindSchema>;
+
+export const SubagentScopeSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("repo"),
+    paths: z.array(z.string().min(1)).default([]),
+  }),
+  z.object({
+    type: z.literal("web"),
+    urls: z.array(z.string().url()).default([]),
+    domains: z.array(z.string().min(1)).default([]),
+  }),
+  z.object({
+    type: z.literal("mixed"),
+    repoPaths: z.array(z.string().min(1)).default([]),
+    urls: z.array(z.string().url()).default([]),
+    domains: z.array(z.string().min(1)).default([]),
+  }),
+]);
+export type SubagentScope = z.infer<typeof SubagentScopeSchema>;
+
+export const SubagentToolPolicySchema = z.object({
+  allow: z.array(z.string().min(1)).default([]),
+  deny: z.array(z.string().min(1)).default([]).optional(),
+});
+export type SubagentToolPolicy = z.infer<typeof SubagentToolPolicySchema>;
+
+export const SpawnSubagentInputSchema = z.object({
+  name: z.string().min(1).optional(),
+  kind: SubagentKindSchema,
+  prompt: z.string().min(1),
+  scope: SubagentScopeSchema,
+  toolPolicy: SubagentToolPolicySchema.optional(),
+  maxSteps: z.number().int().positive().max(100).optional(),
+  maxDurationMs: z.number().int().positive().max(10 * 60 * 1000).optional(),
+  resumeKey: z.string().min(1).optional(),
+  parentTurnId: z.string().min(1).optional(),
+  expectedOutput: z.enum(["summary", "findings", "patch", "citations"]).optional(),
+});
+export type SpawnSubagentInput = z.infer<typeof SpawnSubagentInputSchema>;
+
+export const SpawnSubagentResultSchema = z.object({
+  subagentId: z.string().min(1),
+  status: z.enum(["completed", "failed", "stopped"]),
+  summary: z.string().min(1),
+  findings: z.array(z.string()).default([]),
+  citations: z
+    .array(
+      z.object({
+        type: z.enum(["file", "url"]),
+        ref: z.string().min(1),
+        excerpt: z.string().optional(),
+      }),
+    )
+    .default([]),
+  artifacts: z
+    .array(
+      z.object({
+        type: z.enum(["patch", "notes", "json"]),
+        content: z.string().min(1),
+      }),
+    )
+    .default([]),
+  trace: z.object({
+    parentTurnId: z.string().min(1),
+    childTurnId: z.string().min(1),
+    kind: SubagentKindSchema,
+    startedAt: z.string().min(1),
+    finishedAt: z.string().min(1),
+  }),
+});
+export type SpawnSubagentResult = z.infer<typeof SpawnSubagentResultSchema>;
+
 export const AgentRequestSchema = z.object({
   task: z.string().min(1),
   repoRoot: z.string().min(1),

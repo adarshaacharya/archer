@@ -38,7 +38,7 @@ describe("loadOpenHarnessConfig", () => {
 
     mkdirSync(join(xdgConfigHome, "xeq"), { recursive: true });
     writeFileSync(
-      join(xdgConfigHome, "xeq", "openharness.json"),
+      join(xdgConfigHome, "xeq", "settings.json"),
       JSON.stringify({
         projectInstructions: false,
         skills: { paths: ["./global-skills"] },

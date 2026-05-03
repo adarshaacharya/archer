@@ -53,7 +53,7 @@ function resolveGlobalOpenHarnessProjectConfigPath(): string {
   const xdgConfigHome = process.env.XDG_CONFIG_HOME?.trim();
   const baseDir =
     xdgConfigHome && xdgConfigHome.length > 0 ? xdgConfigHome : resolve(os.homedir(), ".config");
-  return resolve(baseDir, "xeq", "openharness.json");
+  return resolve(baseDir, "xeq", "settings.json");
 }
 
 function resolveGlobalOpenHarnessMcpConfigPath(): string {

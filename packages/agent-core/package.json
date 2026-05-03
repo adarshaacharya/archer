@@ -18,11 +18,11 @@
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@openharness/core": "^0.6.0",
+    "@openharness/core": "^0.6.2",
     "@xeq/model-providers": "workspace:*",
     "@xeq/sandbox": "workspace:*",
-    "@xeq/storage": "workspace:*",
     "@xeq/shared": "workspace:*",
+    "@xeq/storage": "workspace:*",
     "@xeq/tools": "workspace:*"
   }
 }
