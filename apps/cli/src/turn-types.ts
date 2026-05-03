@@ -1,13 +1,10 @@
 import type { InputIntent } from "./intent-router.js";
 
-export type TurnIntent = InputIntent;
-
 export type TurnStatus = "completed" | "failed" | "cancelled" | "clarify";
 
 export interface TurnContext {
   sessionId: string;
   task: string;
-  intent: TurnIntent;
   projectRoot: string;
   approvalMode: string;
   modelId: string;

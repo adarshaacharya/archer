@@ -4,7 +4,6 @@ import {
   expandedContextSteps,
   isContextBudgetResult,
   isMaxStepsResult,
-  shouldInspectRepositoryForQuestion,
 } from "./execution-policy.js";
 
 describe("execution-policy", () => {
@@ -31,10 +30,4 @@ describe("execution-policy", () => {
     expect(prompt).toContain("where is routing");
   });
 
-  test("inspects repo only for relevant question intents", () => {
-    expect(shouldInspectRepositoryForQuestion("how are you", "question")).toBe(false);
-    expect(shouldInspectRepositoryForQuestion("where is turn routing implemented", "question")).toBe(true);
-    expect(shouldInspectRepositoryForQuestion("summarize current architecture", "research")).toBe(true);
-    expect(shouldInspectRepositoryForQuestion("fix bug", "change")).toBe(false);
-  });
 });

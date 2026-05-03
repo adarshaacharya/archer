@@ -2,7 +2,6 @@ import type { SessionState } from "./session-state.js";
 import type { Tui } from "@xeq/tui";
 import { deriveCompactionPolicy, resetSessionById } from "@xeq/agent-core";
 import { appendTurnResult, getTurnResults } from "@xeq/storage";
-import { inferExplicitIntent, type InputIntent } from "./intent-router.js";
 import { runTask } from "./task-runner.js";
 import { maybePruneSessionBeforeTurn } from "./recovery/prune.js";
 import type { TurnResult } from "./turn-types.js";
@@ -82,8 +81,7 @@ export async function runTurnWithDeps(
     });
   }
 
-  const intent = resolveIntent(input, recentTurns);
-  const result = await deps.runTask(trimmedInput, tui, state, abortController, intent);
+  const result = await deps.runTask(trimmedInput, tui, state, abortController);
 
   await persistTurnResult(deps.appendTurnResult, state.sessionId, result);
   return result;
@@ -103,40 +101,4 @@ async function persistTurnResult(
     summary: result.summary,
     message: result.message,
   });
-}
-
-export function inferIntentWithHistory(
-  input: string,
-  recentTurns: Array<{ intent: string; status: string; task: string }>,
-): InputIntent {
-  const explicitIntent = inferExplicitIntent(input);
-  if (explicitIntent) {
-    return explicitIntent;
-  }
-
-  const normalized = input.trim().toLowerCase();
-  const lastMeaningfulTurn = [...recentTurns]
-    .reverse()
-    .find(
-      (
-        turn,
-      ): turn is { intent: InputIntent; status: string; task: string } =>
-        turn.status !== "clarify" && isIntent(turn.intent),
-    );
-  if (!lastMeaningfulTurn) {
-    return "change";
-  }
-
-  return lastMeaningfulTurn.intent;
-}
-
-function isIntent(value: string): value is InputIntent {
-  return value === "change" || value === "question" || value === "research";
-}
-
-function resolveIntent(
-  input: string,
-  recentTurns: Array<{ intent: string; status: string; task: string }>,
-): InputIntent {
-  return inferIntentWithHistory(input, recentTurns);
 }

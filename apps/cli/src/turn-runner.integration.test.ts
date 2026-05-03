@@ -58,7 +58,7 @@ describe("runTurn integration", () => {
     resetSessionByIdMock.mockClear();
   });
 
-  it("routes question turns through the main task runner with question intent", async () => {
+  it("runs normal turns through the main task runner with the default intent", async () => {
     const tui = createTui();
     const state = createState();
 
@@ -78,7 +78,7 @@ describe("runTurn integration", () => {
     expect(runTaskMock).toHaveBeenCalledTimes(1);
     const runTaskCalls = runTaskMock.mock.calls as unknown[][];
     expect(runTaskCalls[0]?.[0]).toBe("what is the code doing right now");
-    expect(runTaskCalls[0]?.[4]).toBe("question");
+    expect(runTaskCalls[0]?.[4]).toBeUndefined();
     expect(result.status).toBe("completed");
     expect(appendTurnResultMock).toHaveBeenCalledTimes(1);
     const appendTurnResultCalls = appendTurnResultMock.mock.calls as unknown[][];
@@ -90,7 +90,7 @@ describe("runTurn integration", () => {
     });
   });
 
-  it("runs ambiguous non-empty input through the main task runner", async () => {
+  it("runs non-empty input through the main task runner without CLI intent inference", async () => {
     const tui = createTui();
     const state = createState();
 
@@ -110,7 +110,7 @@ describe("runTurn integration", () => {
     expect(runTaskMock).toHaveBeenCalledTimes(1);
     const runTaskCalls = runTaskMock.mock.calls as unknown[][];
     expect(runTaskCalls[0]?.[0]).toBe("yo");
-    expect(runTaskCalls[0]?.[4]).toBe("change");
+    expect(runTaskCalls[0]?.[4]).toBeUndefined();
     expect(result.status).toBe("completed");
     expect(tui.renderAssistantMessage).not.toHaveBeenCalled();
     expect(appendTurnResultMock).toHaveBeenCalledTimes(1);
@@ -143,7 +143,7 @@ describe("runTurn integration", () => {
     expect(tui.renderApprovalPrompt).toHaveBeenCalled();
   });
 
-  it("persists fallback turn results with the original task text", async () => {
+  it("persists turn results with the original task text", async () => {
     const tui = createTui();
     const state = createState();
 

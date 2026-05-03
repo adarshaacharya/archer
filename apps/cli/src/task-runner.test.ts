@@ -5,7 +5,6 @@ import {
   createQuestionExplorationState,
   evaluateQuestionAnswerReadiness,
   type QuestionExplorationState,
-  shouldInspectRepositoryForQuestion,
 } from "@xeq/agent-core";
 
 function exploration(overrides: Partial<QuestionExplorationState> = {}): QuestionExplorationState {
@@ -95,18 +94,5 @@ describe("evaluateQuestionAnswerReadiness", () => {
 
     expect(decision.ready).toBe(true);
     expect(decision.reason).toContain("misses");
-  });
-});
-
-describe("shouldInspectRepositoryForQuestion", () => {
-  it("does not inspect the repo for casual questions", () => {
-    expect(shouldInspectRepositoryForQuestion("how are you", "question")).toBe(false);
-  });
-
-  it("inspects the repo for workspace questions", () => {
-    expect(shouldInspectRepositoryForQuestion("what is this project about", "question")).toBe(true);
-    expect(
-      shouldInspectRepositoryForQuestion("where is turn routing implemented", "question"),
-    ).toBe(true);
   });
 });

@@ -81,6 +81,12 @@ export const RunSummarySchema = z.object({
 });
 export type RunSummary = z.infer<typeof RunSummarySchema>;
 
+export const TurnDecisionSchema = z.object({
+  mode: z.enum(["answer", "change"]),
+  rationale: z.string().min(1),
+});
+export type TurnDecision = z.infer<typeof TurnDecisionSchema>;
+
 export const TuiKeybindsSchema = z.object({
   leader: z.string().trim().min(1).optional(),
   app_exit: z.string().trim().min(1).optional(),

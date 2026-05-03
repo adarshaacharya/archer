@@ -95,7 +95,8 @@ export function createToolApprovalHandler(opts: {
       return (
         decision.permission === "read" ||
         decision.permission === "web_fetch" ||
-        (opts.allowBashInContext === true && decision.permission === "bash")
+        (decision.permission === "bash" &&
+          (decision.action === "allow" || opts.allowBashInContext === true))
       );
     }
 

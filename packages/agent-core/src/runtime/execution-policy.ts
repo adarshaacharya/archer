@@ -38,21 +38,3 @@ export function buildQuestionLimitFinalAnswerPrompt(task: string, reason: string
     task.trim(),
   ].join("\n");
 }
-
-export function shouldInspectRepositoryForQuestion(
-  task: string,
-  intent: "change" | "question" | "research",
-): boolean {
-  if (intent === "research") {
-    return true;
-  }
-
-  if (intent !== "question") {
-    return false;
-  }
-
-  const normalized = task.trim().toLowerCase();
-  return /\b(code|codebase|repo|repository|workspace|app|project|file|folder|directory|function|class|module|package|route|handler|implementation|implemented|defined|architecture|flow|harness|agent|cli|terminal|command|build|test|error|failing|failure|bug|stack trace|log)\b/.test(
-    normalized,
-  );
-}
