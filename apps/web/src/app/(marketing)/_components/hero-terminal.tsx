@@ -16,19 +16,28 @@ export function HeroTerminal() {
         <div className="term-body">
           <div className="term-line">
             <span className="term-prompt">❯</span>
-            <span className="term-highlight">
-              archer task &quot;Refactor the auth middleware to support JWT
-              rotation&quot;
-            </span>
+            <span className="term-highlight">archer</span>
           </div>
           <div className="term-line term-dim" style={{ marginTop: "1rem" }}>
+            [SYS] Starting local session...
+          </div>
+          <div className="term-line term-dim">
+            [SYS] Describe the task you want Archer to handle.
+          </div>
+          <div className="term-line" style={{ marginTop: "1rem" }}>
+            <span className="term-prompt">&gt;</span>
+            <span className="term-highlight">
+              Refactor the auth middleware to support JWT rotation
+            </span>
+          </div>
+          <div className="term-line term-dim">
             [SYS] Connecting to local context...
           </div>
           <div className="term-line term-dim">
             [SYS] Reading src/middleware/auth.ts (142 lines)
           </div>
           <div className="term-line term-dim">
-            [SYS] Provider: OpenRouter (claude-3-opus)
+            [SYS] Provider: OpenRouter (Claude Sonnet 4.6)
           </div>
 
           <div
