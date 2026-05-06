@@ -1,19 +1,16 @@
+import type { EvalScore } from "./schema.js";
 import {
   type EvalRunSummary,
   EvalRunSummarySchema,
   type EvalScenario,
   EvalScenarioSchema,
 } from "./schema.js";
-import type { EvalScore } from "./schema.js";
 
 function unique(items: string[]): string[] {
   return [...new Set(items)];
 }
 
-export function scoreEvalRun(input: {
-  scenario: EvalScenario;
-  run: EvalRunSummary;
-}): EvalScore {
+export function scoreEvalRun(input: { scenario: EvalScenario; run: EvalRunSummary }): EvalScore {
   const scenario = EvalScenarioSchema.parse(input.scenario);
   const run = EvalRunSummarySchema.parse(input.run);
   const findings: string[] = [];

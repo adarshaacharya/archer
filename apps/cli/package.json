@@ -6,7 +6,9 @@
   "bin": {
     "archer": "dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "rm -rf dist && bun build src/index.ts --target=node --format=esm --outdir dist --packages=bundle",

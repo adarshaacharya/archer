@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
+import { join } from "node:path";
 import type { SupportedProvider } from "@archer/model-providers";
 import {
-  createPlainComposerSubmission,
-  type ApprovalMode,
   AgentRequestSchema,
+  type ApprovalMode,
+  createPlainComposerSubmission,
 } from "@archer/shared";
-import { join } from "node:path";
 import {
   appendPromptHistoryEntry,
   appendTurnResult,
@@ -43,14 +43,14 @@ import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.
 import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compact.js";
 import { bootstrapWorkspace, initSlashCommandItem } from "./commands/init.js";
 import { KeybindManager } from "./keybinds.js";
-import { loadOpenHarnessConfig } from "./openharness-config.js";
-import { renderInitHintMessage, shouldShowInitHint } from "./onboarding-hint.js";
 import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
-import { titleFromTask } from "./task-title.js";
-import { runTask } from "./task-runner.js";
-import { runTurn } from "./turn-runner.js";
-import { loadTuiConfig } from "./tui-config.js";
+import { renderInitHintMessage, shouldShowInitHint } from "./onboarding-hint.js";
+import { loadOpenHarnessConfig } from "./openharness-config.js";
 import type { SessionState } from "./session-state.js";
+import { runTask } from "./task-runner.js";
+import { titleFromTask } from "./task-title.js";
+import { loadTuiConfig } from "./tui-config.js";
+import { runTurn } from "./turn-runner.js";
 import type { TurnResult } from "./turn-types.js";
 
 function parseInitialTask(argv: string[]): string | null {

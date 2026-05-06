@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.2.0/schema.json",
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
@@ -13,6 +13,6 @@
     }
   },
   "files": {
-    "ignore": ["**/dist/**", "**/.turbo/**", "**/.next/**", "**/node_modules/**"]
+    "includes": ["**", "!**/dist", "!**/.turbo", "!**/.next", "!**/node_modules"]
   }
 }

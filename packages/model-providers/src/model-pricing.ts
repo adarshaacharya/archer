@@ -116,10 +116,7 @@ export function resolveModelPricing(input: {
   return undefined;
 }
 
-export function estimateUsageCost(input: {
-  pricing?: ModelPricing;
-  usage: UsageTokens;
-}): number {
+export function estimateUsageCost(input: { pricing?: ModelPricing; usage: UsageTokens }): number {
   const cost = input.pricing?.cost;
   if (!cost) return 0;
 

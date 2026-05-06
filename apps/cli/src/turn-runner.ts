@@ -1,10 +1,10 @@
-import type { SessionState } from "./session-state.js";
-import type { Tui } from "@archer/tui";
 import { deriveCompactionPolicy, resetSessionById } from "@archer/agent-core";
-import { createPlainComposerSubmission, type ComposerSubmission } from "@archer/shared";
+import { type ComposerSubmission, createPlainComposerSubmission } from "@archer/shared";
 import { appendTurnResult, getTurnResults } from "@archer/storage";
-import { runTask } from "./task-runner.js";
+import type { Tui } from "@archer/tui";
 import { maybePruneSessionBeforeTurn } from "./recovery/prune.js";
+import type { SessionState } from "./session-state.js";
+import { runTask } from "./task-runner.js";
 import type { TurnResult } from "./turn-types.js";
 
 type RunTurnDeps = {
@@ -75,11 +75,7 @@ export async function runTurnWithDeps(
   }
   if (preturnPrune.prunedCount > 0 || preturnPrune.modelMessagesPruned > 0) {
     tui.renderApprovalPrompt({
-      message:
-        `Compacted session context before running the turn (` +
-        `${preturnPrune.prunedCount} transcript${preturnPrune.prunedCount === 1 ? "" : "s"} pruned, ` +
-        `${preturnPrune.modelMessagesPruned} model message${preturnPrune.modelMessagesPruned === 1 ? "" : "s"} trimmed` +
-        `${preturnPrune.artifactCreated ? ", continuation brief saved" : ""}).`,
+      message: `Compacted session context before running the turn (${preturnPrune.prunedCount} transcript${preturnPrune.prunedCount === 1 ? "" : "s"} pruned, ${preturnPrune.modelMessagesPruned} model message${preturnPrune.modelMessagesPruned === 1 ? "" : "s"} trimmed${preturnPrune.artifactCreated ? ", continuation brief saved" : ""}).`,
     });
   }
 

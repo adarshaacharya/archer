@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "./db.js";
-import { touchSession } from "./session.js";
 import { turn_results } from "./schema.js";
+import { touchSession } from "./session.js";
 
 export type PersistedTurnResult = {
   id: string;

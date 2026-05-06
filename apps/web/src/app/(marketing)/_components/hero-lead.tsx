@@ -1,7 +1,10 @@
 import Image from "next/image";
+import { useId } from "react";
 import { ArrowRightIcon } from "@/app/(marketing)/_components/arrow-right-icon";
 
 export function HeroLead() {
+  const installId = useId();
+
   return (
     <div className="col-span-6 pad-box">
       <div
@@ -57,7 +60,7 @@ export function HeroLead() {
         </a>
       </div>
 
-      <div id="install" className="install-block scroll-mt-28">
+      <div id={installId} className="install-block scroll-mt-28">
         <div className="install-header mono">
           <span>INSTALLATION</span>
           <span>macOS, Linux, WSL</span>

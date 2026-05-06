@@ -1,11 +1,6 @@
-import {
-  buildCompactionPrompt,
-  buildImplementationPrompt,
-  buildPlanningPrompt,
-  buildVerificationPrompt,
-} from "./task-flow.js";
 import { buildQuestionLimitFinalAnswerPrompt, isMaxStepsResult } from "./execution-policy.js";
 import { buildRepairPlanningPrompt } from "./implementation-policy.js";
+import type { RuntimePhaseResult, RuntimePhaseRunner } from "./phase-runner.js";
 import {
   parseExecutionPlan,
   parseVerificationReport,
@@ -13,9 +8,12 @@ import {
   validateExecutionPlan,
   validateVerificationReport,
 } from "./planning-artifacts.js";
-import { buildVerificationScopeInstruction } from "./validation-policy.js";
-import type { RuntimePhaseResult, RuntimePhaseRunner } from "./phase-runner.js";
-import { reduceAnswerTurnState, reduceChangeTurnState } from "./turn-reducer.js";
+import {
+  buildCompactionPrompt,
+  buildImplementationPrompt,
+  buildPlanningPrompt,
+  buildVerificationPrompt,
+} from "./task-flow.js";
 import {
   planningNeedsRecovery,
   planningSucceeded,
@@ -23,7 +21,9 @@ import {
   shouldRetryAfterCompaction,
   verificationPassed,
 } from "./turn-guards.js";
+import { reduceAnswerTurnState, reduceChangeTurnState } from "./turn-reducer.js";
 import { createAnswerTurnState, createChangeTurnState } from "./turn-state.js";
+import { buildVerificationScopeInstruction } from "./validation-policy.js";
 
 export type RuntimeSummaryFields = {
   success: boolean;

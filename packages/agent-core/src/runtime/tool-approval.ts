@@ -1,9 +1,9 @@
 import { classifyCommandRisk } from "@archer/sandbox";
 import {
+  type ApprovalMode,
   autoApproveCommandsInApprovalMode,
   autoApproveEditsInApprovalMode,
   canWriteInApprovalMode,
-  type ApprovalMode,
 } from "@archer/shared";
 import type { TaskPhaseController } from "./task-flow.js";
 

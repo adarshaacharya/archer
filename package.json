@@ -12,7 +12,7 @@
     "check-types": "turbo run check-types"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
+    "@biomejs/biome": "^2.2.0",
     "turbo": "^2.8.21",
     "typescript": "5.9.2"
   },
@@ -20,5 +20,8 @@
     "node": ">=18"
   },
   "packageManager": "bun@1.2.2",
-  "workspaces": ["apps/*", "packages/*"]
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
 }

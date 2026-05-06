@@ -41,10 +41,7 @@ export async function deleteSession(id: string): Promise<void> {
   await getDb().delete(sessions).where(eq(sessions.id, id));
 }
 
-export async function listSessions(opts?: {
-  limit?: number;
-  project_root?: string;
-}) {
+export async function listSessions(opts?: { limit?: number; project_root?: string }) {
   return getDb().query.sessions.findMany({
     where: opts?.project_root ? eq(sessions.project_root, opts.project_root) : undefined,
     orderBy: [desc(sessions.updated_at)],
@@ -69,10 +66,7 @@ export async function touchSession(input: {
     .where(eq(sessions.id, input.id));
 }
 
-export async function updateSessionTitle(input: {
-  id: string;
-  title: string;
-}): Promise<void> {
+export async function updateSessionTitle(input: { id: string; title: string }): Promise<void> {
   await getDb()
     .update(sessions)
     .set({

@@ -1,6 +1,5 @@
-import type { ApprovalMode } from "@archer/shared";
-import type { OpenHarnessRuntimeConfig } from "@archer/shared";
 import type { SupportedProvider } from "@archer/model-providers";
+import type { ApprovalMode, OpenHarnessRuntimeConfig } from "@archer/shared";
 import type { SupportedWebProvider } from "@archer/web";
 
 export type SessionState = {

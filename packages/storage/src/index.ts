@@ -1,13 +1,18 @@
+export type { StorageBootstrapStatus } from "./db.js";
 export {
-  ensureStorageDir,
   ensureStorageBootstrap,
+  ensureStorageDir,
   getDatabasePath,
   getDb,
   getSqlite,
   getStorageDir,
   resetStorageForTests,
 } from "./db.js";
-export type { StorageBootstrapStatus } from "./db.js";
+export type {
+  AppendMessageInput,
+  CompactContinuationArtifact,
+  CompactionEventRecord,
+} from "./message.js";
 export {
   appendMessage,
   buildCompactContinuationArtifact,
@@ -21,10 +26,13 @@ export {
   pruneModelMessagesWithArtifact,
   pruneSessionTranscripts,
   replaceMessages,
-  saveCompactionEvent,
   saveCompactContinuationArtifact,
+  saveCompactionEvent,
 } from "./message.js";
-export type { CompactContinuationArtifact, CompactionEventRecord } from "./message.js";
+export type { PersistedPromptHistoryEntry } from "./prompt-history.js";
+export { appendPromptHistoryEntry, listPromptHistory } from "./prompt-history.js";
+export * from "./schema.js";
+export type { CreateSessionInput } from "./session.js";
 export {
   createSession,
   deleteSession,
@@ -33,10 +41,5 @@ export {
   touchSession,
   updateSessionTitle,
 } from "./session.js";
-export { appendTurnResult, getTurnResults } from "./turn-result.js";
-export { appendPromptHistoryEntry, listPromptHistory } from "./prompt-history.js";
-export type { AppendMessageInput } from "./message.js";
-export type { CreateSessionInput } from "./session.js";
 export type { PersistedTurnResult } from "./turn-result.js";
-export type { PersistedPromptHistoryEntry } from "./prompt-history.js";
-export * from "./schema.js";
+export { appendTurnResult, getTurnResults } from "./turn-result.js";

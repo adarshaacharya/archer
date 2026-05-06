@@ -1,6 +1,6 @@
-import type { FsProvider, ShellProvider, ToolCallInfo } from "@openharness/core";
-import type { WebCapability } from "@archer/tools";
 import type { OpenHarnessRuntimeConfig } from "@archer/shared";
+import type { WebCapability } from "@archer/tools";
+import type { FsProvider, ShellProvider, ToolCallInfo } from "@openharness/core";
 
 export interface OpenHarnessRuntimeStepEvent {
   step: number;

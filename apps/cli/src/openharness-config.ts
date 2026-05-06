@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import { resolve } from "node:path";
-import { OpenHarnessRuntimeConfigSchema, type OpenHarnessRuntimeConfig } from "@archer/shared";
+import { type OpenHarnessRuntimeConfig, OpenHarnessRuntimeConfigSchema } from "@archer/shared";
 
 export async function loadOpenHarnessConfig(): Promise<OpenHarnessRuntimeConfig> {
   const [globalProjectConfig, globalMcpConfig] = await Promise.all([

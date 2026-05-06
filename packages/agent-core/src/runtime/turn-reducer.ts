@@ -1,5 +1,5 @@
-import type { ExecutionPlan, VerificationReport } from "./planning-artifacts.js";
 import type { RuntimePhaseResult } from "./phase-runner.js";
+import type { ExecutionPlan, VerificationReport } from "./planning-artifacts.js";
 import {
   type AnswerTurnPhase,
   type AnswerTurnState,

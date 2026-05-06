@@ -1,5 +1,5 @@
-import { didVerificationPass, shouldRepairImplementationOutcome } from "./implementation-policy.js";
 import { shouldAttemptRepair, shouldRetryWithCompactedContext } from "./continuation-policy.js";
+import { didVerificationPass, shouldRepairImplementationOutcome } from "./implementation-policy.js";
 import type { ChangeTurnState } from "./turn-state.js";
 
 export function planningSucceeded(state: ChangeTurnState): boolean {

@@ -11,8 +11,8 @@ import {
   loadModelMessages,
   pruneModelMessagesWithArtifact,
   replaceMessages,
-  saveCompactionEvent,
   saveCompactContinuationArtifact,
+  saveCompactionEvent,
 } from "./index.js";
 
 const createdSessionIds = new Set<string>();

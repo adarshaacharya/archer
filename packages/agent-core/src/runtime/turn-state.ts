@@ -1,6 +1,6 @@
 import type { WorkflowKind } from "./continuation-policy.js";
-import type { ExecutionPlan, VerificationReport } from "./planning-artifacts.js";
 import type { RuntimePhaseResult } from "./phase-runner.js";
+import type { ExecutionPlan, VerificationReport } from "./planning-artifacts.js";
 
 export type ChangeTurnPhase =
   | "planning"

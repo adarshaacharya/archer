@@ -1,20 +1,20 @@
-import { type ApprovalChoice, type ApprovalRequest } from "@archer/sandbox";
+import path from "node:path";
+import type { ApprovalChoice, ApprovalRequest } from "@archer/sandbox";
 import {
+  type ApprovalMode,
   autoApproveCommandsInApprovalMode,
   autoApproveEditsInApprovalMode,
   canWriteInApprovalMode,
   normalizeApprovalMode,
-  type ApprovalMode,
 } from "@archer/shared";
-import { type Tui } from "@archer/tui";
+import type { Tui } from "@archer/tui";
 import {
-  type PermissionRequest,
   applyApprovalChoice,
   getSettingsFilePath,
   hasStoredPermission,
+  type PermissionRequest,
   readSettings,
 } from "./settings-store.js";
-import path from "node:path";
 
 export type LocalApprovalRequest = ApprovalRequest | PermissionRequest;
 

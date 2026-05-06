@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
-import { randomUUID } from "node:crypto";
 import type { ComposerMentionBinding, ComposerTextElement } from "@archer/shared";
 
 const IGNORED_DIRS = new Set([

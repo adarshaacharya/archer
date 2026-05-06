@@ -1,44 +1,44 @@
 import { performance } from "node:perf_hooks";
 import {
-  createCompactionMetadata,
-  shouldAttemptVerification,
-  shouldContinueAfterContextFailure,
-  shouldStopCommitWorkflowAfterContext,
-  deriveValidationScope,
-  deriveCompactionPolicy,
-  isContextPressureFailure,
-  handleTaskContextOutcome,
-  parseCompactionReport,
-  parseTurnDecision,
-  recordCompactionAttempt,
-  resolveObservedTurnIntent,
-  validateTurnDecision,
-  type OpenHarnessRuntimeDeps,
-  type RuntimePhaseRunner,
-  type TurnObservedFacts,
-  buildPriorTurnPlanningGuidance,
   buildContextGatheringPrompt,
   buildDirectAnswerPrompt,
   buildDirectAnswerSystemPrompt,
+  buildPriorTurnPlanningGuidance,
   buildQuestionStrategy,
   buildResearchAnswerPrompt,
   buildWebAnswerPrompt,
   buildWebAnswerSystemPrompt,
+  createCompactionMetadata,
+  createOpenHarnessEngineAdapter,
   createQuestionExplorationState,
   createTaskPhaseController,
   createToolApprovalHandler,
-  createOpenHarnessEngineAdapter,
   createWebCompletedEvent,
   createWebFailedEvent,
   createWebStartedEvent,
-  formatWebRuntimeEvent,
-  expandedContextSteps,
+  deriveCompactionPolicy,
+  deriveValidationScope,
   evaluateQuestionAnswerReadiness,
+  expandedContextSteps,
+  formatWebRuntimeEvent,
+  handleTaskContextOutcome,
   isContextBudgetResult,
-  prependContinuationBrief,
-  recordQuestionStep,
-  summarizeQuestionExploration,
+  isContextPressureFailure,
+  type OpenHarnessRuntimeDeps,
   type OpenHarnessToolEvent,
+  parseCompactionReport,
+  parseTurnDecision,
+  prependContinuationBrief,
+  type RuntimePhaseRunner,
+  recordCompactionAttempt,
+  recordQuestionStep,
+  resolveObservedTurnIntent,
+  shouldAttemptVerification,
+  shouldContinueAfterContextFailure,
+  shouldStopCommitWorkflowAfterContext,
+  summarizeQuestionExploration,
+  type TurnObservedFacts,
+  validateTurnDecision,
 } from "@archer/agent-core";
 import { createSandboxEnvironment } from "@archer/sandbox";
 import {
@@ -56,14 +56,14 @@ import {
 import type { Tui } from "@archer/tui";
 import { createWebCapability } from "@archer/web";
 import { requestApproval, withApprovalQueue } from "./approvals.js";
+import { resolveActiveWebProvider } from "./auth-store.js";
 import { createEvalMetricsCollector } from "./eval-metrics.js";
 import { buildExplicitFileContext, prependExplicitFileContext } from "./explicit-context.js";
-import { resolveActiveWebProvider } from "./auth-store.js";
-import { planPreRoute, preRouteResultFromMode, type PreRouteResult } from "./intent-router.js";
+import { type PreRouteResult, planPreRoute, preRouteResultFromMode } from "./intent-router.js";
 import { pruneSessionAfterTurn } from "./recovery/prune.js";
 import type { SessionState } from "./session-state.js";
-import { formatSubagentRuntimeEvent } from "./subagent-events.js";
 import { webFetchRuleForUrl } from "./settings-store.js";
+import { formatSubagentRuntimeEvent } from "./subagent-events.js";
 import { titleFromTask } from "./task-title.js";
 import { createTurnStateMachine } from "./turn-state-machine.js";
 import type { TurnContext, TurnResult, TurnSummary } from "./turn-types.js";
@@ -753,6 +753,7 @@ export async function runTask(
           : null;
 
     const executionRoute = resolveTaskExecutionRoute(resolvedPreRoute ?? null, declaredIntent);
+    const allowedToolNames = resolvedPreRoute?.allowedToolNames ?? [];
 
     if (executionRoute === "change") {
       isChangeTurn = true;
@@ -764,7 +765,7 @@ export async function runTask(
       renderApprovalMessage("Answering directly...");
       const directResult = await runPhase(buildDirectAnswerPrompt(request.task), true, 8, {
         allowTools: false,
-        allowedToolNames: resolvedPreRoute!.allowedToolNames,
+        allowedToolNames,
         instructions: buildDirectAnswerSystemPrompt(),
       });
 
@@ -795,7 +796,7 @@ export async function runTask(
     if (executionRoute === "web-context") {
       renderApprovalMessage("Inspecting web content...");
       const webResult = await runPhase(buildWebAnswerPrompt(request.task), true, 8, {
-        allowedToolNames: resolvedPreRoute!.allowedToolNames,
+        allowedToolNames,
         instructions: buildWebAnswerSystemPrompt(),
       });
 

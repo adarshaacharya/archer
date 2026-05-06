@@ -1,8 +1,8 @@
 import { relative, resolve } from "node:path";
 import {
+  type ApprovalMode,
   autoApproveCommandsInApprovalMode,
   canWriteInApprovalMode,
-  type ApprovalMode,
 } from "@archer/shared";
 import { analyzeShellCommand } from "./command-analysis.js";
 

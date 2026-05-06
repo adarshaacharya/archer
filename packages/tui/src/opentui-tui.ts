@@ -1,29 +1,29 @@
 import {
-  BoxRenderable,
-  type CliRenderer,
-  SelectRenderable,
-  SelectRenderableEvents,
-  StyledText,
-  TextRenderable,
-  TextareaRenderable,
-  createCliRenderer,
-  fg,
-  type TextChunk,
-} from "@opentui/core";
-import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
-import {
-  createPlainComposerSubmission,
   type AgentStep,
   type ComposerMentionBinding,
   type ComposerSubmission,
+  createPlainComposerSubmission,
   type RunSummary,
 } from "@archer/shared";
 import {
+  BoxRenderable,
+  type CliRenderer,
+  createCliRenderer,
+  fg,
+  SelectRenderable,
+  SelectRenderableEvents,
+  StyledText,
+  TextareaRenderable,
+  type TextChunk,
+  TextRenderable,
+} from "@opentui/core";
+import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
+import {
+  type ActiveMentionQuery,
   buildComposerTextElements,
   findActiveMentionQuery,
   insertFileMention,
   MentionFileIndex,
-  type ActiveMentionQuery,
   type MentionSuggestion,
   reconcileMentionBindings,
 } from "./mention-state.js";
