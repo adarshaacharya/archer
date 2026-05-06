@@ -1,3 +1,11 @@
+<p align="center">
+  <img
+    src="./apps/web/public/logos/Gemini_Generated_Image_kpv9hjkpv9hjkpv9.png"
+    alt="Archer wordmark"
+    width="280"
+  />
+</p>
+
 # Archer
 
 Archer is a terminal based AI coding agent for macOS, Linux, and WSL. Bring your own API key, choose your model provider, no hidden costs, completely free to use.
