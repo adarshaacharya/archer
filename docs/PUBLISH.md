@@ -3,7 +3,7 @@
 This repo is a Bun monorepo. The publishable npm package is:
 
 - `apps/cli`
-- package name: `@adartsahacahrya/archer`
+- package name: `@adarshaacharya/archer`
 
 ## 1. Prerequisites
 
@@ -64,3 +64,20 @@ npm publish --access public
 ```
 
 Use `minor` or `major` instead of `patch` when appropriate.
+
+## 7. CI Release Flow (Recommended)
+
+This repo includes `.github/workflows/cli-release.yml`:
+
+- Push/PR to `master`: runs lint, typecheck, and build.
+- Push a tag like `v0.1.1`: runs checks, then publishes to npm.
+
+Release command sequence:
+now if hav
+```bash
+cd apps/cli
+npm version patch (or minor or major)
+git push origin master --follow-tags
+```
+
+For this to work, enable npm Trusted Publishing for this GitHub repository in npm package settings.
