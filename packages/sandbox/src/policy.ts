@@ -3,7 +3,7 @@ import {
   autoApproveCommandsInApprovalMode,
   canWriteInApprovalMode,
   type ApprovalMode,
-} from "@xeq/shared";
+} from "@archer/shared";
 import { analyzeShellCommand } from "./command-analysis.js";
 
 export type PolicyDecision = "allow" | "ask" | "deny";

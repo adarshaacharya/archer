@@ -34,7 +34,7 @@ export function createTaskPhaseController(
 
 export function buildSystemPrompt(): string {
   return [
-    "You are XEQ, a terminal coding agent.",
+    "You are Archer, a terminal coding agent.",
     "Default to doing the work without asking questions. Treat short tasks as sufficient direction and infer missing details by reading the codebase and following existing conventions.",
     "Always begin by inspecting the relevant files and understanding the current implementation before making changes.",
     "Only ask when you are truly blocked after checking relevant context and cannot safely pick a reasonable default.",
@@ -134,7 +134,7 @@ export function buildDirectAnswerPrompt(task: string): string {
 
 export function buildDirectAnswerSystemPrompt(): string {
   return [
-    "You are XEQ, a terminal coding agent.",
+    "You are Archer, a terminal coding agent.",
     "Answer the user's direct question in plain text.",
     "Do not inspect files, search, run commands, or call tools.",
     "For casual questions, respond naturally and briefly.",
@@ -155,7 +155,7 @@ export function buildWebAnswerPrompt(task: string): string {
 
 export function buildWebAnswerSystemPrompt(): string {
   return [
-    "You are XEQ, a terminal coding agent.",
+    "You are Archer, a terminal coding agent.",
     "Use web tools to inspect the provided URL or external sources when needed.",
     "Do not inspect local repository files unless the user asks about the repo.",
     "Answer plainly from the content you inspected.",

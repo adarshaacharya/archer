@@ -2,7 +2,7 @@ import type {
   WebAction,
   WebActionResult,
   WebSearchAction,
-} from "@xeq/shared";
+} from "@archer/shared";
 import { tool } from "ai";
 import { z } from "zod";
 

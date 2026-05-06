@@ -1,4 +1,4 @@
-# @xeq/shared
+# @archer/shared
 
 Shared contracts and typed errors.
 

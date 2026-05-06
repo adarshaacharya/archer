@@ -1,8 +1,8 @@
 import type { SessionState } from "./session-state.js";
-import type { Tui } from "@xeq/tui";
-import { deriveCompactionPolicy, resetSessionById } from "@xeq/agent-core";
-import { createPlainComposerSubmission, type ComposerSubmission } from "@xeq/shared";
-import { appendTurnResult, getTurnResults } from "@xeq/storage";
+import type { Tui } from "@archer/tui";
+import { deriveCompactionPolicy, resetSessionById } from "@archer/agent-core";
+import { createPlainComposerSubmission, type ComposerSubmission } from "@archer/shared";
+import { appendTurnResult, getTurnResults } from "@archer/storage";
 import { runTask } from "./task-runner.js";
 import { maybePruneSessionBeforeTurn } from "./recovery/prune.js";
 import type { TurnResult } from "./turn-types.js";

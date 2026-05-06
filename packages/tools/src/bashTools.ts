@@ -1,4 +1,4 @@
-import type { ToolResult } from "@xeq/shared";
+import type { ToolResult } from "@archer/shared";
 import { type CreateBashToolOptions, createBashTool } from "bash-tool";
 
 export type BashToolName = "bash";
@@ -116,7 +116,7 @@ export async function createBashToolsExecutor(
         }
 
         const executionPromise = resolveToolExecution(
-          await toolkit.tools.bash.execute({ command }, { toolCallId: "xeq-bash", messages: [] }),
+          await toolkit.tools.bash.execute({ command }, { toolCallId: "archer-bash", messages: [] }),
         );
         const timeoutPromise = new Promise<never>((_, reject) => {
           setTimeout(() => reject(new Error("Command timed out after 30 seconds")), 30_000);

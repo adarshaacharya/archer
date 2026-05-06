@@ -39,18 +39,18 @@ import {
   recordQuestionStep,
   summarizeQuestionExploration,
   type OpenHarnessToolEvent,
-} from "@xeq/agent-core";
-import { createSandboxEnvironment } from "@xeq/sandbox";
-import { AgentRequestSchema, autoApproveEditsInApprovalMode, type ComposerSubmission } from "@xeq/shared";
+} from "@archer/agent-core";
+import { createSandboxEnvironment } from "@archer/sandbox";
+import { AgentRequestSchema, autoApproveEditsInApprovalMode, type ComposerSubmission } from "@archer/shared";
 import {
   appendMessage,
   getTurnResults,
   loadLatestCompactContinuationArtifact,
   saveCompactionEvent,
   updateSessionTitle,
-} from "@xeq/storage";
-import type { Tui } from "@xeq/tui";
-import { createWebCapability } from "@xeq/web";
+} from "@archer/storage";
+import type { Tui } from "@archer/tui";
+import { createWebCapability } from "@archer/web";
 import { requestApproval, withApprovalQueue } from "./approvals.js";
 import { createEvalMetricsCollector } from "./eval-metrics.js";
 import { buildExplicitFileContext, prependExplicitFileContext } from "./explicit-context.js";

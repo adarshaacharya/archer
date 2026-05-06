@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
-import { getTurnResults } from "@xeq/storage";
+import { getTurnResults } from "@archer/storage";
 import { starterEvalScenarios } from "./scenarios.js";
 import {
   type EvalRunSummary,
@@ -68,10 +68,10 @@ function parseArgs(argv: string[]) {
 }
 
 function printHelp() {
-  console.log("Usage: bun run --filter @xeq/evals evals [--fixture path] [--scenario id]");
+  console.log("Usage: bun run --filter @archer/evals evals [--fixture path] [--scenario id]");
   console.log("");
   console.log("Without --fixture, runs starter scenarios against built-in example summaries.");
-  console.log("With --session, loads persisted turn results from xeq storage for a session id.");
+  console.log("With --session, loads persisted turn results from archer storage for a session id.");
   console.log("With --fixture, expects a JSON object or array of objects shaped like:");
   console.log('{ "scenario": { ... }, "run": { ... } }');
 }

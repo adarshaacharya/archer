@@ -1,4 +1,4 @@
-# @xeq/sandbox
+# @archer/sandbox
 
 Policy and permission engine.
 
@@ -16,4 +16,4 @@ Policy and permission engine.
 
 ## Depends On
 
-- `@xeq/shared`
+- `@archer/shared`

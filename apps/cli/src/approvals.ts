@@ -1,12 +1,12 @@
-import { type ApprovalChoice, type ApprovalRequest } from "@xeq/sandbox";
+import { type ApprovalChoice, type ApprovalRequest } from "@archer/sandbox";
 import {
   autoApproveCommandsInApprovalMode,
   autoApproveEditsInApprovalMode,
   canWriteInApprovalMode,
   normalizeApprovalMode,
   type ApprovalMode,
-} from "@xeq/shared";
-import { type Tui } from "@xeq/tui";
+} from "@archer/shared";
+import { type Tui } from "@archer/tui";
 import {
   type PermissionRequest,
   applyApprovalChoice,

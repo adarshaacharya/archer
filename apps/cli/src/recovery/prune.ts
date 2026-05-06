@@ -3,7 +3,7 @@ import {
   estimateModelMessageTokens as estimateProviderMessageTokens,
   estimateTextTokens as estimateProviderTextTokens,
   type SupportedProvider,
-} from "@xeq/model-providers";
+} from "@archer/model-providers";
 import {
   buildCompactContinuationArtifact,
   estimateSessionTranscriptPressure,
@@ -11,7 +11,7 @@ import {
   pruneModelMessagesWithArtifact,
   pruneSessionTranscripts,
   saveCompactContinuationArtifact,
-} from "@xeq/storage";
+} from "@archer/storage";
 
 const PRETURN_PROTECT_TOKENS = 12_500;
 const PRETURN_PRUNABLE_TOKENS = 6_250;

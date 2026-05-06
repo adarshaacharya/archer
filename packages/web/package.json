@@ -1,5 +1,5 @@
 {
-  "name": "@xeq/web",
+  "name": "@archer/web",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@xeq/shared": "workspace:*",
-    "@xeq/tools": "workspace:*"
+    "@archer/shared": "workspace:*",
+    "@archer/tools": "workspace:*"
   },
   "exports": {
     ".": {

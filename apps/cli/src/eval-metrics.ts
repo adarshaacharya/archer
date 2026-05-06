@@ -1,4 +1,4 @@
-import type { OpenHarnessToolEvent, WebRuntimeEvent } from "@xeq/agent-core";
+import type { OpenHarnessToolEvent, WebRuntimeEvent } from "@archer/agent-core";
 
 export interface EvalMetricsSummary {
   approvalCount: number;

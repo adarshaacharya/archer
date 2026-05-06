@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ApprovalChoice } from "@xeq/sandbox";
+import type { ApprovalChoice } from "@archer/sandbox";
 
 export type PermissionSettings = {
   version: 1;
@@ -29,7 +29,7 @@ export type PermissionRequest =
       details?: string;
     };
 
-const SETTINGS_DIR = path.join(os.homedir(), ".local", "share", "xeq");
+const SETTINGS_DIR = path.join(os.homedir(), ".local", "share", "archer");
 const SETTINGS_FILE = path.join(SETTINGS_DIR, "settings.json");
 
 function emptySettings(): PermissionSettings {

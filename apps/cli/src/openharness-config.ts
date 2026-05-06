@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import {
   OpenHarnessRuntimeConfigSchema,
   type OpenHarnessRuntimeConfig,
-} from "@xeq/shared";
+} from "@archer/shared";
 
 export async function loadOpenHarnessConfig(): Promise<OpenHarnessRuntimeConfig> {
   const [globalProjectConfig, globalMcpConfig] = await Promise.all([
@@ -24,7 +24,7 @@ async function readOpenHarnessConfig(path: string): Promise<OpenHarnessRuntimeCo
       return null;
     }
 
-    console.warn(`[xeq] Failed reading OpenHarness config at ${path}. Ignoring that file.`);
+    console.warn(`[archer] Failed reading OpenHarness config at ${path}. Ignoring that file.`);
     return null;
   }
 
@@ -32,7 +32,7 @@ async function readOpenHarnessConfig(path: string): Promise<OpenHarnessRuntimeCo
   try {
     parsedJson = JSON.parse(raw);
   } catch {
-    console.warn(`[xeq] Invalid JSON in ${path}. Ignoring that file.`);
+    console.warn(`[archer] Invalid JSON in ${path}. Ignoring that file.`);
     return null;
   }
 
@@ -42,7 +42,7 @@ async function readOpenHarnessConfig(path: string): Promise<OpenHarnessRuntimeCo
     const message = firstIssue
       ? `${firstIssue.path.join(".")}: ${firstIssue.message}`
       : "invalid config";
-    console.warn(`[xeq] Invalid OpenHarness config in ${path} (${message}). Ignoring that file.`);
+    console.warn(`[archer] Invalid OpenHarness config in ${path} (${message}). Ignoring that file.`);
     return null;
   }
 
@@ -53,14 +53,14 @@ function resolveGlobalOpenHarnessProjectConfigPath(): string {
   const xdgConfigHome = process.env.XDG_CONFIG_HOME?.trim();
   const baseDir =
     xdgConfigHome && xdgConfigHome.length > 0 ? xdgConfigHome : resolve(os.homedir(), ".config");
-  return resolve(baseDir, "xeq", "settings.json");
+  return resolve(baseDir, "archer", "settings.json");
 }
 
 function resolveGlobalOpenHarnessMcpConfigPath(): string {
   const xdgConfigHome = process.env.XDG_CONFIG_HOME?.trim();
   const baseDir =
     xdgConfigHome && xdgConfigHome.length > 0 ? xdgConfigHome : resolve(os.homedir(), ".config");
-  return resolve(baseDir, "xeq", "mcp.json");
+  return resolve(baseDir, "archer", "mcp.json");
 }
 
 function mergeOpenHarnessConfigs(

@@ -1,4 +1,4 @@
-# @xeq/agent-core
+# @archer/agent-core
 
 Agent orchestration runtime.
 
@@ -15,6 +15,6 @@ Agent orchestration runtime.
 
 ## Depends On
 
-- `@xeq/shared`
-- `@xeq/model-providers`
-- `@xeq/tools`
+- `@archer/shared`
+- `@archer/model-providers`
+- `@archer/tools`

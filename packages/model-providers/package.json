@@ -1,5 +1,5 @@
 {
-  "name": "@xeq/model-providers",
+  "name": "@archer/model-providers",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "@ai-sdk/google": "^2.0.11",
     "@ai-sdk/openai": "^2.0.16",
     "@openrouter/ai-sdk-provider": "^2.3.3",
-    "@xeq/shared": "workspace:*",
+    "@archer/shared": "workspace:*",
     "ai": "^6.0.141",
     "zod": "^4.1.5"
   },

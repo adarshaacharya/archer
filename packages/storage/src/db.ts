@@ -7,8 +7,8 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import * as schema from "./schema.js";
 
 const STORAGE_DIR =
-  process.env.XEQ_STORAGE_DIR ?? path.join(os.homedir(), ".local", "share", "xeq");
-const DATABASE_PATH = process.env.XEQ_DATABASE_PATH ?? path.join(STORAGE_DIR, "history.db");
+  process.env.ARCHER_STORAGE_DIR ?? path.join(os.homedir(), ".local", "share", "archer");
+const DATABASE_PATH = process.env.ARCHER_DATABASE_PATH ?? path.join(STORAGE_DIR, "history.db");
 const MIGRATIONS_DIR = path.join(import.meta.dir, "..", "migrations");
 
 let sqlite: Database | null = null;

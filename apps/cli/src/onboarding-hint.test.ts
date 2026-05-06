@@ -7,7 +7,7 @@ import { shouldShowInitHint } from "./onboarding-hint.js";
 
 describe("shouldShowInitHint", () => {
   it("shows only once per repo when AGENTS.md is missing", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "xeq-onboarding-"));
+    const cwd = await mkdtemp(join(tmpdir(), "archer-onboarding-"));
 
     expect(shouldShowInitHint(cwd)).toBe(true);
     expect(shouldShowInitHint(cwd)).toBe(false);

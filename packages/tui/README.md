@@ -1,4 +1,4 @@
-# @xeq/tui
+# @archer/tui
 
 Terminal UI package built on OpenTUI with Solid-driven state.
 
@@ -15,6 +15,6 @@ Terminal UI package built on OpenTUI with Solid-driven state.
 
 ## Depends On
 
-- `@xeq/shared`
+- `@archer/shared`
 - `@opentui/core`
 - `solid-js`

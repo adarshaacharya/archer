@@ -7,7 +7,7 @@ import { bootstrapWorkspace } from "./init.js";
 
 describe("bootstrapWorkspace", () => {
   it("creates the repo scaffold without overwriting existing files", async () => {
-    const cwd = await mkdtemp(join(tmpdir(), "xeq-init-"));
+    const cwd = await mkdtemp(join(tmpdir(), "archer-init-"));
     const existingAgents = join(cwd, "AGENTS.md");
     mkdirSync(join(cwd, ".agents/skills"), { recursive: true });
 

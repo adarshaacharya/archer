@@ -1,10 +1,10 @@
 {
-  "name": "@xeq/cli",
+  "name": "@archer/cli",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "xeq": "src/index.ts"
+    "archer": "src/index.ts"
   },
   "files": ["src"],
   "scripts": {
@@ -15,12 +15,12 @@
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@xeq/agent-core": "workspace:*",
-    "@xeq/model-providers": "workspace:*",
-    "@xeq/sandbox": "workspace:*",
-    "@xeq/storage": "workspace:*",
-    "@xeq/shared": "workspace:*",
-    "@xeq/tui": "workspace:*",
-    "@xeq/web": "workspace:*"
+    "@archer/agent-core": "workspace:*",
+    "@archer/model-providers": "workspace:*",
+    "@archer/sandbox": "workspace:*",
+    "@archer/storage": "workspace:*",
+    "@archer/shared": "workspace:*",
+    "@archer/tui": "workspace:*",
+    "@archer/web": "workspace:*"
   }
 }

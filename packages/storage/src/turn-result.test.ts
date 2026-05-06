@@ -25,8 +25,8 @@ async function createTestSession(label: string): Promise<string> {
   await createSession({
     id: sessionId,
     title: label,
-    cwd: "/tmp/xeq-test",
-    project_root: "/tmp/xeq-test",
+    cwd: "/tmp/archer-test",
+    project_root: "/tmp/archer-test",
     provider: "openai",
     model: "gpt-4o-mini",
   });

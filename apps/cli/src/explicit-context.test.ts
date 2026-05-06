@@ -7,7 +7,7 @@ import { buildExplicitFileContext, prependExplicitFileContext } from "./explicit
 const tempRoots: string[] = [];
 
 async function createRepo(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "xeq-explicit-context-"));
+  const root = await mkdtemp(join(tmpdir(), "archer-explicit-context-"));
   tempRoots.push(root);
   return root;
 }

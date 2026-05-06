@@ -1,5 +1,5 @@
 import { type FsProvider, NodeFsProvider, type ShellProvider } from "@openharness/core";
-import type { ApprovalMode } from "@xeq/shared";
+import type { ApprovalMode } from "@archer/shared";
 import type { ApprovalHandler } from "./approvals.js";
 import { DefaultSandboxPolicy } from "./policy.js";
 import { SandboxFsProvider } from "./providers/fs-provider.js";

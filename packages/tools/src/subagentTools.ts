@@ -16,7 +16,7 @@ import {
   type SubagentCancelResult,
   type SubagentStatusInput,
   type SubagentStatusResult,
-} from "@xeq/shared";
+} from "@archer/shared";
 
 export type SpawnSubagentExecutor = (
   input: SpawnSubagentInput,

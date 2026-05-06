@@ -1,10 +1,10 @@
-import { classifyCommandRisk } from "@xeq/sandbox";
+import { classifyCommandRisk } from "@archer/sandbox";
 import {
   autoApproveCommandsInApprovalMode,
   autoApproveEditsInApprovalMode,
   canWriteInApprovalMode,
   type ApprovalMode,
-} from "@xeq/shared";
+} from "@archer/shared";
 import type { TaskPhaseController } from "./task-flow.js";
 
 export type ToolApprovalAction = "allow" | "ask" | "deny";

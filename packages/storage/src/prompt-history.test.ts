@@ -11,7 +11,7 @@ afterEach(() => {
 
 describe("prompt history storage", () => {
   test("persists text-only prompt history by project root", async () => {
-    const projectRoot = `/tmp/xeq-prompt-history-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const projectRoot = `/tmp/archer-prompt-history-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     await appendPromptHistoryEntry({
       id: `prompt-a-${Date.now()}`,

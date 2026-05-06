@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { type TuiConfig, TuiConfigSchema } from "@xeq/shared";
+import { type TuiConfig, TuiConfigSchema } from "@archer/shared";
 
 const DEFAULT_TUI_CONFIG_FILE = "tui.json";
-const TUI_CONFIG_ENV_VAR = "XEQ_TUI_CONFIG";
+const TUI_CONFIG_ENV_VAR = "ARCHER_TUI_CONFIG";
 
 export async function loadTuiConfig(cwd: string): Promise<TuiConfig> {
   const path = resolveTuiConfigPath(cwd);
@@ -16,12 +16,12 @@ export async function loadTuiConfig(cwd: string): Promise<TuiConfig> {
     if (isNotFoundError(error)) {
       if (explicitPath) {
         console.warn(
-          `[xeq] ${TUI_CONFIG_ENV_VAR} points to a missing file: ${path}. Falling back to default keybinds.`,
+          `[archer] ${TUI_CONFIG_ENV_VAR} points to a missing file: ${path}. Falling back to default keybinds.`,
         );
       }
       return {};
     }
-    console.warn(`[xeq] Failed reading TUI config at ${path}. Falling back to default keybinds.`);
+    console.warn(`[archer] Failed reading TUI config at ${path}. Falling back to default keybinds.`);
     return {};
   }
 
@@ -29,7 +29,7 @@ export async function loadTuiConfig(cwd: string): Promise<TuiConfig> {
   try {
     parsedJson = JSON.parse(raw);
   } catch {
-    console.warn(`[xeq] Invalid JSON in ${path}. Falling back to default keybinds.`);
+    console.warn(`[archer] Invalid JSON in ${path}. Falling back to default keybinds.`);
     return {};
   }
 
@@ -40,7 +40,7 @@ export async function loadTuiConfig(cwd: string): Promise<TuiConfig> {
       ? `${firstIssue.path.join(".")}: ${firstIssue.message}`
       : "invalid config";
     console.warn(
-      `[xeq] Invalid TUI config in ${path} (${message}). Falling back to default keybinds.`,
+      `[archer] Invalid TUI config in ${path} (${message}). Falling back to default keybinds.`,
     );
     return {};
   }

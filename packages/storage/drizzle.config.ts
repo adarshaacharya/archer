@@ -8,9 +8,9 @@ export default defineConfig({
   dialect: "sqlite",
   dbCredentials: {
     url:
-      process.env.XEQ_DATABASE_PATH ??
+      process.env.ARCHER_DATABASE_PATH ??
       path.join(
-        process.env.XEQ_STORAGE_DIR ?? path.join(os.homedir(), ".local", "share", "xeq"),
+        process.env.ARCHER_STORAGE_DIR ?? path.join(os.homedir(), ".local", "share", "archer"),
         "history.db",
       ),
   },

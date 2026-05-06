@@ -1,4 +1,4 @@
-import type { SupportedProvider } from "@xeq/model-providers";
+import type { SupportedProvider } from "@archer/model-providers";
 
 export type ModelChoice = {
   value: string;

@@ -1,4 +1,4 @@
-import type { OpenHarnessToolEvent } from "@xeq/agent-core";
+import type { OpenHarnessToolEvent } from "@archer/agent-core";
 
 type SubagentStatusLike = {
   subagentId?: string;

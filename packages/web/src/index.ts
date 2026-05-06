@@ -6,8 +6,8 @@ import type {
   WebSearchAction,
   WebSearchResultItem,
   WebSearchTopic,
-} from "@xeq/shared";
-import type { WebCapability } from "@xeq/tools";
+} from "@archer/shared";
+import type { WebCapability } from "@archer/tools";
 
 type WebSearchResult = Extract<WebActionResult, { type: "search" }>;
 type WebOpenPageResult = Extract<WebActionResult, { type: "openPage" }>;
@@ -201,7 +201,7 @@ async function openPage(
 
   const response = await fetch(input.url, {
     headers: {
-      "User-Agent": "xeq/0.1",
+      "User-Agent": "archer/0.1",
     },
     signal: timeoutSignal(20_000),
   });

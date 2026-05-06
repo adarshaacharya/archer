@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-XEQ is a terminal-first AI coding agent built as a Bun monorepo.
+Archer is a terminal-first AI coding agent built as a Bun monorepo.
 
 Primary goal for V1:
 - safe coding-agent harness
@@ -56,7 +56,7 @@ If there is a conflict:
 4. Respect credential precedence:
    - runtime/session input
    - environment variables
-   - local auth store (`~/.local/share/xeq/auth.json`)
+   - local auth store (`~/.local/share/archer/auth.json`)
 
 
 ## Database

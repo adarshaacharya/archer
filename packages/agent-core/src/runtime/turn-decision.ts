@@ -1,4 +1,4 @@
-import { TurnDecisionSchema } from "@xeq/shared";
+import { TurnDecisionSchema } from "@archer/shared";
 
 export type TurnObservedFacts = {
   changeFlowEntered: boolean;

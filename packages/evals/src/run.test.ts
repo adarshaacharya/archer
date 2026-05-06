@@ -43,7 +43,7 @@ describe("runEvalCli", () => {
   });
 
   test("returns failure when a fixture run misses expectations", async () => {
-    const dir = join(tmpdir(), `xeq-evals-${Date.now()}`);
+    const dir = join(tmpdir(), `archer-evals-${Date.now()}`);
     await mkdir(dir, { recursive: true });
     const fixturePath = join(dir, "fixture.json");
     await writeFile(

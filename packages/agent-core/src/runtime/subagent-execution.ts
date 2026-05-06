@@ -11,11 +11,11 @@ import {
   createWebFindInPageTool,
   createWebOpenPageTool,
   createWebSearchTool,
-} from "@xeq/tools";
+} from "@archer/tools";
 import {
   loadEffectiveModelMessages,
   replaceMessages,
-} from "@xeq/storage";
+} from "@archer/storage";
 import type { ModelMessage } from "ai";
 import { resolve } from "node:path";
 import { DEFAULT_MAX_STEPS } from "../types.js";
@@ -26,7 +26,7 @@ import type {
   SpawnSubagentInput,
   SpawnSubagentResult,
   OpenHarnessRuntimeConfig,
-} from "@xeq/shared";
+} from "@archer/shared";
 import type { OpenHarnessRuntimeDeps, RuntimeProviders } from "./openharness-types.js";
 import type { ToolSet } from "ai";
 
@@ -253,7 +253,7 @@ function buildChildSystemPrompt(input: SpawnSubagentInput, cwd: string): string 
           : "Return a concise summary with actionable findings and citations when relevant.";
 
   return [
-    "You are a delegated xeq subagent.",
+    "You are a delegated Archer subagent.",
     `Kind: ${input.kind}`,
     scopeDetails,
     `Task: ${input.prompt}`,
@@ -286,7 +286,7 @@ function createChildAgent(
   );
 
   const childAgent = new Agent({
-    name: input.name?.trim() || `xeq-${input.kind}`,
+    name: input.name?.trim() || `archer-${input.kind}`,
     description:
       input.kind === "research"
         ? "Delegated research subagent"
@@ -356,7 +356,7 @@ export function createSpawnSubagentExecutor(options: SpawnSubagentExecutorOption
     );
 
     if (input.background && options.backgroundRegistry) {
-      const runId = options.backgroundRegistry.spawn(input.name?.trim() || `xeq-${input.kind}`, childAgent, input.prompt, {
+      const runId = options.backgroundRegistry.spawn(input.name?.trim() || `archer-${input.kind}`, childAgent, input.prompt, {
         sessionId: childSessionId,
       });
       return {

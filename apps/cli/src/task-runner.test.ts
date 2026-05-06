@@ -5,7 +5,7 @@ import {
   createQuestionExplorationState,
   evaluateQuestionAnswerReadiness,
   type QuestionExplorationState,
-} from "@xeq/agent-core";
+} from "@archer/agent-core";
 import { prerouteInput } from "./intent-router.js";
 import { resolveTaskExecutionRoute } from "./task-runner.js";
 

@@ -11,7 +11,7 @@ import {
   type TextChunk,
 } from "@opentui/core";
 import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
-import { createPlainComposerSubmission, type AgentStep, type ComposerMentionBinding, type ComposerSubmission, type RunSummary } from "@xeq/shared";
+import { createPlainComposerSubmission, type AgentStep, type ComposerMentionBinding, type ComposerSubmission, type RunSummary } from "@archer/shared";
 import { buildComposerTextElements, findActiveMentionQuery, insertFileMention, MentionFileIndex, type ActiveMentionQuery, type MentionSuggestion, reconcileMentionBindings } from "./mention-state.js";
 import { PromptHistory, type PromptHistoryEntry } from "./prompt-history.js";
 
@@ -504,7 +504,7 @@ export class PiTui implements Tui {
     this.input = new TextareaRenderable(this.renderer, {
       id: "input",
       initialValue: "",
-      placeholder: "message xeq…",
+      placeholder: "message Archer…",
       wrapMode: "word",
       flexGrow: 1,
       flexShrink: 1,
@@ -997,7 +997,7 @@ export class PiTui implements Tui {
       borderLine("┌", "─", "┐");
       row([
         { text: ">_ ", color: col.accent },
-        { text: "xeq", color: col.accent },
+        { text: "Archer", color: col.accent },
         { text: `  v${Bun.version}`, color: col.muted },
       ]);
       row([{ text: "ready for a task", color: col.muted }]);

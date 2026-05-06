@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { SandboxPolicy } from "@xeq/sandbox";
-import type { ToolResult } from "@xeq/shared";
+import type { SandboxPolicy } from "@archer/sandbox";
+import type { ToolResult } from "@archer/shared";
 export * from "./bashTools.js";
 export * from "./controlTools.js";
 export * from "./editTools.js";

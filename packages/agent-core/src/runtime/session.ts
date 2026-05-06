@@ -5,8 +5,8 @@ import {
   createFsTools,
   createLocalTools,
 } from "@openharness/core";
-import { resolveModelConfig } from "@xeq/model-providers";
-import { loadEffectiveModelMessages, replaceMessages } from "@xeq/storage";
+import { resolveModelConfig } from "@archer/model-providers";
+import { loadEffectiveModelMessages, replaceMessages } from "@archer/storage";
 import {
   createEditTools,
   createSubmitCompactionReportTool,
@@ -20,7 +20,7 @@ import {
   createWebFindInPageTool,
   createWebOpenPageTool,
   createWebSearchTool,
-} from "@xeq/tools";
+} from "@archer/tools";
 import type { ModelMessage } from "ai";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -169,7 +169,7 @@ function createSession({
             description: "Read-only repository exploration subagent.",
             model: model.model,
             systemPrompt:
-              "You are xeq's repository exploration subagent. Read files, list directories, and grep for symbols. Do not edit files or run shell commands. Return concise findings with exact file references.",
+              "You are Archer's repository exploration subagent. Read files, list directories, and grep for symbols. Do not edit files or run shell commands. Return concise findings with exact file references.",
             tools: explorerTools,
             maxSteps: 12,
             instructions: runtimeConfig?.projectInstructions ?? true,
@@ -184,7 +184,7 @@ function createSession({
                   description: "External web research subagent.",
                   model: model.model,
                   systemPrompt:
-                    "You are xeq's web research subagent. Use web tools to inspect external sources and answer from those sources only. Do not inspect local repository files.",
+                    "You are Archer's web research subagent. Use web tools to inspect external sources and answer from those sources only. Do not inspect local repository files.",
                   tools: {
                     webFindInPage: createWebFindInPageTool(providers.web),
                     webOpenPage: createWebOpenPageTool(providers.web),
@@ -276,8 +276,8 @@ function createSession({
   };
 
   const agent = new Agent({
-    name: "xeq",
-    description: "XEQ terminal coding agent",
+    name: "archer",
+    description: "Archer terminal coding agent",
     model: model.model,
     systemPrompt: instructions ?? buildSystemPrompt(),
     instructions: runtimeConfig?.projectInstructions ?? true,

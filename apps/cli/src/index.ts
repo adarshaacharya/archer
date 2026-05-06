@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
-import type { SupportedProvider } from "@xeq/model-providers";
-import { createPlainComposerSubmission, type ApprovalMode, AgentRequestSchema } from "@xeq/shared";
+import type { SupportedProvider } from "@archer/model-providers";
+import { createPlainComposerSubmission, type ApprovalMode, AgentRequestSchema } from "@archer/shared";
 import { join } from "node:path";
 import {
   appendPromptHistoryEntry,
@@ -13,9 +13,9 @@ import {
   listPromptHistory,
   listSessions,
   updateSessionTitle,
-} from "@xeq/storage";
-import { PiTui, type SlashCommandItem, type Tui } from "@xeq/tui";
-import type { SupportedWebProvider } from "@xeq/web";
+} from "@archer/storage";
+import { PiTui, type SlashCommandItem, type Tui } from "@archer/tui";
+import type { SupportedWebProvider } from "@archer/web";
 import {
   permissionsSummary,
   requestApproval,
@@ -294,15 +294,15 @@ async function setModel(
   if (selection === "exit") return { type: "exit" };
   if (selection === "cancel") return { type: "continue", message: "Model selection cancelled." };
 
-  const previousProvider = process.env.XEQ_PROVIDER;
+  const previousProvider = process.env.ARCHER_PROVIDER;
   const previousModel = process.env.AGENT_MODEL;
-  process.env.XEQ_PROVIDER = selection.provider;
+  process.env.ARCHER_PROVIDER = selection.provider;
   process.env.AGENT_MODEL = selection.modelId;
 
   const resolved = await resolveActiveProvider();
   if (!resolved || resolved.provider !== selection.provider) {
-    if (previousProvider) process.env.XEQ_PROVIDER = previousProvider;
-    else process.env.XEQ_PROVIDER = undefined;
+    if (previousProvider) process.env.ARCHER_PROVIDER = previousProvider;
+    else process.env.ARCHER_PROVIDER = undefined;
     if (previousModel) process.env.AGENT_MODEL = previousModel;
     else process.env.AGENT_MODEL = undefined;
     return {
@@ -651,7 +651,7 @@ async function connectProvider(
     if (key === "/exit" || key === "/quit" || key === "/bye") return { type: "exit" };
 
     await saveProviderAuth(selectedProvider, key);
-    process.env.XEQ_PROVIDER = selectedProvider;
+    process.env.ARCHER_PROVIDER = selectedProvider;
     if (selectedProvider !== previousProvider) {
       process.env.AGENT_MODEL = defaultModelForProvider(selectedProvider);
     } else {
@@ -716,7 +716,7 @@ async function connectWebProvider(
     if (key === "/exit" || key === "/quit" || key === "/bye") return { type: "exit" };
 
     await saveWebProviderAuth(selectedProvider, key);
-    process.env.XEQ_WEB_PROVIDER = selectedProvider;
+    process.env.ARCHER_WEB_PROVIDER = selectedProvider;
     if (selectedProvider === "exa") {
       process.env.EXA_API_KEY = key;
     } else {
@@ -1183,7 +1183,7 @@ async function main(): Promise<void> {
     { name: "/permissions", description: "show saved permission rules" },
     { name: "/logout", description: "remove the saved model provider key" },
     { name: "/help", description: "show available slash commands" },
-    { name: "/bye", description: "exit xeq" },
+    { name: "/bye", description: "exit Archer" },
   ];
 
   const tui: Tui = new PiTui();

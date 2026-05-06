@@ -1,5 +1,5 @@
 {
-  "name": "@xeq/agent-core",
+  "name": "@archer/agent-core",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -19,10 +19,10 @@
   },
   "dependencies": {
     "@openharness/core": "^0.6.2",
-    "@xeq/model-providers": "workspace:*",
-    "@xeq/sandbox": "workspace:*",
-    "@xeq/shared": "workspace:*",
-    "@xeq/storage": "workspace:*",
-    "@xeq/tools": "workspace:*"
+    "@archer/model-providers": "workspace:*",
+    "@archer/sandbox": "workspace:*",
+    "@archer/shared": "workspace:*",
+    "@archer/storage": "workspace:*",
+    "@archer/tools": "workspace:*"
   }
 }

@@ -4,11 +4,11 @@ import type { OpenHarnessRuntimeDeps } from "./runtime/openharness-types.js";
 import { getOrCreateSession } from "./runtime/session.js";
 import { withTimeout } from "./runtime/timeout.js";
 import type { SessionEvent } from "@openharness/core";
-import { estimateUsageCost } from "@xeq/model-providers";
+import { estimateUsageCost } from "@archer/model-providers";
 import { DEFAULT_MAX_STEPS, DEFAULT_TIMEOUT_MS, type RunOptions, type RunResult } from "./types.js";
 
-const CANCELLED_ERROR = "__XEQ_CANCELLED__";
-const MAX_STEPS_ERROR = "__XEQ_MAX_STEPS__";
+const CANCELLED_ERROR = "__ARCHER_CANCELLED__";
+const MAX_STEPS_ERROR = "__ARCHER_MAX_STEPS__";
 
 function addUsage(
   current:

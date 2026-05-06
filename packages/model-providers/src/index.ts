@@ -2,7 +2,7 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { ProviderError } from "@xeq/shared";
+import { ProviderError } from "@archer/shared";
 import { generateText } from "ai";
 import type { LanguageModel, ModelMessage } from "ai";
 import { z } from "zod";
@@ -54,7 +54,7 @@ export interface ModelProvider {
   decide(messages: ModelMessage[]): Promise<ModelDecisionResponse>;
 }
 
-const PROVIDER_ENV_VAR = "XEQ_PROVIDER";
+const PROVIDER_ENV_VAR = "ARCHER_PROVIDER";
 const DEFAULT_PROVIDER: SupportedProvider = "openrouter";
 
 function normalizeProvider(input?: string): SupportedProvider {
@@ -122,20 +122,20 @@ function resolveApiKey(
   switch (provider) {
     case "openai": {
       const apiKey = env.OPENAI_API_KEY;
-      if (!apiKey) throw new ProviderError("OPENAI_API_KEY is required when XEQ_PROVIDER=openai");
+      if (!apiKey) throw new ProviderError("OPENAI_API_KEY is required when ARCHER_PROVIDER=openai");
       return { apiKey, envVar: "OPENAI_API_KEY" };
     }
     case "anthropic": {
       const apiKey = env.ANTHROPIC_API_KEY;
       if (!apiKey)
-        throw new ProviderError("ANTHROPIC_API_KEY is required when XEQ_PROVIDER=anthropic");
+        throw new ProviderError("ANTHROPIC_API_KEY is required when ARCHER_PROVIDER=anthropic");
       return { apiKey, envVar: "ANTHROPIC_API_KEY" };
     }
     case "gemini": {
       const apiKey = env.GEMINI_API_KEY ?? env.GOOGLE_GENERATIVE_AI_API_KEY;
       if (!apiKey)
         throw new ProviderError(
-          "GEMINI_API_KEY is required when XEQ_PROVIDER=gemini (GOOGLE_GENERATIVE_AI_API_KEY also works)",
+          "GEMINI_API_KEY is required when ARCHER_PROVIDER=gemini (GOOGLE_GENERATIVE_AI_API_KEY also works)",
         );
       return {
         apiKey,
@@ -145,7 +145,7 @@ function resolveApiKey(
     default: {
       const apiKey = env.OPENROUTER_API_KEY;
       if (!apiKey)
-        throw new ProviderError("OPENROUTER_API_KEY is required when XEQ_PROVIDER=openrouter");
+        throw new ProviderError("OPENROUTER_API_KEY is required when ARCHER_PROVIDER=openrouter");
       return { apiKey, envVar: "OPENROUTER_API_KEY" };
     }
   }

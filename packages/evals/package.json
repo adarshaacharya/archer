@@ -1,5 +1,5 @@
 {
-  "name": "@xeq/evals",
+  "name": "@archer/evals",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -19,7 +19,7 @@
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@xeq/storage": "workspace:*",
+    "@archer/storage": "workspace:*",
     "zod": "^4.3.6"
   }
 }

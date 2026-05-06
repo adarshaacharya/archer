@@ -1,4 +1,4 @@
-import type { SlashCommandItem } from "@xeq/tui";
+import type { SlashCommandItem } from "@archer/tui";
 
 export const compactSlashCommandItem: SlashCommandItem = {
   name: "/compact",

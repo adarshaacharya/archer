@@ -1,5 +1,5 @@
 {
-  "name": "@xeq/storage",
+  "name": "@archer/storage",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "db:check": "drizzle-kit check"
   },
   "dependencies": {
-    "@xeq/shared": "workspace:*",
+    "@archer/shared": "workspace:*",
     "ai": "^6.0.97",
     "drizzle-orm": "^0.45.2"
   },

@@ -1,8 +1,8 @@
-# XEQ
+# Archer
 
 Terminal-first AI coding agent for macOS, Linux, and WSL.
 
-XEQ is built for local, policy-aware agent workflows with:
+Archer is built for local, policy-aware agent workflows with:
 
 - approval modes for safe execution
 - patch-first editing
@@ -14,13 +14,13 @@ XEQ is built for local, policy-aware agent workflows with:
 
 Planned release paths:
 
-- `npm install -g xeq`
-- `npx xeq`
+- `npm install -g archer`
+- `npx archer`
 - `curl -fsSL https://example.com/install.sh | bash`
 
 ## What It Is
 
-XEQ is a terminal coding agent designed to work like a real developer tool, not a chat demo.
+Archer is a terminal coding agent designed to work like a real developer tool, not a chat demo.
 
 It aims to provide:
 
@@ -41,7 +41,7 @@ It aims to provide:
 
 ## Current Status
 
-XEQ is still in early V1 scaffolding, with the main runtime direction set around an OpenHarness-backed core and XEQ-specific CLI/TUI behavior.
+Archer is still in early V1 scaffolding, with the main runtime direction set around an OpenHarness-backed core and Archer-specific CLI/TUI behavior.
 
 ## Development
 
@@ -58,22 +58,22 @@ Runtime selection is env-driven:
 
 ```bash
 # default behavior
-XEQ_PROVIDER=openrouter
+ARCHER_PROVIDER=openrouter
 OPENROUTER_API_KEY=...
 AGENT_MODEL=openai/gpt-4o-mini
 
 # direct OpenAI
-XEQ_PROVIDER=openai
+ARCHER_PROVIDER=openai
 OPENAI_API_KEY=...
 AGENT_MODEL=gpt-4o-mini
 
 # direct Anthropic
-XEQ_PROVIDER=anthropic
+ARCHER_PROVIDER=anthropic
 ANTHROPIC_API_KEY=...
 AGENT_MODEL=claude-3-5-sonnet-latest
 
 # direct Gemini
-XEQ_PROVIDER=gemini
+ARCHER_PROVIDER=gemini
 GEMINI_API_KEY=...
 AGENT_MODEL=gemini-2.0-flash
 ```
@@ -87,7 +87,7 @@ Accepted provider aliases:
 
 ## Web Search
 
-XEQ exposes `webSearch`, `webOpenPage`, and `webFindInPage` tools to the agent.
+Archer exposes `webSearch`, `webOpenPage`, and `webFindInPage` tools to the agent.
 
 Supported web providers:
 
@@ -95,10 +95,10 @@ Supported web providers:
 - `exa`
 
 ```bash
-XEQ_WEB_PROVIDER=tavily
+ARCHER_WEB_PROVIDER=tavily
 TAVILY_API_KEY=...
 
-XEQ_WEB_PROVIDER=exa
+ARCHER_WEB_PROVIDER=exa
 EXA_API_KEY=...
 ```
 
@@ -107,3 +107,10 @@ EXA_API_KEY=...
 - [Agent instructions](./AGENTS.md)
 - [OpenHarness migration notes](./docs/replace-openharness-future.md)
 
+
+
+   1. The Human Persona: (e.g., Devin, Claude, Cody, Junie) – These aim to feel like a "teammate" or a pair programmer.
+   2. The Action Tool: (e.g., Cursor, Windsurf, Sweep, Amp, Aider) – These emphasize what the tool does (navigation, cleaning,
+      accelerating).
+   3. The Abstract/Modern: (e.g., Zed, Pika, PearAI, Phind) – Short, punchy, and brandable names that don't necessarily describe the
+      function but feel modern.

@@ -1,4 +1,4 @@
-# @xeq/tools
+# @archer/tools
 
 Tool runtime implementations.
 
@@ -15,5 +15,5 @@ Tool runtime implementations.
 
 ## Depends On
 
-- `@xeq/shared`
-- `@xeq/sandbox`
+- `@archer/shared`
+- `@archer/sandbox`

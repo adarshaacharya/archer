@@ -1,4 +1,4 @@
-import type { ComposerMentionBinding } from "@xeq/shared";
+import type { ComposerMentionBinding } from "@archer/shared";
 
 const DEFAULT_HISTORY_LIMIT = 100;
 

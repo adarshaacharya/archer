@@ -1,7 +1,7 @@
-import type { ApprovalMode } from "@xeq/shared";
-import type { OpenHarnessRuntimeConfig } from "@xeq/shared";
-import type { SupportedProvider } from "@xeq/model-providers";
-import type { SupportedWebProvider } from "@xeq/web";
+import type { ApprovalMode } from "@archer/shared";
+import type { OpenHarnessRuntimeConfig } from "@archer/shared";
+import type { SupportedProvider } from "@archer/model-providers";
+import type { SupportedWebProvider } from "@archer/web";
 
 export type SessionState = {
   sessionId: string;

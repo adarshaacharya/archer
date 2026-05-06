@@ -1,5 +1,5 @@
 {
-  "name": "@xeq/sandbox",
+  "name": "@archer/sandbox",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@xeq/shared": "workspace:*"
+    "@archer/shared": "workspace:*"
   },
   "exports": {
     ".": {

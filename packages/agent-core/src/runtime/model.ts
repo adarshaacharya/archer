@@ -1,5 +1,5 @@
-import { resolveLanguageModel } from "@xeq/model-providers";
-import type { ResolvedLanguageModel } from "@xeq/model-providers";
+import { resolveLanguageModel } from "@archer/model-providers";
+import type { ResolvedLanguageModel } from "@archer/model-providers";
 
 export type ResolvedModel = ResolvedLanguageModel;
 

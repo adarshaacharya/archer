@@ -1,4 +1,4 @@
-# @xeq/model-providers
+# @archer/model-providers
 
 LLM provider adapters.
 
@@ -16,4 +16,4 @@ LLM provider adapters.
 
 ## Depends On
 
-- `@xeq/shared`
+- `@archer/shared`

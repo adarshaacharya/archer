@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
-import type { ComposerMentionBinding, ComposerSubmission } from "@xeq/shared";
+import type { ComposerMentionBinding, ComposerSubmission } from "@archer/shared";
 
 const MAX_MENTIONED_FILES = 4;
 const MAX_FILE_CHARS = 8_000;

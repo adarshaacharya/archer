@@ -2,7 +2,7 @@
 
 This document explains:
 
-- why `xeq` still uses OpenHarness today
+- why `archer` still uses OpenHarness today
 - where OpenHarness can become a bottleneck
 - what signals should trigger a replacement effort
 - how to migrate without rewriting the whole product at once
@@ -10,13 +10,13 @@ This document explains:
 The short version:
 
 - Do not remove OpenHarness just because it is not fully native.
-- Keep pushing `xeq` runtime ownership upward first.
+- Keep pushing `archer` runtime ownership upward first.
 - Make OpenHarness replaceable behind a thin internal engine boundary.
 - Replace it only if it starts limiting product quality, control, or speed of iteration.
 
 ## Current Position
 
-Today `xeq` uses OpenHarness as the inner agent/session engine, while `xeq` owns more of the higher-level orchestration:
+Today `archer` uses OpenHarness as the inner agent/session engine, while `archer` owns more of the higher-level orchestration:
 
 - routing
 - planning
@@ -45,7 +45,7 @@ OpenHarness is still useful if it continues to provide:
 - tool-call loop execution
 - provider abstraction
 - streaming event handling
-- stable enough semantics for current `xeq` use cases
+- stable enough semantics for current `archer` use cases
 
 Replacing it too early would create risk in:
 
@@ -59,14 +59,14 @@ If OpenHarness is not actively blocking quality or product direction, keep it an
 
 ## Where OpenHarness Can Become A Bottleneck
 
-OpenHarness becomes a problem when `xeq` wants deeper control than the adapter allows.
+OpenHarness becomes a problem when `archer` wants deeper control than the adapter allows.
 
 ### 1. Turn And Message Semantics
 
 Potential bottleneck:
 
 - OpenHarness decides too much about what a turn is
-- message history shape is not fully under `xeq` control
+- message history shape is not fully under `archer` control
 - tool outputs and assistant outputs are normalized in ways we cannot tune
 
 Symptoms:
@@ -93,7 +93,7 @@ Symptoms:
 
 Why this matters:
 
-If the runtime does not naturally treat control actions as first-class, `xeq` will keep carrying adaptation complexity forever.
+If the runtime does not naturally treat control actions as first-class, `archer` will keep carrying adaptation complexity forever.
 
 ### 3. Provider Behavior And Model-Specific Features
 
@@ -104,7 +104,7 @@ Potential bottleneck:
 
 Symptoms:
 
-- `xeq` cannot use the best features of a specific provider cleanly
+- `archer` cannot use the best features of a specific provider cleanly
 - new model capabilities are delayed until OpenHarness supports them
 - provider abstraction becomes a lowest-common-denominator problem
 
@@ -123,11 +123,11 @@ Symptoms:
 
 - difficult-to-debug continuation bugs
 - inconsistent behavior after compaction or retries
-- model context behavior that feels surprising from `xeq`’s point of view
+- model context behavior that feels surprising from `archer`’s point of view
 
 Why this matters:
 
-As `xeq` becomes more runtime-driven, session continuity becomes core product behavior, not just infrastructure.
+As `archer` becomes more runtime-driven, session continuity becomes core product behavior, not just infrastructure.
 
 ### 5. Observability And Debuggability
 
@@ -167,7 +167,7 @@ Do not replace OpenHarness because it feels conceptually impure.
 
 Replace it if several of these become true:
 
-- `xeq` repeatedly needs awkward workarounds to express core runtime behavior
+- `archer` repeatedly needs awkward workarounds to express core runtime behavior
 - control tools keep multiplying because the underlying runtime does not fit the product
 - session/turn semantics are a recurring source of bugs
 - provider-specific capabilities are blocked by OpenHarness abstractions
@@ -181,7 +181,7 @@ If 3-4 of those are true at once, replacement becomes a serious candidate.
 
 Keep OpenHarness if:
 
-- most quality gains are still coming from `xeq` runtime policy changes
+- most quality gains are still coming from `archer` runtime policy changes
 - tool interception is still manageable
 - provider abstraction is helping more than hurting
 - evaluation gaps are mainly prompt/policy/verification issues, not engine issues
@@ -195,13 +195,13 @@ The right strategy is:
 
 1. Define a small internal engine interface.
 2. Keep OpenHarness behind that interface.
-3. Move all `xeq` orchestration to depend only on the interface.
+3. Move all `archer` orchestration to depend only on the interface.
 4. Add a second backend only when justified.
 5. Swap gradually, not all at once.
 
 ## Target Internal Interface
 
-`xeq` should depend on an internal engine adapter instead of directly depending on OpenHarness behavior everywhere.
+`archer` should depend on an internal engine adapter instead of directly depending on OpenHarness behavior everywhere.
 
 Example shape:
 
@@ -250,7 +250,7 @@ export interface EngineAdapter {
 Then:
 
 - today: `OpenHarnessEngineAdapter`
-- later: `NativeXeqEngineAdapter`
+- later: `NativeArcherEngineAdapter`
 
 This keeps `turn-execution.ts` and `task-runner.ts` stable.
 
@@ -280,13 +280,13 @@ Goal:
 
 Work:
 
-- move more session state ownership into `xeq`
-- normalize tool/control events into `xeq`-native event types
+- move more session state ownership into `archer`
+- normalize tool/control events into `archer`-native event types
 - reduce raw fallback parsing over time
 
 Exit criteria:
 
-- `xeq` can describe runtime behavior entirely in its own types
+- `archer` can describe runtime behavior entirely in its own types
 
 ### Phase 3: Build A Native Prototype Engine
 
@@ -334,7 +334,7 @@ This is why the adapter-first strategy matters.
 For now:
 
 - keep OpenHarness
-- continue owning more runtime behavior in `xeq`
+- continue owning more runtime behavior in `archer`
 - isolate OpenHarness further
 
 In the future:
@@ -347,7 +347,7 @@ OpenHarness is not the immediate problem anymore.
 
 The main job now is:
 
-- keep consolidating `xeq` runtime control
+- keep consolidating `archer` runtime control
 - keep the OpenHarness dependency behind a clean boundary
 - collect evidence about where quality is still being lost
 

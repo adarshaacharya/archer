@@ -1,5 +1,5 @@
 {
-  "name": "@xeq/tui",
+  "name": "@archer/tui",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@opentui/core": "^0.1.103",
-    "@xeq/shared": "workspace:*",
+    "@archer/shared": "workspace:*",
     "solid-js": "^1.9.10"
   },
   "exports": {

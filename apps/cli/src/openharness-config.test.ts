@@ -17,7 +17,7 @@ afterEach(() => {
 
 describe("loadOpenHarnessConfig", () => {
   it("returns built-in defaults when no config file exists", async () => {
-    const cwd = mkdtempSync(join(tmpdir(), "xeq-openharness-"));
+    const cwd = mkdtempSync(join(tmpdir(), "archer-openharness-"));
 
     const config = await loadOpenHarnessConfig();
 
@@ -32,13 +32,13 @@ describe("loadOpenHarnessConfig", () => {
   });
 
   it("reads global config from xdg config home", async () => {
-    const cwd = mkdtempSync(join(tmpdir(), "xeq-openharness-"));
-    const xdgConfigHome = mkdtempSync(join(tmpdir(), "xeq-xdg-"));
+    const cwd = mkdtempSync(join(tmpdir(), "archer-openharness-"));
+    const xdgConfigHome = mkdtempSync(join(tmpdir(), "archer-xdg-"));
     process.env[xdgEnvVar] = xdgConfigHome;
 
-    mkdirSync(join(xdgConfigHome, "xeq"), { recursive: true });
+    mkdirSync(join(xdgConfigHome, "archer"), { recursive: true });
     writeFileSync(
-      join(xdgConfigHome, "xeq", "settings.json"),
+      join(xdgConfigHome, "archer", "settings.json"),
       JSON.stringify({
         projectInstructions: false,
         skills: { paths: ["./global-skills"] },
@@ -46,7 +46,7 @@ describe("loadOpenHarnessConfig", () => {
       }),
     );
     writeFileSync(
-      join(xdgConfigHome, "xeq", "mcp.json"),
+      join(xdgConfigHome, "archer", "mcp.json"),
       JSON.stringify({
         mcpServers: {
           global: {

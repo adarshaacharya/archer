@@ -1,6 +1,6 @@
 import { access, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import type { SlashCommandItem } from "@xeq/tui";
+import type { SlashCommandItem } from "@archer/tui";
 
 export const initSlashCommandItem: SlashCommandItem = {
   name: "/init",

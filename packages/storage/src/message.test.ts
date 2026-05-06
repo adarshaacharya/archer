@@ -34,8 +34,8 @@ async function createTestSession(label: string): Promise<string> {
   await createSession({
     id: sessionId,
     title: label,
-    cwd: "/tmp/xeq-test",
-    project_root: "/tmp/xeq-test",
+    cwd: "/tmp/archer-test",
+    project_root: "/tmp/archer-test",
     provider: "openai",
     model: "gpt-4o-mini",
   });
@@ -84,7 +84,7 @@ describe("storage messages", () => {
       role: "assistant",
       kind: "transcript",
       content:
-        "Updated xeq/apps/cli/src/task-runner.ts and noted warning: verification may fail without tests.",
+        "Updated archer/apps/cli/src/task-runner.ts and noted warning: verification may fail without tests.",
     });
     await appendMessage({
       id: `${sessionId}-m2`,
@@ -104,7 +104,7 @@ describe("storage messages", () => {
     const artifact = await buildCompactContinuationArtifact({ sessionId });
     expect(artifact).not.toBeNull();
     expect(artifact?.summary).toContain("task-runner.ts");
-    expect(artifact?.criticalFiles).toContain("xeq/apps/cli/src/task-runner.ts");
+    expect(artifact?.criticalFiles).toContain("archer/apps/cli/src/task-runner.ts");
     expect(artifact?.openRisks.some((risk) => /warning|fail/i.test(risk))).toBe(true);
   });
 

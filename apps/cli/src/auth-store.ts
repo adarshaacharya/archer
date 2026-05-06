@@ -1,8 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { SupportedProvider } from "@xeq/model-providers";
-import type { SupportedWebProvider } from "@xeq/web";
+import type { SupportedProvider } from "@archer/model-providers";
+import type { SupportedWebProvider } from "@archer/web";
 
 export type AuthSource = "env" | "saved";
 
@@ -37,7 +37,7 @@ export type ProviderStatus = {
   available: boolean;
 };
 
-const AUTH_DIR = path.join(os.homedir(), ".local", "share", "xeq");
+const AUTH_DIR = path.join(os.homedir(), ".local", "share", "archer");
 const AUTH_FILE = path.join(AUTH_DIR, "auth.json");
 const SUPPORTED_PROVIDERS: SupportedProvider[] = ["openrouter", "openai", "anthropic", "gemini"];
 const SUPPORTED_WEB_PROVIDERS: SupportedWebProvider[] = ["tavily", "exa"];
@@ -277,7 +277,7 @@ export async function resolveActiveProvider(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ActiveProviderState | null> {
   const explicitProvider =
-    typeof env.XEQ_PROVIDER === "string" ? normalizeProvider(env.XEQ_PROVIDER) : null;
+    typeof env.ARCHER_PROVIDER === "string" ? normalizeProvider(env.ARCHER_PROVIDER) : null;
   const store = await readAuthStore();
 
   const chooseSavedProvider = (): SupportedProvider | null => {
@@ -291,7 +291,7 @@ export async function resolveActiveProvider(
   if (explicitProvider) {
     const envKey = getEnvKey(explicitProvider, env);
     if (envKey) {
-      env.XEQ_PROVIDER = explicitProvider;
+      env.ARCHER_PROVIDER = explicitProvider;
       env.AGENT_MODEL ??= defaultModelForProvider(explicitProvider);
       return {
         provider: explicitProvider,
@@ -302,7 +302,7 @@ export async function resolveActiveProvider(
 
     const savedKey = store.providers[explicitProvider]?.key;
     if (savedKey) {
-      env.XEQ_PROVIDER = explicitProvider;
+      env.ARCHER_PROVIDER = explicitProvider;
       env[providerEnvVar(explicitProvider)] = savedKey;
       env.AGENT_MODEL ??= defaultModelForProvider(explicitProvider);
       return {
@@ -317,7 +317,7 @@ export async function resolveActiveProvider(
 
   for (const provider of SUPPORTED_PROVIDERS) {
     if (!getEnvKey(provider, env)) continue;
-    env.XEQ_PROVIDER = provider;
+    env.ARCHER_PROVIDER = provider;
     env.AGENT_MODEL ??= defaultModelForProvider(provider);
     return {
       provider,
@@ -332,7 +332,7 @@ export async function resolveActiveProvider(
   const savedKey = store.providers[savedProvider]?.key;
   if (!savedKey) return null;
 
-  env.XEQ_PROVIDER = savedProvider;
+  env.ARCHER_PROVIDER = savedProvider;
   env[providerEnvVar(savedProvider)] = savedKey;
   env.AGENT_MODEL ??= defaultModelForProvider(savedProvider);
   return {
@@ -346,7 +346,7 @@ export async function resolveActiveWebProvider(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ActiveWebProviderState | null> {
   const explicitProvider =
-    typeof env.XEQ_WEB_PROVIDER === "string" ? normalizeWebProvider(env.XEQ_WEB_PROVIDER) : null;
+    typeof env.ARCHER_WEB_PROVIDER === "string" ? normalizeWebProvider(env.ARCHER_WEB_PROVIDER) : null;
   const store = await readAuthStore();
 
   const chooseSavedProvider = (): SupportedWebProvider | null => {
@@ -362,7 +362,7 @@ export async function resolveActiveWebProvider(
   if (explicitProvider) {
     const envKey = getWebEnvKey(explicitProvider, env);
     if (envKey) {
-      env.XEQ_WEB_PROVIDER = explicitProvider;
+      env.ARCHER_WEB_PROVIDER = explicitProvider;
       return {
         provider: explicitProvider,
         authSource: "env",
@@ -372,7 +372,7 @@ export async function resolveActiveWebProvider(
 
     const savedKey = store.webProviders[explicitProvider]?.key;
     if (savedKey) {
-      env.XEQ_WEB_PROVIDER = explicitProvider;
+      env.ARCHER_WEB_PROVIDER = explicitProvider;
       env[webProviderEnvVar(explicitProvider)] = savedKey;
       return {
         provider: explicitProvider,
@@ -387,7 +387,7 @@ export async function resolveActiveWebProvider(
   for (const provider of SUPPORTED_WEB_PROVIDERS) {
     const envKey = getWebEnvKey(provider, env);
     if (!envKey) continue;
-    env.XEQ_WEB_PROVIDER = provider;
+    env.ARCHER_WEB_PROVIDER = provider;
     return {
       provider,
       authSource: "env",
@@ -401,7 +401,7 @@ export async function resolveActiveWebProvider(
   const savedKey = store.webProviders[savedProvider]?.key;
   if (!savedKey) return null;
 
-  env.XEQ_WEB_PROVIDER = savedProvider;
+  env.ARCHER_WEB_PROVIDER = savedProvider;
   env[webProviderEnvVar(savedProvider)] = savedKey;
   return {
     provider: savedProvider,
@@ -418,7 +418,7 @@ export function clearProviderEnv(
   if (provider === "gemini") {
     env.GOOGLE_GENERATIVE_AI_API_KEY = undefined;
   }
-  env.XEQ_PROVIDER = undefined;
+  env.ARCHER_PROVIDER = undefined;
   env.AGENT_MODEL = undefined;
 }
 
@@ -427,5 +427,5 @@ export function clearWebProviderEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
   env[webProviderEnvVar(provider)] = undefined;
-  env.XEQ_WEB_PROVIDER = undefined;
+  env.ARCHER_WEB_PROVIDER = undefined;
 }
