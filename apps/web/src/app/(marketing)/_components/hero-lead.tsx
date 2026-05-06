@@ -65,7 +65,7 @@ export function HeroLead() {
           <span>macOS, Linux, WSL</span>
         </div>
         <div className="install-code">{`curl -fsSL https://archer.dev/install.sh | bash
-npm install -g archer-ai`}</div>
+npm install -g @adarshaacharya/archer`}</div>
       </div>
     </div>
   );

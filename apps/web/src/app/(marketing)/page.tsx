@@ -5,6 +5,7 @@ import { HeroTerminal } from "@/app/(marketing)/_components/hero-terminal";
 import { MetaBar } from "@/app/(marketing)/_components/meta-bar";
 import { PipelineSection } from "@/app/(marketing)/_components/pipeline-section";
 import { ProofSection } from "@/app/(marketing)/_components/proof-section";
+import { SiteFooter } from "@/app/(marketing)/_components/site-footer";
 
 export default function Home() {
   return (
@@ -18,6 +19,7 @@ export default function Home() {
       <PipelineSection />
       <ProofSection />
       <FinalCTA />
+      <SiteFooter />
     </>
   );
 }
