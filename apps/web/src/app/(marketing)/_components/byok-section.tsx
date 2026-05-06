@@ -18,7 +18,7 @@ export function BYOKSection() {
       </div>
       <div className="col-span-6 pad-box bg-accent">
         <h2 className="big-statement text-charcoal">
-          Your key. Your provider. Your spend.
+          No lock-in. No hidden margin. No surprise spend.
         </h2>
       </div>
       <div

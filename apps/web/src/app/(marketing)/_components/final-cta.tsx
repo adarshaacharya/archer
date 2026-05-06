@@ -12,7 +12,7 @@ export function FinalCTA() {
           <ArrowRightIcon className="arrow-icon" />
         </a>
         <a
-          href="https://github.com"
+          href="https://github.com/adarshaacharya/archer"
           className="btn btn-secondary"
           rel="noopener noreferrer"
           target="_blank"
