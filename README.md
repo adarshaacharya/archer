@@ -6,7 +6,6 @@
   />
 </p>
 
-# Archer
 
 Archer is a terminal based AI coding agent for macOS, Linux, and WSL. Bring your own API key, choose your model provider, no hidden costs, completely free to use.
 

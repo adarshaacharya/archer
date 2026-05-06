@@ -1,7 +1,7 @@
 export function MetaBar() {
   return (
     <header className="meta-bar mono">
-      <div>{"SYS.ARCHER // V.1.0.4"}</div>
+      <div>{"SYS.ARCHER // V.0.0.1"}</div>
       <div className="text-accent font-bold" style={{ color: "#666" }}>
         STATUS: LOCAL_ONLY
       </div>

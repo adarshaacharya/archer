@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ArrowRightIcon } from "@/app/(marketing)/_components/arrow-right-icon";
 
 export function HeroLead() {
@@ -13,7 +14,26 @@ export function HeroLead() {
       >
         AGENT_INIT
       </div>
-      <h1 className="hero-title">Archer</h1>
+
+      <div className="mt-6 mb-4 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+        <div className="relative h-24 w-24 shrink-0 overflow-hidden sm:h-32 sm:w-32 md:h-32 md:w-32">
+          <Image
+            src="/logos/logo-transparent.png"
+            alt="Archer logo"
+            fill
+            priority
+            sizes="(min-width: 768px) 8rem, (min-width: 640px) 8rem, 6rem"
+            className="object-contain scale-[1.48] object-center"
+          />
+        </div>
+        <div className="hidden h-24 w-px bg-[#111]/40 sm:block" aria-hidden />
+        <h1
+          className="font-[var(--font-archer-display)] text-[clamp(2.8rem,6.6vw,5.5rem)] leading-none tracking-[0.045em] uppercase"
+          aria-label="Archer"
+        >
+          Archer
+        </h1>
+      </div>
       <p className="hero-lead">
         The terminal-first AI coding agent for real local work.
       </p>
