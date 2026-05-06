@@ -33,8 +33,10 @@ Expected:
 From `apps/cli`:
 
 ```bash
-npm publish --access public
+bun run publish:local
 ```
+
+This generates a clean `apps/cli/.publish` folder and publishes that artifact instead of the workspace package directly.
 
 ## 4. If npm Cache Permission Fails
 

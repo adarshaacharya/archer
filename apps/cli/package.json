@@ -16,7 +16,9 @@
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "rm -rf dist && bun build src/index.ts --target=node --format=esm --outdir dist --packages=bundle",
-    "prepublishOnly": "bun run build",
+    "prepare:publish": "node scripts/prepare-publish.mjs",
+    "publish:local": "bun run build && bun run prepare:publish && npm publish .publish --access public",
+    "publish:ci": "bun run build && bun run prepare:publish && npm publish .publish --access public --provenance",
     "lint": "biome check .",
     "format": "biome check . --write",
     "check-types": "tsc -p tsconfig.json --noEmit"

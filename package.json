@@ -11,6 +11,7 @@
     "bump:cli:patch": "node scripts/bump-cli-version.mjs patch",
     "bump:cli:minor": "node scripts/bump-cli-version.mjs minor",
     "bump:cli:major": "node scripts/bump-cli-version.mjs major",
+    "publish:cli": "cd apps/cli && bun run publish:ci",
     "fix": "bunx biome check --write .",
     "lint": "turbo run lint",
     "format": "turbo run format",
