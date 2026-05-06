@@ -9,6 +9,16 @@
 
 Archer is a terminal based AI coding agent for macOS, Linux, and WSL. Bring your own API key, choose your model provider, no hidden costs, completely free to use.
 
+## Install
+
+The supported end-user install path is the release binary:
+
+```bash
+curl -fsSL https://usearcher.vercel.app/install.sh | bash
+```
+
+The installer downloads the latest GitHub release for your platform and places `archer` in `~/.local/bin`.
+
 ## Features
 
 - BYOK
@@ -55,6 +65,8 @@ bun run dev
 bun run check-types
 bun run lint
 bun run build
+bun run build:binary
+bun run package:binary
 ```
 
 ## Configuration
@@ -131,6 +143,17 @@ bun run check-types
 bun run lint
 bun run build
 ```
+
+## Releases
+
+Binary release assets are built from `apps/cli` with Bun's standalone executable support.
+
+```bash
+bun run package:binary
+```
+
+That packages the current platform into `apps/cli/release/`.
+The full macOS/Linux release matrix is built in GitHub Actions on native runners.
 
 
 ## Contributing

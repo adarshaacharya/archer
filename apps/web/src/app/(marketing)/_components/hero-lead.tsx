@@ -66,7 +66,7 @@ export function HeroLead() {
           <span>macOS, Linux, WSL</span>
         </div>
         <div className="install-code">{`curl -fsSL https://usearcher.vercel.app/install.sh | bash
-npm install -g @adarshaacharya/archer`}</div>
+archer --help`}</div>
       </div>
     </div>
   );

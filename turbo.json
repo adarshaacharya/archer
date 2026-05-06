@@ -7,6 +7,16 @@
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
     },
+    "build:binary": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["dist/bin/**"]
+    },
+    "package:binary": {
+      "dependsOn": ["build:binary"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["release/**"]
+    },
     "lint": {
       "dependsOn": ["^lint"]
     },

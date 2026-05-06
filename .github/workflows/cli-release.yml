@@ -35,13 +35,28 @@ jobs:
       - name: Build
         run: bun run build
 
-  publish:
-    name: Publish npm package
+  build-release-assets:
+    name: Build Release Asset (${{ matrix.asset }})
     needs: checks
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: bun-darwin-arm64
+            asset: archer-darwin-arm64.tar.gz
+            runner: macos-14
+          - target: bun-darwin-x64
+            asset: archer-darwin-x64.tar.gz
+            runner: macos-15-intel
+          - target: bun-linux-arm64
+            asset: archer-linux-arm64.tar.gz
+            runner: ubuntu-24.04-arm
+          - target: bun-linux-x64
+            asset: archer-linux-x64.tar.gz
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     permissions:
-      id-token: write
       contents: read
     steps:
       - name: Checkout
@@ -52,18 +67,37 @@ jobs:
         with:
           bun-version: 1.2.2
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          registry-url: https://registry.npmjs.org
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build CLI
-        run: bun run --filter @adarshaacharya/archer build
+      - name: Package binary
+        run: bun run --filter @adarshaacharya/archer package:binary
+        env:
+          ARCHER_TARGET: ${{ matrix.target }}
 
-      - name: Publish
-        working-directory: apps/cli
-        run: bun run publish:ci
+      - name: Upload release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: apps/cli/release/${{ matrix.asset }}
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-release-assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download assets
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/**/*.tar.gz
+          generate_release_notes: true

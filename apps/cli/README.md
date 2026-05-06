@@ -10,14 +10,10 @@ AI coding agent that runs in your terminal, works inside your repo, and uses you
 ## Install
 
 ```bash
-npm install -g @adarshaacharya/archer
-```
-
-Or use the hosted installer:
-
-```bash
 curl -fsSL https://usearcher.vercel.app/install.sh | bash
 ```
+
+The installer downloads the latest release binary for your platform and installs `archer` into `~/.local/bin`.
 
 ## Quick Start
 
@@ -31,3 +27,10 @@ archer
 ## Repository
 
 Source: https://github.com/adarshaacharya/archer
+
+## From Source
+
+```bash
+bun install
+bun run cli
+```

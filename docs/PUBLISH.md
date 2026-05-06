@@ -1,63 +1,50 @@
-# Publishing Archer CLI
+# Releasing Archer CLI
 
-This repo is a Bun monorepo. The publishable npm package is:
+Archer is distributed as release binaries, not as a published npm package.
 
-- `apps/cli`
-- package name: `@adarshaacharya/archer`
+## 1. Local Binary Build
 
-## 1. Prerequisites
-
-- npm account with access to scope `@adarshaacharya`
-- Logged in to npm:
+Build the current platform binary from the repo root:
 
 ```bash
-npm login
+bun run build:binary
 ```
 
-## 2. Build And Validate Package
-
-From repo root:
+Package it into a release archive:
 
 ```bash
-cd apps/cli
-bun run build
-npm pack --dry-run
+bun run package:binary
 ```
 
-Expected:
-- tarball name like `adarshaacharya-archer-<version>.tgz`
-- contents from `dist/` only
+The archive is written to `apps/cli/release/`.
 
-## 3. Publish
+## 2. Native Runner Matrix
 
-From `apps/cli`:
+The full release matrix is built in CI on matching native runners because the TUI layer loads platform-specific OpenTUI packages at build time.
+
+Current targets:
+
+- `archer-darwin-arm64.tar.gz` on `macos-14`
+- `archer-darwin-x64.tar.gz` on `macos-15-intel`
+- `archer-linux-arm64.tar.gz` on `ubuntu-24.04-arm`
+- `archer-linux-x64.tar.gz` on `ubuntu-24.04`
+
+If you need to build a specific target manually, do it on a matching machine or runner:
 
 ```bash
-bun run publish:local
+ARCHER_TARGET=bun-darwin-arm64 bun run --filter @adarshaacharya/archer package:binary
 ```
 
-This generates a clean `apps/cli/.publish` folder and publishes that artifact instead of the workspace package directly.
+Produced asset names:
 
-## 4. If npm Cache Permission Fails
+- `archer-darwin-arm64.tar.gz`
+- `archer-darwin-x64.tar.gz`
+- `archer-linux-arm64.tar.gz`
+- `archer-linux-x64.tar.gz`
 
-If you see errors about `~/.npm/_cacache` permissions, use a temp cache:
+## 3. Version Bump
 
-```bash
-npm_config_cache=/tmp/npm-cache npm pack --dry-run
-npm_config_cache=/tmp/npm-cache npm publish --access public
-```
-
-## 5. Verify Install
-
-After publish:
-
-```bash
-npx @adarshaacharya/archer --help
-```
-
-## 6. Version Bump For Next Release
-
-Before publishing an update, bump `apps/cli/package.json` version:
+Bump the CLI version in `apps/cli/package.json` before tagging a release:
 
 ```bash
 bun run bump:cli:patch
@@ -70,14 +57,15 @@ You can also set an exact version:
 bun run bump:cli -- 0.1.1
 ```
 
-## 7. CI Release Flow (Recommended)
+## 4. CI Release Flow
 
-This repo includes `.github/workflows/cli-release.yml`:
+`.github/workflows/cli-release.yml` now does this:
 
-- Push/PR to `master`: runs lint, typecheck, and build.
-- Push a tag like `v0.1.1`: runs checks, then publishes to npm.
+- Push/PR to `main`: runs lint, typecheck, and build.
+- Push a tag like `v0.1.1`: builds release archives for macOS and Linux targets, then uploads them to the GitHub Release.
 
 Release command sequence:
+
 ```bash
 bun run bump:cli:patch
 git add apps/cli/package.json
@@ -86,4 +74,11 @@ git tag v0.1.1
 git push origin v0.1.1
 ```
 
-For this to work, enable npm Trusted Publishing for this GitHub repository in npm package settings.
+## 5. Installer Contract
+
+The public installer at `apps/web/public/install.sh` expects each GitHub release to include these exact asset names:
+
+- `archer-darwin-arm64.tar.gz`
+- `archer-darwin-x64.tar.gz`
+- `archer-linux-arm64.tar.gz`
+- `archer-linux-x64.tar.gz`

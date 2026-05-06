@@ -1,30 +1,20 @@
 {
   "name": "@adarshaacharya/archer",
-  "private": false,
-  "version": "0.1.2",
+  "private": true,
+  "version": "0.1.3",
   "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/adarshaacharya/archer.git"
   },
-  "bin": {
-    "archer": "dist/index.js"
-  },
-  "files": [
-    "dist"
-  ],
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "rm -rf dist && bun build src/index.ts --target=node --format=esm --outdir dist --packages=bundle",
-    "prepare:publish": "node scripts/prepare-publish.mjs",
-    "publish:local": "bun run build && bun run prepare:publish && npm publish .publish --access public",
-    "publish:ci": "bun run build && bun run prepare:publish && npm publish .publish --access public --provenance",
+    "build": "rm -rf dist && bun build src/index.ts --target=node --format=esm --outdir dist --packages=bundle --external @opentui/core",
+    "build:binary": "rm -rf dist/bin release && bun run scripts/build-binary.mjs",
+    "package:binary": "bun run scripts/package-binary.mjs",
     "lint": "biome check .",
     "format": "biome check . --write",
     "check-types": "tsc -p tsconfig.json --noEmit"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "dependencies": {
     "@archer/agent-core": "workspace:*",
