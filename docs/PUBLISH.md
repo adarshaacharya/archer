@@ -7,7 +7,7 @@ This repo is a Bun monorepo. The publishable npm package is:
 
 ## 1. Prerequisites
 
-- npm account with access to scope `@adartsahacahrya`
+- npm account with access to scope `@adarshaacharya`
 - Logged in to npm:
 
 ```bash
@@ -25,7 +25,7 @@ npm pack --dry-run
 ```
 
 Expected:
-- tarball name like `adartsahacahrya-archer-<version>.tgz`
+- tarball name like `adarshaacharya-archer-<version>.tgz`
 - contents from `dist/` only
 
 ## 3. Publish
@@ -50,7 +50,7 @@ npm_config_cache=/tmp/npm-cache npm publish --access public
 After publish:
 
 ```bash
-npx @adartsahacahrya/archer --help
+npx @adarshaacharya/archer --help
 ```
 
 ## 6. Version Bump For Next Release

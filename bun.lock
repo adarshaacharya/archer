@@ -11,10 +11,10 @@
       },
     },
     "apps/cli": {
-      "name": "@archer/cli",
+      "name": "@adarshaacharya/archer",
       "version": "0.1.0",
       "bin": {
-        "archer": "src/index.ts",
+        "archer": "dist/index.js",
       },
       "dependencies": {
         "@archer/agent-core": "workspace:*",
@@ -160,6 +160,8 @@
     "sharp",
   ],
   "packages": {
+    "@adarshaacharya/archer": ["@adarshaacharya/archer@workspace:apps/cli"],
+
     "@ai-sdk/anthropic": ["@ai-sdk/anthropic@2.0.77", "", { "dependencies": { "@ai-sdk/provider": "2.0.1", "@ai-sdk/provider-utils": "3.0.23" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-8n7ApEzFOxqVvT3HyqLrEQlgUx/2nUmPFLTGY3fNKwUA8KVNU3Ovd2C66Qh1Y93Iq5NkHsOWuLiTyAZpRKQhgw=="],
 
     "@ai-sdk/gateway": ["@ai-sdk/gateway@3.0.83", "", { "dependencies": { "@ai-sdk/provider": "3.0.8", "@ai-sdk/provider-utils": "4.0.21", "@vercel/oidc": "3.1.0" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-LvlWujbSdEkTBXBLFtF7GS6riXdHhH0O+DpDrCaNQvXeHmSF2jKsOg7JWXiCgygAHM5cWFAO3JYmZp83DjiuBQ=="],
@@ -177,8 +179,6 @@
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 
     "@archer/agent-core": ["@archer/agent-core@workspace:packages/agent-core"],
-
-    "@archer/cli": ["@archer/cli@workspace:apps/cli"],
 
     "@archer/evals": ["@archer/evals@workspace:packages/evals"],
 
