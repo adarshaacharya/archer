@@ -1,18 +1,22 @@
 {
-  "name": "@archer/cli",
-  "private": true,
+  "name": "@adarshaacharya/archer",
+  "private": false,
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "archer": "src/index.ts"
+    "archer": "dist/index.js"
   },
-  "files": ["src"],
+  "files": ["dist"],
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -rf dist && bun build src/index.ts --target=node --format=esm --outdir dist --packages=bundle",
+    "prepublishOnly": "bun run build",
     "lint": "biome check .",
     "format": "biome check . --write",
     "check-types": "tsc -p tsconfig.json --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@archer/agent-core": "workspace:*",
