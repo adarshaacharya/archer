@@ -58,12 +58,15 @@ npx @adarshaacharya/archer --help
 Before publishing an update, bump `apps/cli/package.json` version:
 
 ```bash
-cd apps/cli
-npm version patch
-npm publish --access public
+bun run bump:cli:patch
 ```
 
 Use `minor` or `major` instead of `patch` when appropriate.
+You can also set an exact version:
+
+```bash
+bun run bump:cli -- 0.1.1
+```
 
 ## 7. CI Release Flow (Recommended)
 
@@ -73,11 +76,12 @@ This repo includes `.github/workflows/cli-release.yml`:
 - Push a tag like `v0.1.1`: runs checks, then publishes to npm.
 
 Release command sequence:
-now if hav
 ```bash
-cd apps/cli
-npm version patch (or minor or major)
-git push origin master --follow-tags
+bun run bump:cli:patch
+git add apps/cli/package.json
+git commit -m "Release v0.1.1"
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 For this to work, enable npm Trusted Publishing for this GitHub repository in npm package settings.
