@@ -15,6 +15,15 @@ await copyIfExists(path.join(cliRoot, "README.md"), path.join(publishDir, "READM
 await copyIfExists(path.resolve(cliRoot, "..", "..", "LICENSE"), path.join(publishDir, "LICENSE"));
 
 const sourcePackage = JSON.parse(await readFile(path.join(cliRoot, "package.json"), "utf8"));
+const tuiPackage = JSON.parse(
+  await readFile(path.resolve(cliRoot, "..", "..", "packages", "tui", "package.json"), "utf8"),
+);
+const openTuiVersion = tuiPackage.dependencies?.["@opentui/core"];
+
+if (!openTuiVersion) {
+  throw new Error("packages/tui/package.json is missing @opentui/core dependency");
+}
+
 const publishPackage = {
   name: sourcePackage.name,
   version: sourcePackage.version,
@@ -26,6 +35,9 @@ const publishPackage = {
   publishConfig: sourcePackage.publishConfig,
   engines: {
     node: ">=18",
+  },
+  dependencies: {
+    "@opentui/core": openTuiVersion,
   },
 };
 
