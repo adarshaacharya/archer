@@ -1,35 +1,10 @@
 # Archer
 
-Archer is a terminal-first AI coding agent for macOS, Linux, and WSL.
-
-It is built for local development workflows where the agent should stay close to the code, respect boundaries, and make changes in a way you can inspect before they land.
-
-## What It Does
-
-Archer helps you work inside a repository with:
-
-- explicit approval modes for risky actions
-- patch-first file edits
-- sandboxed command and filesystem policy checks
-- provider switching without forcing you into a single model vendor
-- usage and cost tracking
-- TUI-driven interactive sessions
-
-## What Makes It Different
-
-Archer is not trying to hide the mechanics of agentic coding.
-
-It is designed around a few practical rules:
-
-- you keep your own API key
-- you choose the provider and model
-- you can inspect patches before applying them
-- dangerous commands should be gated by policy, not assumed safe
-- the CLI should feel like a developer tool, not a chatbot shell
+Archer is a terminal based AI coding agent for macOS, Linux, and WSL. Bring your own API key, choose your model provider, no hidden costs, completely free to use.
 
 ## Features
 
-- Terminal-first workflow
+- BYOK
 - Interactive TUI
 - Approval-aware tool execution
 - Patch-based editing
@@ -105,31 +80,6 @@ OPENROUTER_API_KEY=...
 AGENT_MODEL=openai/gpt-4o-mini
 ```
 
-Supported aliases:
-
-- `openrouter`
-- `openai` or `codex`
-- `anthropic` or `claude`
-- `gemini` or `google`
-
-### Web Search
-
-Web search support can be configured with:
-
-```bash
-ARCHER_WEB_PROVIDER=tavily
-TAVILY_API_KEY=...
-
-ARCHER_WEB_PROVIDER=exa
-EXA_API_KEY=...
-```
-
-### TUI Config
-
-The TUI reads `tui.json` by default.
-
-Set `ARCHER_TUI_CONFIG` to point to a different config file if needed.
-
 ## Project Layout
 
 - `apps/cli`: terminal app and command handling
@@ -175,11 +125,6 @@ bun run lint
 bun run build
 ```
 
-## Repository Notes
-
-- The CLI package publishes the `archer` binary.
-- The workspace uses Turborepo and Bun.
-- The codebase is split by responsibility so policy, tools, and orchestration stay separate.
 
 ## Contributing
 
@@ -189,5 +134,4 @@ If you touch workspace commands or package boundaries, keep the changes consiste
 
 ## License
 
-No license file is included yet.
-Add one before treating the project as open source software.
+[MIT](LICENSE)
