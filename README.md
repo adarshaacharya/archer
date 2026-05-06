@@ -1,78 +1,75 @@
 # Archer
 
-Terminal-first AI coding agent for macOS, Linux, and WSL.
+Archer is a terminal-first AI coding agent for macOS, Linux, and WSL.
 
-Archer is built as a Bun monorepo for local, policy-aware agent workflows. The project is focused on:
+It is built for local development workflows where the agent should stay close to the code, respect boundaries, and make changes in a way you can inspect before they land.
 
-- approval modes for safe execution
-- patch-first editing
-- sandboxed tool execution
-- usage and cost logging
-- provider switching without hiding your API key
+## What It Does
 
-## Why Archer
+Archer helps you work inside a repository with:
 
-Archer is designed to feel like a real developer tool, not a chat demo.
+- explicit approval modes for risky actions
+- patch-first file edits
+- sandboxed command and filesystem policy checks
+- provider switching without forcing you into a single model vendor
+- usage and cost tracking
+- TUI-driven interactive sessions
 
-It keeps the important controls visible:
+## What Makes It Different
 
-- you choose the model provider
-- you approve risky actions
-- you can review and apply patches before they land
-- you can keep cost and access under your own account
+Archer is not trying to hide the mechanics of agentic coding.
+
+It is designed around a few practical rules:
+
+- you keep your own API key
+- you choose the provider and model
+- you can inspect patches before applying them
+- dangerous commands should be gated by policy, not assumed safe
+- the CLI should feel like a developer tool, not a chatbot shell
 
 ## Features
 
-- Terminal-first CLI workflow
+- Terminal-first workflow
+- Interactive TUI
 - Approval-aware tool execution
-- Patch-based file edits
-- Sandboxed filesystem and command policy checks
-- Provider abstraction across OpenAI, Anthropic, Gemini, and OpenRouter
+- Patch-based editing
+- Local policy enforcement for paths and commands
+- Provider support for OpenAI, Anthropic, Gemini, and OpenRouter
 - Web search and page navigation tools
-- TUI support for interactive sessions
+- Session and turn persistence
+- CLI commands for new sessions, resumes, compaction, and provider changes
 
-## Repository Layout
-
-- `apps/cli`: main CLI entry point
-- `apps/web`: marketing site
-- `packages/agent-core`: agent loop and orchestration
-- `packages/model-providers`: model/provider adapters
-- `packages/tools`: file, shell, git, and search tools
-- `packages/sandbox`: path and command policy engine
-- `packages/shared`: shared types, schemas, and error contracts
-- `packages/storage`: persistence layer
-- `packages/tui`: terminal UI components
-
-## Getting Started
+## Local Setup
 
 ### Prerequisites
 
 - Node.js 18 or newer
 - Bun 1.2.x
 
-### Install
+### Install Dependencies
 
 ```bash
 bun install
 ```
 
-### Development
+### Start the CLI
 
-Run the workspace dev tasks:
-
-```bash
-bun run dev
-```
-
-If you want to run the CLI directly:
+Run the CLI directly from the workspace:
 
 ```bash
 bun run cli
 ```
 
-### Quality Checks
+You can also pass a prompt or task inline:
 
 ```bash
+bun run cli -- "review this repository and suggest improvements"
+```
+
+### Common Commands
+
+```bash
+bun run dev
 bun run check-types
 bun run lint
 bun run build
@@ -80,11 +77,11 @@ bun run build
 
 ## Configuration
 
-Archer reads runtime configuration from environment variables.
+Archer reads configuration from environment variables.
 
-### Model Provider
+### Model Providers
 
-Set the provider with `ARCHER_PROVIDER` and provide the matching API key:
+Choose a provider with `ARCHER_PROVIDER` and set the matching API key:
 
 ```bash
 # OpenAI
@@ -108,7 +105,7 @@ OPENROUTER_API_KEY=...
 AGENT_MODEL=openai/gpt-4o-mini
 ```
 
-Supported provider aliases:
+Supported aliases:
 
 - `openrouter`
 - `openai` or `codex`
@@ -117,7 +114,7 @@ Supported provider aliases:
 
 ### Web Search
 
-Archer can use web search providers for search and page navigation tools:
+Web search support can be configured with:
 
 ```bash
 ARCHER_WEB_PROVIDER=tavily
@@ -129,40 +126,68 @@ EXA_API_KEY=...
 
 ### TUI Config
 
-The terminal UI can be customized with `tui.json` or by setting `ARCHER_TUI_CONFIG` to a config file path.
+The TUI reads `tui.json` by default.
 
-## Current Status
+Set `ARCHER_TUI_CONFIG` to point to a different config file if needed.
 
-Archer is still in early V1 scaffolding.
+## Project Layout
 
-The current direction is:
+- `apps/cli`: terminal app and command handling
+- `apps/web`: marketing site
+- `packages/agent-core`: agent loop and orchestration
+- `packages/model-providers`: provider adapters
+- `packages/tools`: file, shell, git, and search tools
+- `packages/sandbox`: policy engine for commands and paths
+- `packages/shared`: shared types, schemas, and error contracts
+- `packages/storage`: persistence layer
+- `packages/tui`: terminal UI primitives
 
-- OpenHarness-backed runtime for now
-- Archer-owned orchestration, approvals, and policy
-- gradual movement toward a thinner internal engine boundary
+## CLI Commands
 
-See [docs/replace-openharness-future.md](./docs/replace-openharness-future.md) for the migration notes.
+The CLI includes commands for:
 
-## Documentation
+- `/help`
+- `/new`
+- `/resume`
+- `/init`
+- `/commit`
+- `/compact`
+- `/providers`
+- `/connect`
+- `/change-key`
+- `/disconnect`
+- `/provider`
+- `/model`
+- `/web`
+- `/web-provider`
+- `/web-logout`
+- `/permissions`
+- `/logout`
+- `/bye`
+- `/exit`
 
-- [AGENTS.md](./AGENTS.md) for working rules in this repo
-- [OpenHarness migration notes](./docs/replace-openharness-future.md)
-
-## Contributing
-
-Before making changes, read [AGENTS.md](./AGENTS.md).
-
-Suggested checks before opening a PR:
+## Development
 
 ```bash
+bun run dev
 bun run check-types
 bun run lint
 bun run build
 ```
 
-If you change runtime behavior, add or update tests where the harness already exists.
+## Repository Notes
+
+- The CLI package publishes the `archer` binary.
+- The workspace uses Turborepo and Bun.
+- The codebase is split by responsibility so policy, tools, and orchestration stay separate.
+
+## Contributing
+
+If you change behavior, update tests where they exist.
+
+If you touch workspace commands or package boundaries, keep the changes consistent across the monorepo.
 
 ## License
 
-This repository does not include a license file yet.
-If you plan to publish it as open source, add a license before treating it as publicly reusable.
+No license file is included yet.
+Add one before treating the project as open source software.
