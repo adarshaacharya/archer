@@ -16,19 +16,19 @@ export function HeroLead() {
       </div>
 
       <div className="mt-6 mb-4 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-        <div className="relative h-20 w-20 shrink-0 overflow-hidden sm:h-24 sm:w-24 md:h-24 md:w-24">
+        <div className="relative h-16 w-16 shrink-0 overflow-hidden sm:h-20 sm:w-20 md:h-20 md:w-20">
           <Image
-            src="/logos/logo-transparent.png"
+            src="/logos/logo-cropped.png"
             alt="Archer logo"
             fill
             priority
-            sizes="(min-width: 768px) 6rem, (min-width: 640px) 6rem, 5rem"
-            className="object-contain scale-[1.58] object-center"
+            sizes="(min-width: 768px) 5rem, (min-width: 640px) 5rem, 4rem"
+            className="object-contain object-center"
           />
         </div>
-        <div className="hidden h-20 w-px bg-[#111]/40 sm:block sm:h-24" aria-hidden />
+        <div className="hidden h-16 w-px bg-[#111]/40 sm:block sm:h-20" aria-hidden />
         <h1
-          className="font-[var(--font-archer-display)] text-[clamp(2.9rem,5.6vw,4.8rem)] leading-none tracking-[0.03em] uppercase"
+          className="font-[var(--font-archer-display)] text-[clamp(3.1rem,6vw,5.2rem)] leading-none tracking-[0.02em] uppercase"
           aria-label="Archer"
         >
           Archer
