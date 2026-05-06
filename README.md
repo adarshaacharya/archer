@@ -1,6 +1,6 @@
 <p align="center">
   <img
-    src="./apps/web/public/logos/Gemini_Generated_Image_kpv9hjkpv9hjkpv9.png"
+    src="./apps/web/public/logos/banner.png"
     alt="Archer wordmark"
     width="280"
   />
