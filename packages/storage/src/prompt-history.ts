@@ -12,13 +12,15 @@ export type PersistedPromptHistoryEntry = {
 
 export async function appendPromptHistoryEntry(input: PersistedPromptHistoryEntry): Promise<void> {
   const createdAt = input.createdAt ?? Date.now();
-  await getDb().insert(prompt_history).values({
-    id: input.id,
-    project_root: input.projectRoot,
-    session_id: input.sessionId ?? null,
-    text: input.text,
-    created_at: createdAt,
-  });
+  await getDb()
+    .insert(prompt_history)
+    .values({
+      id: input.id,
+      project_root: input.projectRoot,
+      session_id: input.sessionId ?? null,
+      text: input.text,
+      created_at: createdAt,
+    });
 }
 
 export async function listPromptHistory(projectRoot: string, limit = 100): Promise<string[]> {

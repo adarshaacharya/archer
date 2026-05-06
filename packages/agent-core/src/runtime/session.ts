@@ -1,10 +1,4 @@
-import {
-  Agent,
-  AgentRegistry,
-  Session,
-  createFsTools,
-  createLocalTools,
-} from "@openharness/core";
+import { Agent, AgentRegistry, Session, createFsTools, createLocalTools } from "@openharness/core";
 import { resolveModelConfig } from "@archer/model-providers";
 import { loadEffectiveModelMessages, replaceMessages } from "@archer/storage";
 import {
@@ -29,10 +23,7 @@ import { createTrackedFsProvider } from "./file-tracker.js";
 import { sanitizeId } from "./ids.js";
 import { resolveModel } from "./model.js";
 import { createSpawnSubagentExecutor } from "./subagent-execution.js";
-import type {
-  OpenHarnessRuntimeDeps,
-  RuntimeProviders,
-} from "./openharness-types.js";
+import type { OpenHarnessRuntimeDeps, RuntimeProviders } from "./openharness-types.js";
 import { buildSystemPrompt } from "./task-flow.js";
 
 type RuntimeSession = {
@@ -50,7 +41,10 @@ type RuntimeSession = {
 
 const SESSIONS = new Map<string, RuntimeSession>();
 
-function resolveSkillPaths(cwd: string, configuredPaths: string[] | undefined): string[] | undefined {
+function resolveSkillPaths(
+  cwd: string,
+  configuredPaths: string[] | undefined,
+): string[] | undefined {
   const paths = new Set<string>();
   const candidates = [
     resolve(cwd, ".agents/skills"),
@@ -193,7 +187,9 @@ function createSession({
                   maxSteps: 12,
                   instructions: runtimeConfig?.projectInstructions ?? true,
                   approve: async (toolCall) => {
-                    return approvalState.approveToolCall ? approvalState.approveToolCall(toolCall) : true;
+                    return approvalState.approveToolCall
+                      ? approvalState.approveToolCall(toolCall)
+                      : true;
                   },
                 }),
               ]
@@ -232,7 +228,7 @@ function createSession({
                   status: preview.status,
                 },
               ],
-        },
+            },
       );
     },
   });

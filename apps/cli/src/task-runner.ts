@@ -41,7 +41,11 @@ import {
   type OpenHarnessToolEvent,
 } from "@archer/agent-core";
 import { createSandboxEnvironment } from "@archer/sandbox";
-import { AgentRequestSchema, autoApproveEditsInApprovalMode, type ComposerSubmission } from "@archer/shared";
+import {
+  AgentRequestSchema,
+  autoApproveEditsInApprovalMode,
+  type ComposerSubmission,
+} from "@archer/shared";
 import {
   appendMessage,
   getTurnResults,
@@ -105,12 +109,14 @@ function shellOutputText(output: unknown): string {
     return typeof output === "string" ? output : "";
   }
 
-  const stdout = typeof (output as { stdout?: unknown }).stdout === "string"
-    ? (output as { stdout: string }).stdout
-    : "";
-  const stderr = typeof (output as { stderr?: unknown }).stderr === "string"
-    ? (output as { stderr: string }).stderr
-    : "";
+  const stdout =
+    typeof (output as { stdout?: unknown }).stdout === "string"
+      ? (output as { stdout: string }).stdout
+      : "";
+  const stderr =
+    typeof (output as { stderr?: unknown }).stderr === "string"
+      ? (output as { stderr: string }).stderr
+      : "";
 
   return [stdout, stderr].filter(Boolean).join("\n");
 }
@@ -198,7 +204,10 @@ export async function runTask(
     });
   }
 
-  tui.renderApprovalPrompt({ message: taskOptions?.displayTask ?? request.task, options: ["running"] });
+  tui.renderApprovalPrompt({
+    message: taskOptions?.displayTask ?? request.task,
+    options: ["running"],
+  });
 
   const started = performance.now();
   const unifiedTurn = intent == null;
@@ -356,7 +365,8 @@ export async function runTask(
   };
 
   const buildSummary = (
-    fields: Omit<TurnSummary, "compaction" | "evalMetrics"> & Partial<Pick<TurnSummary, "evalMetrics">>,
+    fields: Omit<TurnSummary, "compaction" | "evalMetrics"> &
+      Partial<Pick<TurnSummary, "evalMetrics">>,
   ): TurnSummary => ({
     ...fields,
     compaction: compactionMetadata,
@@ -549,7 +559,11 @@ export async function runTask(
           }
         : planPreRoute(request.task)
       : null;
-  if (preRoutePlan?.status === "resolved" && preRoutePlan.result.mode === "change" && declaredIntent !== "change") {
+  if (
+    preRoutePlan?.status === "resolved" &&
+    preRoutePlan.result.mode === "change" &&
+    declaredIntent !== "change"
+  ) {
     isChangeTurn = true;
     isAnswerTurn = false;
     observedFacts.changeFlowEntered = true;
@@ -609,7 +623,9 @@ export async function runTask(
           return approveToolCallWithQuestionReadiness(toolCall);
         },
         approvePatchApply:
-          options.allowTools === false || options.allowedToolNames != null ? () => false : approvePatchApply,
+          options.allowTools === false || options.allowedToolNames != null
+            ? () => false
+            : approvePatchApply,
         onStep: (step) => {
           if (questionExploration && persistTranscript) {
             recordQuestionStep(questionExploration, step);
@@ -693,9 +709,10 @@ export async function runTask(
       false,
       8,
       {
-        allowedToolNames: preRoutePlan?.status === "needs-classification"
-          ? preRoutePlan.allowedToolNames
-          : ["submitTurnDecision"],
+        allowedToolNames:
+          preRoutePlan?.status === "needs-classification"
+            ? preRoutePlan.allowedToolNames
+            : ["submitTurnDecision"],
         instructions: [
           "You are classifying the user's next turn before any repository work begins.",
           "Do not inspect the repository and do not call any tools except submitTurnDecision.",
@@ -901,7 +918,11 @@ export async function runTask(
       });
       tui.renderSummary(summary);
       void pruneSessionAfterTurn(state.sessionId);
-      return buildTurnResult("completed", summary, commitWorkflowOutput || "Created the git commit successfully.");
+      return buildTurnResult(
+        "completed",
+        summary,
+        commitWorkflowOutput || "Created the git commit successfully.",
+      );
     }
 
     return await handleTaskContextOutcome({

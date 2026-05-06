@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { rmSync } from "node:fs";
-import {
-  ensureStorageBootstrap,
-  getDatabasePath,
-  resetStorageForTests,
-} from "./index.js";
+import { ensureStorageBootstrap, getDatabasePath, resetStorageForTests } from "./index.js";
 
 afterEach(() => {
   resetStorageForTests();

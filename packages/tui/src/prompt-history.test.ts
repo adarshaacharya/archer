@@ -49,24 +49,28 @@ describe("PromptHistory", () => {
     const history = new PromptHistory();
     history.record({
       text: "check @src/index.ts",
-      mentions: [{
-        id: "m1",
-        label: "@src/index.ts",
-        start: 6,
-        end: 19,
-        target: { type: "file", path: "src/index.ts" },
-      }],
+      mentions: [
+        {
+          id: "m1",
+          label: "@src/index.ts",
+          start: 6,
+          end: 19,
+          target: { type: "file", path: "src/index.ts" },
+        },
+      ],
     });
 
     expect(history.previous("draft")).toEqual({
       text: "check @src/index.ts",
-      mentions: [{
-        id: "m1",
-        label: "@src/index.ts",
-        start: 6,
-        end: 19,
-        target: { type: "file", path: "src/index.ts" },
-      }],
+      mentions: [
+        {
+          id: "m1",
+          label: "@src/index.ts",
+          start: 6,
+          end: 19,
+          target: { type: "file", path: "src/index.ts" },
+        },
+      ],
     });
   });
 

@@ -25,19 +25,24 @@ describe("buildExplicitFileContext", () => {
   it("builds a prompt prefix from mentioned files", async () => {
     const repoRoot = await createRepo();
     await mkdir(join(repoRoot, "src"), { recursive: true });
-    await writeFile(join(repoRoot, "src/example.ts"), "export const value = 1;\nexport const next = 2;\n");
+    await writeFile(
+      join(repoRoot, "src/example.ts"),
+      "export const value = 1;\nexport const next = 2;\n",
+    );
 
     const context = await buildExplicitFileContext(
       {
         text: "check @src/example.ts",
         textElements: [],
-        mentions: [{
-          id: "m1",
-          label: "@src/example.ts",
-          start: 6,
-          end: 21,
-          target: { type: "file", path: "src/example.ts" },
-        }],
+        mentions: [
+          {
+            id: "m1",
+            label: "@src/example.ts",
+            start: 6,
+            end: 21,
+            target: { type: "file", path: "src/example.ts" },
+          },
+        ],
         attachments: [],
       },
       repoRoot,
@@ -59,13 +64,15 @@ describe("buildExplicitFileContext", () => {
       {
         text: "check @src/example.ts",
         textElements: [],
-        mentions: [{
-          id: "m1",
-          label: "@src/example.ts",
-          start: 6,
-          end: 21,
-          target: { type: "file", path: "src/example.ts", lineStart: 2, lineEnd: 3 },
-        }],
+        mentions: [
+          {
+            id: "m1",
+            label: "@src/example.ts",
+            start: 6,
+            end: 21,
+            target: { type: "file", path: "src/example.ts", lineStart: 2, lineEnd: 3 },
+          },
+        ],
         attachments: [],
       },
       repoRoot,
@@ -83,19 +90,23 @@ describe("buildExplicitFileContext", () => {
       {
         text: "check @../secret.txt",
         textElements: [],
-        mentions: [{
-          id: "m1",
-          label: "@../secret.txt",
-          start: 6,
-          end: 19,
-          target: { type: "file", path: "../secret.txt" },
-        }],
+        mentions: [
+          {
+            id: "m1",
+            label: "@../secret.txt",
+            start: 6,
+            end: 19,
+            target: { type: "file", path: "../secret.txt" },
+          },
+        ],
         attachments: [],
       },
       repoRoot,
     );
 
-    expect(context.promptPrefix).toContain("skipped because it resolves outside the repository root");
+    expect(context.promptPrefix).toContain(
+      "skipped because it resolves outside the repository root",
+    );
   });
 
   it("falls back to parsing visible @path text when hidden mention bindings are absent", async () => {
@@ -128,13 +139,15 @@ describe("buildExplicitFileContext", () => {
       {
         text: "check @src/example.ts",
         textElements: [],
-        mentions: [{
-          id: "m1",
-          label: "@src/example.ts",
-          start: 6,
-          end: 21,
-          target: { type: "file", path: "src/example.ts" },
-        }],
+        mentions: [
+          {
+            id: "m1",
+            label: "@src/example.ts",
+            start: 6,
+            end: 21,
+            target: { type: "file", path: "src/example.ts" },
+          },
+        ],
         attachments: [],
       },
       repoRoot,

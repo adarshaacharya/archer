@@ -1,10 +1,7 @@
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import { resolve } from "node:path";
-import {
-  OpenHarnessRuntimeConfigSchema,
-  type OpenHarnessRuntimeConfig,
-} from "@archer/shared";
+import { OpenHarnessRuntimeConfigSchema, type OpenHarnessRuntimeConfig } from "@archer/shared";
 
 export async function loadOpenHarnessConfig(): Promise<OpenHarnessRuntimeConfig> {
   const [globalProjectConfig, globalMcpConfig] = await Promise.all([
@@ -42,7 +39,9 @@ async function readOpenHarnessConfig(path: string): Promise<OpenHarnessRuntimeCo
     const message = firstIssue
       ? `${firstIssue.path.join(".")}: ${firstIssue.message}`
       : "invalid config";
-    console.warn(`[archer] Invalid OpenHarness config in ${path} (${message}). Ignoring that file.`);
+    console.warn(
+      `[archer] Invalid OpenHarness config in ${path} (${message}). Ignoring that file.`,
+    );
     return null;
   }
 

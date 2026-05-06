@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import {
-  appendTurnResult,
-  createSession,
-  deleteSession,
-  getTurnResults,
-} from "./index.js";
+import { appendTurnResult, createSession, deleteSession, getTurnResults } from "./index.js";
 
 const createdSessionIds = new Set<string>();
 

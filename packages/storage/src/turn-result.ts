@@ -17,17 +17,19 @@ export type PersistedTurnResult = {
 
 export async function appendTurnResult(input: PersistedTurnResult): Promise<void> {
   const createdAt = input.createdAt ?? Date.now();
-  await getDb().insert(turn_results).values({
-    id: input.id,
-    session_id: input.sessionId,
-    turn_kind: input.turnKind ?? "user",
-    intent: input.intent,
-    status: input.status,
-    task: input.task,
-    summary_json: input.summary === undefined ? null : JSON.stringify(input.summary),
-    message: input.message ?? null,
-    created_at: createdAt,
-  });
+  await getDb()
+    .insert(turn_results)
+    .values({
+      id: input.id,
+      session_id: input.sessionId,
+      turn_kind: input.turnKind ?? "user",
+      intent: input.intent,
+      status: input.status,
+      task: input.task,
+      summary_json: input.summary === undefined ? null : JSON.stringify(input.summary),
+      message: input.message ?? null,
+      created_at: createdAt,
+    });
 
   await touchSession({
     id: input.sessionId,

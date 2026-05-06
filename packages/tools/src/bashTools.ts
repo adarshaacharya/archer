@@ -116,7 +116,10 @@ export async function createBashToolsExecutor(
         }
 
         const executionPromise = resolveToolExecution(
-          await toolkit.tools.bash.execute({ command }, { toolCallId: "archer-bash", messages: [] }),
+          await toolkit.tools.bash.execute(
+            { command },
+            { toolCallId: "archer-bash", messages: [] },
+          ),
         );
         const timeoutPromise = new Promise<never>((_, reject) => {
           setTimeout(() => reject(new Error("Command timed out after 30 seconds")), 30_000);

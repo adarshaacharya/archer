@@ -38,7 +38,10 @@ function sliceLines(content: string, lineStart?: number, lineEnd?: number): stri
   return lines.slice(start, end).join("\n");
 }
 
-function trimContent(content: string, remainingBudget: number): { text: string; truncated: boolean } {
+function trimContent(
+  content: string,
+  remainingBudget: number,
+): { text: string; truncated: boolean } {
   const limit = Math.max(0, Math.min(MAX_FILE_CHARS, remainingBudget));
   if (content.length <= limit) {
     return { text: content, truncated: false };
@@ -75,8 +78,7 @@ function parseFallbackFileMentions(text: string): FileMentionBinding[] {
         type: "file",
         path: normalizeDisplayedPath(matchedPath),
         lineStart: lineStartRaw ? Number.parseInt(lineStartRaw, 10) : undefined,
-        lineEnd:
-          lineEndRaw && lineEndRaw !== "end" ? Number.parseInt(lineEndRaw, 10) : undefined,
+        lineEnd: lineEndRaw && lineEndRaw !== "end" ? Number.parseInt(lineEndRaw, 10) : undefined,
       },
     });
   }
@@ -86,14 +88,13 @@ function parseFallbackFileMentions(text: string): FileMentionBinding[] {
 
 function collectFileMentions(submission: ComposerSubmission): FileMentionBinding[] {
   const structured = submission.mentions.filter(
-    (
-      mention,
-    ): mention is FileMentionBinding => mention.target.type === "file",
+    (mention): mention is FileMentionBinding => mention.target.type === "file",
   );
   const structuredPaths = new Set(structured.map((mention) => mention.target.path));
   const seen = new Set(
-    structured.map((mention) =>
-      `${mention.target.path}:${mention.target.lineStart ?? ""}:${mention.target.lineEnd ?? ""}`,
+    structured.map(
+      (mention) =>
+        `${mention.target.path}:${mention.target.lineStart ?? ""}:${mention.target.lineEnd ?? ""}`,
     ),
   );
   const fallback = parseFallbackFileMentions(submission.text).filter((mention) => {
@@ -136,7 +137,9 @@ export async function buildExplicitFileContext(
     referencedPaths.push(displayPath);
 
     if (!isWithinRepoRoot(repoRoot, absolutePath)) {
-      sections.push(`File: ${displayPath}\nStatus: skipped because it resolves outside the repository root.`);
+      sections.push(
+        `File: ${displayPath}\nStatus: skipped because it resolves outside the repository root.`,
+      );
       continue;
     }
 
@@ -165,7 +168,9 @@ export async function buildExplicitFileContext(
     }
 
     if (remainingBudget <= 0) {
-      sections.push("Note: additional mentioned file content was omitted after reaching the explicit context budget.");
+      sections.push(
+        "Note: additional mentioned file content was omitted after reaching the explicit context budget.",
+      );
       break;
     }
   }

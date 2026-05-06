@@ -9,8 +9,7 @@
   --term-gray: #666666;
 
   --font-sans: var(--font-archer-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-display:
-    var(--font-archer-display), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-archer-display), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-archer-mono), ui-monospace, monospace;
 
   --border: 1px solid var(--fg-charcoal);

@@ -11,8 +11,22 @@ import {
   type TextChunk,
 } from "@opentui/core";
 import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
-import { createPlainComposerSubmission, type AgentStep, type ComposerMentionBinding, type ComposerSubmission, type RunSummary } from "@archer/shared";
-import { buildComposerTextElements, findActiveMentionQuery, insertFileMention, MentionFileIndex, type ActiveMentionQuery, type MentionSuggestion, reconcileMentionBindings } from "./mention-state.js";
+import {
+  createPlainComposerSubmission,
+  type AgentStep,
+  type ComposerMentionBinding,
+  type ComposerSubmission,
+  type RunSummary,
+} from "@archer/shared";
+import {
+  buildComposerTextElements,
+  findActiveMentionQuery,
+  insertFileMention,
+  MentionFileIndex,
+  type ActiveMentionQuery,
+  type MentionSuggestion,
+  reconcileMentionBindings,
+} from "./mention-state.js";
 import { PromptHistory, type PromptHistoryEntry } from "./prompt-history.js";
 
 type SummaryLike = RunSummary & {
@@ -79,15 +93,15 @@ export type PatchReviewState = {
 // Color palette ───────────────────────────────────────────────────────────────
 
 const col = {
-  bg:        "#0D1117",
-  userBg:    "#161B22",
-  text:      "#E6EDF3",
-  muted:     "#6E7681",
-  border:    "#30363D",
-  accent:    "#58A6FF",
-  user:      "#3FB950",
-  step:      "#6E7681",
-  summary:   "#F0883E",
+  bg: "#0D1117",
+  userBg: "#161B22",
+  text: "#E6EDF3",
+  muted: "#6E7681",
+  border: "#30363D",
+  accent: "#58A6FF",
+  user: "#3FB950",
+  step: "#6E7681",
+  summary: "#F0883E",
 };
 
 // Footer sizing: status(2) + composer box(5) = 7 before slash menu or dialogs.
@@ -140,8 +154,15 @@ function compactDiff(diff: string, maxLines = 16): string {
   const lines: string[] = [];
   let inHunk = false;
   for (const raw of diff.split("\n")) {
-    if (raw.startsWith("@@")) { inHunk = true; lines.push(raw); continue; }
-    if (raw.startsWith("--- ") || raw.startsWith("+++ ")) { lines.push(raw); continue; }
+    if (raw.startsWith("@@")) {
+      inHunk = true;
+      lines.push(raw);
+      continue;
+    }
+    if (raw.startsWith("--- ") || raw.startsWith("+++ ")) {
+      lines.push(raw);
+      continue;
+    }
     if (!inHunk) continue;
     if (raw.startsWith("+") || raw.startsWith("-") || raw.startsWith(" ")) lines.push(raw);
   }
@@ -151,9 +172,9 @@ function compactDiff(diff: string, maxLines = 16): string {
 
 function defaultApprovalChoices(): ApprovalDialogChoice[] {
   return [
-    { value: "reject",  label: "Reject",        description: "Deny this action" },
-    { value: "once",    label: "Approve once",   description: "Allow this action this time only" },
-    { value: "always",  label: "Always approve", description: "Remember this rule for next time" },
+    { value: "reject", label: "Reject", description: "Deny this action" },
+    { value: "once", label: "Approve once", description: "Allow this action this time only" },
+    { value: "always", label: "Always approve", description: "Remember this rule for next time" },
   ];
 }
 
@@ -263,7 +284,11 @@ export class PiTui implements Tui {
   }
 
   private handleSlashMenuClick(screenY: number): void {
-    if (!this.currentInput.trim().startsWith("/") || this.slashMenuItems.length === 0 || !this.slashMenuSelect) {
+    if (
+      !this.currentInput.trim().startsWith("/") ||
+      this.slashMenuItems.length === 0 ||
+      !this.slashMenuSelect
+    ) {
       return;
     }
     const row = screenY - this.slashMenuSelect.screenY;
@@ -327,30 +352,31 @@ export class PiTui implements Tui {
     });
 
     this.dispose = createRoot((dispose) => {
-      const [, setInputValue] = createSignal("")
-      const [, setSlashCommandsState] = createSignal<SlashCommandItem[]>([])
-      const [approvalRows, setApprovalRows] = createSignal(0)
+      const [, setInputValue] = createSignal("");
+      const [, setSlashCommandsState] = createSignal<SlashCommandItem[]>([]);
+      const [approvalRows, setApprovalRows] = createSignal(0);
 
-      this.setInputValue = setInputValue
-      this.setSlashCommandsState = setSlashCommandsState
-      this.setApprovalRows = setApprovalRows
+      this.setInputValue = setInputValue;
+      this.setSlashCommandsState = setSlashCommandsState;
+      this.setApprovalRows = setApprovalRows;
 
       createEffect(() => {
-        const renderer = this.renderer
-        if (!renderer) return
-        const nextHeight = BASE_FOOTER + this.slashLineCount + this.mentionLineCount + approvalRows()
-        if (renderer.footerHeight === nextHeight) return
-        renderer.footerHeight = nextHeight
-        renderer.requestRender()
-      })
+        const renderer = this.renderer;
+        if (!renderer) return;
+        const nextHeight =
+          BASE_FOOTER + this.slashLineCount + this.mentionLineCount + approvalRows();
+        if (renderer.footerHeight === nextHeight) return;
+        renderer.footerHeight = nextHeight;
+        renderer.requestRender();
+      });
 
       onCleanup(() => {
-        this.setInputValue = null
-        this.setSlashCommandsState = null
-        this.setApprovalRows = null
-      })
+        this.setInputValue = null;
+        this.setSlashCommandsState = null;
+        this.setApprovalRows = null;
+      });
 
-      return dispose
+      return dispose;
     });
 
     // ── Footer layout ─────────────────────────────────────────────────────────
@@ -420,13 +446,16 @@ export class PiTui implements Tui {
         event.stopPropagation();
       },
     });
-    this.slashMenuSelect.on(SelectRenderableEvents.ITEM_SELECTED, (_i: number, item: { value: number }) => {
-      if (typeof item.value !== "number") return;
-      this.slashMenuIndex = item.value;
-      this.syncSlashMenuViewport();
-      this.syncSlashMenuSelect();
-      this.submitSlashMenuSelection();
-    });
+    this.slashMenuSelect.on(
+      SelectRenderableEvents.ITEM_SELECTED,
+      (_i: number, item: { value: number }) => {
+        if (typeof item.value !== "number") return;
+        this.slashMenuIndex = item.value;
+        this.syncSlashMenuViewport();
+        this.syncSlashMenuSelect();
+        this.submitSlashMenuSelection();
+      },
+    );
     this.slashMenuBox.add(this.slashMenuSelect);
 
     this.mentionMenuBox = new BoxRenderable(this.renderer, {
@@ -459,13 +488,16 @@ export class PiTui implements Tui {
         event.stopPropagation();
       },
     });
-    this.mentionMenuSelect.on(SelectRenderableEvents.ITEM_SELECTED, (_i: number, item: { value: number }) => {
-      if (typeof item.value !== "number") return;
-      this.mentionMenuIndex = item.value;
-      this.syncMentionMenuViewport();
-      this.syncMentionMenuSelect();
-      void this.submitMentionMenuSelection();
-    });
+    this.mentionMenuSelect.on(
+      SelectRenderableEvents.ITEM_SELECTED,
+      (_i: number, item: { value: number }) => {
+        if (typeof item.value !== "number") return;
+        this.mentionMenuIndex = item.value;
+        this.syncMentionMenuViewport();
+        this.syncMentionMenuSelect();
+        void this.submitMentionMenuSelection();
+      },
+    );
     this.mentionMenuBox.add(this.mentionMenuSelect);
 
     // Composer box: just the border + input row (no slash inside)
@@ -522,13 +554,18 @@ export class PiTui implements Tui {
         if (this.applyingComposerUpdate) {
           this.applyingComposerUpdate = false;
           this.applyingPromptHistoryValue = false;
-          this.currentMentionBindings = this.nextMentionBindingsOverride ?? this.currentMentionBindings;
+          this.currentMentionBindings =
+            this.nextMentionBindingsOverride ?? this.currentMentionBindings;
           this.nextMentionBindingsOverride = null;
         } else if (this.applyingPromptHistoryValue) {
           this.applyingPromptHistoryValue = false;
           this.currentMentionBindings = [];
         } else {
-          this.currentMentionBindings = reconcileMentionBindings(this.currentInput, value, this.currentMentionBindings);
+          this.currentMentionBindings = reconcileMentionBindings(
+            this.currentInput,
+            value,
+            this.currentMentionBindings,
+          );
           if (this.promptHistory.isNavigating()) {
             this.promptHistory.clearNavigation();
           }
@@ -653,7 +690,9 @@ export class PiTui implements Tui {
   }
 
   renderStep(step: AgentStep): void {
-    const observation = step.observation ? normalizeText(step.observation).split("\n").slice(0, 3).join("\n") : "";
+    const observation = step.observation
+      ? normalizeText(step.observation).split("\n").slice(0, 3).join("\n")
+      : "";
     this.print(`● ${step.action}  step ${step.step}`, col.step);
     if (!observation) return;
     for (const line of observation.split("\n")) {
@@ -724,7 +763,9 @@ export class PiTui implements Tui {
 
   renderSummary(summary: SummaryLike): void {
     const webEventCount =
-      typeof summary.evalMetrics?.webEventCount === "number" ? summary.evalMetrics.webEventCount : 0;
+      typeof summary.evalMetrics?.webEventCount === "number"
+        ? summary.evalMetrics.webEventCount
+        : 0;
     const line = [
       summary.success ? "done" : "failed",
       `steps=${summary.steps}`,
@@ -734,7 +775,9 @@ export class PiTui implements Tui {
         : "",
       summary.estimatedCostUsd > 0 ? `cost=$${summary.estimatedCostUsd.toFixed(4)}` : "",
       webEventCount > 0 ? `web=${webEventCount}` : "",
-    ].filter(Boolean).join("  ");
+    ]
+      .filter(Boolean)
+      .join("  ");
     this.renderTranscriptCard(`◆ ${line}`, {
       boxId: "run-summary-box",
       textId: "run-summary-text",
@@ -829,15 +872,17 @@ export class PiTui implements Tui {
           paddingTop,
           paddingBottom,
         });
-        box.add(new TextRenderable(ctx.renderContext, {
-          id: "sb-message-block",
-          content: messageContent,
-          width: contentWidth,
-          height: contentHeight,
-          wrapMode: "word",
-          truncate: false,
-          fg: opts.textColor,
-        }));
+        box.add(
+          new TextRenderable(ctx.renderContext, {
+            id: "sb-message-block",
+            content: messageContent,
+            width: contentWidth,
+            height: contentHeight,
+            wrapMode: "word",
+            truncate: false,
+            fg: opts.textColor,
+          }),
+        );
         return { root: box, width: ctx.width, height, startOnNewLine: true, trailingNewline: true };
       }
 
@@ -871,7 +916,13 @@ export class PiTui implements Tui {
         truncate: true,
         fg: col.border,
       });
-      return { root: text, width: ctx.width, height: 1, startOnNewLine: true, trailingNewline: true };
+      return {
+        root: text,
+        width: ctx.width,
+        height: 1,
+        startOnNewLine: true,
+        trailingNewline: true,
+      };
     });
   }
 
@@ -982,16 +1033,10 @@ export class PiTui implements Tui {
         pushLine();
       };
       const keyValue = (label: string, value: string): void =>
-        row([
-          { text: padRight(label, labelWidth), color: col.muted },
-          { text: value },
-        ]);
+        row([{ text: padRight(label, labelWidth), color: col.muted }, { text: value }]);
       const actionRow = (command: string, hint: string): void => {
         const content = `${padRight(command, commandWidth)}${hint}`;
-        row([
-          { text: padRight(command, commandWidth), color: col.accent },
-          { text: hint },
-        ]);
+        row([{ text: padRight(command, commandWidth), color: col.accent }, { text: hint }]);
       };
 
       borderLine("┌", "─", "┐");
@@ -1109,10 +1154,12 @@ export class PiTui implements Tui {
     if (this.activeMentionQuery && this.mentionMenuItems.length > 0) return false;
 
     if (seq === "\x1b[A") {
-      return this.applyPromptHistoryValue(this.promptHistory.previous({
-        text: this.currentInput,
-        mentions: this.currentMentionBindings,
-      }));
+      return this.applyPromptHistoryValue(
+        this.promptHistory.previous({
+          text: this.currentInput,
+          mentions: this.currentMentionBindings,
+        }),
+      );
     }
 
     if (seq === "\x1b[B") {
@@ -1160,7 +1207,10 @@ export class PiTui implements Tui {
     const items = slashCommandMatches(this.slashCommands, value);
     const previous = this.slashMenuItems[this.slashMenuIndex];
     const nextIndex = previous
-      ? Math.max(0, items.findIndex((item) => item.name === previous.name))
+      ? Math.max(
+          0,
+          items.findIndex((item) => item.name === previous.name),
+        )
       : 0;
 
     this.slashMenuItems = items;
@@ -1202,7 +1252,10 @@ export class PiTui implements Tui {
     this.activeMentionQuery = mentionQuery;
     const previous = this.mentionMenuItems[this.mentionMenuIndex];
     const nextIndex = previous
-      ? Math.max(0, items.findIndex((item) => item.path === previous.path))
+      ? Math.max(
+          0,
+          items.findIndex((item) => item.path === previous.path),
+        )
       : 0;
 
     this.mentionMenuItems = items;
@@ -1360,7 +1413,10 @@ export class PiTui implements Tui {
         value: this.slashMenuScrollOffset + index,
       }));
     this.slashMenuSelect.options = visibleItems;
-    this.slashMenuSelect.selectedIndex = Math.max(0, this.slashMenuIndex - this.slashMenuScrollOffset);
+    this.slashMenuSelect.selectedIndex = Math.max(
+      0,
+      this.slashMenuIndex - this.slashMenuScrollOffset,
+    );
     this.slashMenuSelect.showScrollIndicator = this.slashMenuItems.length > MAX_SLASH_ROWS;
   }
 
@@ -1374,7 +1430,10 @@ export class PiTui implements Tui {
         value: this.mentionMenuScrollOffset + index,
       }));
     this.mentionMenuSelect.options = visibleItems;
-    this.mentionMenuSelect.selectedIndex = Math.max(0, this.mentionMenuIndex - this.mentionMenuScrollOffset);
+    this.mentionMenuSelect.selectedIndex = Math.max(
+      0,
+      this.mentionMenuIndex - this.mentionMenuScrollOffset,
+    );
     this.mentionMenuSelect.showScrollIndicator = this.mentionMenuItems.length > MAX_MENTION_ROWS;
   }
 
@@ -1397,7 +1456,12 @@ export class PiTui implements Tui {
       this.promptHistory.clearNavigation();
     }
 
-    const result = insertFileMention(this.currentInput, mentionQuery, this.currentMentionBindings, selected.path);
+    const result = insertFileMention(
+      this.currentInput,
+      mentionQuery,
+      this.currentMentionBindings,
+      selected.path,
+    );
     this.setComposerValue(result.text, {
       cursorOffset: result.cursorOffset,
       mentions: result.mentions,
@@ -1489,13 +1553,18 @@ export class PiTui implements Tui {
    * Create a box appended below the composer in the footer column.
    * Footer height is driven by the Solid signal in start().
    */
-  private approvalBox(id: string, innerRows: number, title: string, width: number | "100%" = "100%"): BoxRenderable {
+  private approvalBox(
+    id: string,
+    innerRows: number,
+    title: string,
+    width: number | "100%" = "100%",
+  ): BoxRenderable {
     if (!this.renderer) throw new Error("renderer not ready");
     return new BoxRenderable(this.renderer, {
       id,
       width,
       maxWidth: "100%",
-      height: innerRows + 2,  // +2 for border-top and border-bottom
+      height: innerRows + 2, // +2 for border-top and border-bottom
       flexShrink: 0,
       flexDirection: "column",
       alignItems: "stretch",
@@ -1531,22 +1600,26 @@ export class PiTui implements Tui {
     const innerRows = 1 + (hasDetails ? 1 : 0) + visibleChoices + (showPreview ? 1 : 0) + 1;
     const box = this.approvalBox("approval-modal", innerRows, approvalTitle(prompt), "100%");
 
-    box.add(new TextRenderable(this.renderer, {
-      id: "approval-msg",
-      content: normalizeText(prompt.message),
-      width: "100%",
-      height: 1,
-      fg: col.muted,
-    }));
-
-    if (hasDetails) {
-      box.add(new TextRenderable(this.renderer, {
-        id: "approval-details",
-        content: normalizeText(prompt.details ?? ""),
+    box.add(
+      new TextRenderable(this.renderer, {
+        id: "approval-msg",
+        content: normalizeText(prompt.message),
         width: "100%",
         height: 1,
-        fg: col.step,
-      }));
+        fg: col.muted,
+      }),
+    );
+
+    if (hasDetails) {
+      box.add(
+        new TextRenderable(this.renderer, {
+          id: "approval-details",
+          content: normalizeText(prompt.details ?? ""),
+          width: "100%",
+          height: 1,
+          fg: col.step,
+        }),
+      );
     }
 
     const selectOptions = choices.map((ch, index) => ({
@@ -1586,13 +1659,15 @@ export class PiTui implements Tui {
     if (preview) {
       box.add(preview);
     }
-    box.add(new TextRenderable(this.renderer, {
-      id: "approval-help",
-      content: "↑↓ move   enter select   esc reject",
-      width: "100%",
-      height: 1,
-      fg: col.muted,
-    }));
+    box.add(
+      new TextRenderable(this.renderer, {
+        id: "approval-help",
+        content: "↑↓ move   enter select   esc reject",
+        width: "100%",
+        height: 1,
+        fg: col.muted,
+      }),
+    );
 
     this.footerRoot.add(box);
     this.setApprovalRows?.(innerRows + 2);
@@ -1627,27 +1702,33 @@ export class PiTui implements Tui {
     // innerRows = header(1) + subtitle(1) + files-label(1) + fileSelect(4) + diff-label(1) + preview(5) + actions(3) + help(1) = 17
     const box = this.approvalBox("review-modal", 17, "review changes");
 
-    box.add(new TextRenderable(this.renderer, {
-      id: "review-header",
-      content: normalizeText(prompt.message),
-      width: "100%",
-      height: 1,
-      fg: col.text,
-    }));
-    box.add(new TextRenderable(this.renderer, {
-      id: "review-subtitle",
-      content: normalizeText(prompt.details ?? prompt.review.summary),
-      width: "100%",
-      height: 1,
-      fg: col.muted,
-    }));
-    box.add(new TextRenderable(this.renderer, {
-      id: "review-files-label",
-      content: "Files",
-      width: "100%",
-      height: 1,
-      fg: col.accent,
-    }));
+    box.add(
+      new TextRenderable(this.renderer, {
+        id: "review-header",
+        content: normalizeText(prompt.message),
+        width: "100%",
+        height: 1,
+        fg: col.text,
+      }),
+    );
+    box.add(
+      new TextRenderable(this.renderer, {
+        id: "review-subtitle",
+        content: normalizeText(prompt.details ?? prompt.review.summary),
+        width: "100%",
+        height: 1,
+        fg: col.muted,
+      }),
+    );
+    box.add(
+      new TextRenderable(this.renderer, {
+        id: "review-files-label",
+        content: "Files",
+        width: "100%",
+        height: 1,
+        fg: col.accent,
+      }),
+    );
 
     const fileSelect = new SelectRenderable(this.renderer, {
       id: "review-files",
@@ -1663,13 +1744,15 @@ export class PiTui implements Tui {
     });
 
     box.add(fileSelect);
-    box.add(new TextRenderable(this.renderer, {
-      id: "review-diff-label",
-      content: "Diff",
-      width: "100%",
-      height: 1,
-      fg: col.accent,
-    }));
+    box.add(
+      new TextRenderable(this.renderer, {
+        id: "review-diff-label",
+        content: "Diff",
+        width: "100%",
+        height: 1,
+        fg: col.accent,
+      }),
+    );
 
     const preview = new TextRenderable(this.renderer, {
       id: "review-preview",
@@ -1695,13 +1778,15 @@ export class PiTui implements Tui {
 
     box.add(preview);
     box.add(actionSelect);
-    box.add(new TextRenderable(this.renderer, {
-      id: "review-help",
-      content: "tab switch focus   enter choose   esc reject",
-      width: "100%",
-      height: 1,
-      fg: col.muted,
-    }));
+    box.add(
+      new TextRenderable(this.renderer, {
+        id: "review-help",
+        content: "tab switch focus   enter choose   esc reject",
+        width: "100%",
+        height: 1,
+        fg: col.muted,
+      }),
+    );
 
     this.footerRoot.add(box);
     this.setApprovalRows?.(17 + 2);

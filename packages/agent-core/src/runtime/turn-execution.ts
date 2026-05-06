@@ -65,7 +65,7 @@ export async function handleAnswerContextOutcome<TResult, TSummary>(deps: {
   renderAssistantError: (message: string) => void;
   persistAssistantTranscript: (message: string) => void | Promise<void>;
   pruneAfterTurn: () => void;
-  }): Promise<TResult> {
+}): Promise<TResult> {
   const {
     contextResult,
     task,
@@ -313,7 +313,8 @@ export async function handleTaskContextOutcome<TResult, TSummary>(deps: {
           return deps.buildTurnResult(
             "failed",
             baseSummary,
-            answerState.contextResult.error ?? "Research failed before an answer could be produced.",
+            answerState.contextResult.error ??
+              "Research failed before an answer could be produced.",
           );
         }
         case "synthesizing": {
@@ -322,7 +323,8 @@ export async function handleTaskContextOutcome<TResult, TSummary>(deps: {
               deps.task,
               answerState.questionAnswerReadyReason
                 ? `The question turn became answer-ready: ${answerState.questionAnswerReadyReason}.`
-                : (answerState.contextResult.error ?? "The question turn reached its exploration limit."),
+                : (answerState.contextResult.error ??
+                    "The question turn reached its exploration limit."),
             ),
             true,
             24,
@@ -344,7 +346,11 @@ export async function handleTaskContextOutcome<TResult, TSummary>(deps: {
           });
           answerState = reduceAnswerTurnState(answerState, {
             type: "phase.set",
-            phase: message ? "done" : finalAnswerResult.status === "cancelled" ? "cancelled" : "blocked",
+            phase: message
+              ? "done"
+              : finalAnswerResult.status === "cancelled"
+                ? "cancelled"
+                : "blocked",
           });
           if (!message && finalAnswerResult.status !== "cancelled") {
             answerState = reduceAnswerTurnState(answerState, {
@@ -601,7 +607,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
               "Submit a valid plan using the submitPlan tool.",
               "Only fall back to raw JSON if the tool is unavailable.",
               "The plan shape is:",
-              '{ goal: string, steps: [{ id: string, title: string, targets: string[], rationale: string, verification: string }] }',
+              "{ goal: string, steps: [{ id: string, title: string, targets: string[], rationale: string, verification: string }] }",
               "Original task:",
               task,
               "Previous invalid output:",
@@ -670,10 +676,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
         onImplementationAttempted();
         const implementationPrompt = buildImplementationPrompt(
           task,
-          [
-            JSON.stringify(changeState.plan, null, 2),
-            changeState.implementationPromptAddendum,
-          ]
+          [JSON.stringify(changeState.plan, null, 2), changeState.implementationPromptAddendum]
             .filter(Boolean)
             .join("\n\n"),
         );
@@ -806,9 +809,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
         } else {
           changeState = reduceChangeTurnState(changeState, {
             type: "failure.set",
-            message:
-              verificationResult.error ??
-              "Verification did not produce a passing result.",
+            message: verificationResult.error ?? "Verification did not produce a passing result.",
           });
           changeState = reduceChangeTurnState(changeState, {
             type: "phase.set",
@@ -920,9 +921,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
         );
         const compacted =
           submittedCompactionReport ??
-          (compactRun.status === "completed"
-            ? parseCompactionReport(compactRun.outputText)
-            : null);
+          (compactRun.status === "completed" ? parseCompactionReport(compactRun.outputText) : null);
         updateCompactionMetadata({
           trigger: "context-pressure",
           completed: compactRun.status === "completed",

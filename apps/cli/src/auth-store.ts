@@ -346,7 +346,9 @@ export async function resolveActiveWebProvider(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ActiveWebProviderState | null> {
   const explicitProvider =
-    typeof env.ARCHER_WEB_PROVIDER === "string" ? normalizeWebProvider(env.ARCHER_WEB_PROVIDER) : null;
+    typeof env.ARCHER_WEB_PROVIDER === "string"
+      ? normalizeWebProvider(env.ARCHER_WEB_PROVIDER)
+      : null;
   const store = await readAuthStore();
 
   const chooseSavedProvider = (): SupportedWebProvider | null => {

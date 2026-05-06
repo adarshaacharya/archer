@@ -30,34 +30,19 @@ export function HeroTerminal() {
               Refactor the auth middleware to support JWT rotation
             </span>
           </div>
-          <div className="term-line term-dim">
-            [SYS] Connecting to local context...
-          </div>
-          <div className="term-line term-dim">
-            [SYS] Reading src/middleware/auth.ts (142 lines)
-          </div>
-          <div className="term-line term-dim">
-            [SYS] Provider: OpenRouter (Claude Sonnet 4.6)
-          </div>
+          <div className="term-line term-dim">[SYS] Connecting to local context...</div>
+          <div className="term-line term-dim">[SYS] Reading src/middleware/auth.ts (142 lines)</div>
+          <div className="term-line term-dim">[SYS] Provider: OpenRouter (Claude Sonnet 4.6)</div>
 
-          <div
-            className="term-line"
-            style={{ marginTop: "1rem", color: "#888" }}
-          >
+          <div className="term-line" style={{ marginTop: "1rem", color: "#888" }}>
             {"// Proposed Changes:"}
           </div>
           <div className="term-line diff-sub">
             - const token = req.headers.authorization?.split(&apos; &apos;)[1];
           </div>
-          <div className="term-line diff-add">
-            + const token = extractToken(req);
-          </div>
-          <div className="term-line diff-add">
-            + if (isExpired(token)) {"{"}
-          </div>
-          <div className="term-line diff-add">
-            + await attemptRotation(req, res);
-          </div>
+          <div className="term-line diff-add">+ const token = extractToken(req);</div>
+          <div className="term-line diff-add">+ if (isExpired(token)) {"{"}</div>
+          <div className="term-line diff-add">+ await attemptRotation(req, res);</div>
           <div className="term-line diff-add">+ {"}"}</div>
 
           <div

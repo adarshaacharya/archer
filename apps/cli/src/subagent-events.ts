@@ -111,10 +111,7 @@ export function formatSubagentRuntimeEvent(event: OpenHarnessToolEvent): string 
     return null;
   }
 
-  if (
-    event.toolName === "spawnSubagent" ||
-    event.toolName === "subagentStatus"
-  ) {
+  if (event.toolName === "spawnSubagent" || event.toolName === "subagentStatus") {
     const status = asSubagentStatusLike(event.output);
     if (!status) {
       return null;

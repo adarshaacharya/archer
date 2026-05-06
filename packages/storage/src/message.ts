@@ -442,7 +442,9 @@ function extractLikelyRisks(content: string): string[] {
   const riskLines = lines.filter((line) =>
     /(fail|error|risk|todo|follow-up|follow up|unknown|uncertain|blocked|warning)/i.test(line),
   );
-  return Array.from(new Set(riskLines.map((line) => (line.length > 220 ? `${line.slice(0, 220)}...` : line))));
+  return Array.from(
+    new Set(riskLines.map((line) => (line.length > 220 ? `${line.slice(0, 220)}...` : line))),
+  );
 }
 
 const MODEL_MESSAGE_PROTECT_TOKENS = 12_500;

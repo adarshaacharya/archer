@@ -60,18 +60,12 @@
       "indexes": {
         "messages_session_id_created_at_idx": {
           "name": "messages_session_id_created_at_idx",
-          "columns": [
-            "session_id",
-            "created_at"
-          ],
+          "columns": ["session_id", "created_at"],
           "isUnique": false
         },
         "messages_session_id_seq_idx": {
           "name": "messages_session_id_seq_idx",
-          "columns": [
-            "session_id",
-            "seq"
-          ],
+          "columns": ["session_id", "seq"],
           "isUnique": true
         }
       },
@@ -80,12 +74,8 @@
           "name": "messages_session_id_sessions_id_fk",
           "tableFrom": "messages",
           "tableTo": "sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -143,18 +133,12 @@
       "indexes": {
         "model_messages_session_id_created_at_idx": {
           "name": "model_messages_session_id_created_at_idx",
-          "columns": [
-            "session_id",
-            "created_at"
-          ],
+          "columns": ["session_id", "created_at"],
           "isUnique": false
         },
         "model_messages_session_id_seq_idx": {
           "name": "model_messages_session_id_seq_idx",
-          "columns": [
-            "session_id",
-            "seq"
-          ],
+          "columns": ["session_id", "seq"],
           "isUnique": true
         }
       },
@@ -163,12 +147,8 @@
           "name": "model_messages_session_id_sessions_id_fk",
           "tableFrom": "model_messages",
           "tableTo": "sessions",
-          "columnsFrom": [
-            "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -254,16 +234,12 @@
       "indexes": {
         "sessions_updated_at_idx": {
           "name": "sessions_updated_at_idx",
-          "columns": [
-            "updated_at"
-          ],
+          "columns": ["updated_at"],
           "isUnique": false
         },
         "sessions_project_root_idx": {
           "name": "sessions_project_root_idx",
-          "columns": [
-            "project_root"
-          ],
+          "columns": ["project_root"],
           "isUnique": false
         }
       },

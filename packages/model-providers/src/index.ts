@@ -122,7 +122,8 @@ function resolveApiKey(
   switch (provider) {
     case "openai": {
       const apiKey = env.OPENAI_API_KEY;
-      if (!apiKey) throw new ProviderError("OPENAI_API_KEY is required when ARCHER_PROVIDER=openai");
+      if (!apiKey)
+        throw new ProviderError("OPENAI_API_KEY is required when ARCHER_PROVIDER=openai");
       return { apiKey, envVar: "OPENAI_API_KEY" };
     }
     case "anthropic": {

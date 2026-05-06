@@ -29,4 +29,3 @@ export function buildVerificationScopeInstruction(scope: ValidationScope): strin
       return "Run relevant checks/tests/lint commands, keeping validation proportional to the changes.";
   }
 }
-

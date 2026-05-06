@@ -135,11 +135,12 @@ function ensureMigrationTable(database: Database): void {
 }
 
 function appliedMigrationHashes(database: Database): Set<string> {
-  const migrationTableExists = database
-    .query<SqliteObjectRow, []>(
-      `SELECT type, name FROM sqlite_master WHERE type = 'table' AND name = '__drizzle_migrations'`,
-    )
-    .all().length > 0;
+  const migrationTableExists =
+    database
+      .query<SqliteObjectRow, []>(
+        `SELECT type, name FROM sqlite_master WHERE type = 'table' AND name = '__drizzle_migrations'`,
+      )
+      .all().length > 0;
   if (!migrationTableExists) {
     return new Set();
   }

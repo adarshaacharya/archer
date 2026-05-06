@@ -62,9 +62,7 @@ export function accumulatePlanningResult<T extends PlanningLikeResult>(
   } as T;
 }
 
-export function shouldRepairImplementationOutcome(
-  outcome: ImplementationRunOutcome,
-): boolean {
+export function shouldRepairImplementationOutcome(outcome: ImplementationRunOutcome): boolean {
   return (
     outcome.implementationResult.status === "completed" &&
     outcome.verificationResult?.status === "completed" &&

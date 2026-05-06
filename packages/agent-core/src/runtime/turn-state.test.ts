@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  createChangeTurnState,
-  mergeChangeTurnTotals,
-  runtimePhaseTotals,
-} from "./turn-state.js";
+import { createChangeTurnState, mergeChangeTurnTotals, runtimePhaseTotals } from "./turn-state.js";
 
 describe("turn-state", () => {
   test("initializes change turn state from context result", () => {

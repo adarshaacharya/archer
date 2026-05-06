@@ -34,12 +34,10 @@ export function HeroLead() {
           Archer
         </h1>
       </div>
-      <p className="hero-lead">
-        The terminal-first AI coding agent for real local work.
-      </p>
+      <p className="hero-lead">The terminal-first AI coding agent for real local work.</p>
       <p className="mb-2">
-        Bring your own API key. Review patches, approve risky actions, and keep
-        control over how the agent works inside your repo.
+        Bring your own API key. Review patches, approve risky actions, and keep control over how the
+        agent works inside your repo.
       </p>
 
       <div className="hero-support">YOUR KEYS. YOUR PROVIDER. YOUR SPEND.</div>

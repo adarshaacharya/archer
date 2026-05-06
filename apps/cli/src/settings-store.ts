@@ -141,10 +141,7 @@ function pathMatchesDirectoryRule(target: string, rule: string): boolean {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-export function storedPermissionMatchesRequest(
-  rule: string,
-  request: PermissionRequest,
-): boolean {
+export function storedPermissionMatchesRequest(rule: string, request: PermissionRequest): boolean {
   switch (request.kind) {
     case "command":
       return rule === request.target;

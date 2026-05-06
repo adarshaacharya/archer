@@ -21,6 +21,8 @@ describe("validation-policy", () => {
   });
 
   it("builds targeted verification instructions", () => {
-    expect(buildVerificationScopeInstruction("targeted")).toContain("narrowest relevant validation");
+    expect(buildVerificationScopeInstruction("targeted")).toContain(
+      "narrowest relevant validation",
+    );
   });
 });

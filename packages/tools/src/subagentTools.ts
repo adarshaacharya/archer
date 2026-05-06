@@ -26,12 +26,18 @@ export type SubagentRegistryLike = {
   getStatus(subagentId: string): SubagentStatusResult | undefined;
   cancel(subagentId: string): boolean;
   awaitAll(subagentIds: string[]): Promise<Map<string, string>>;
-  awaitAllSettled(
-    subagentIds: string[],
-  ): Promise<Map<string, { status: "done" | "failed" | "cancelled"; sessionId?: string; result?: string; error?: string }>>;
-  awaitAny(
-    subagentIds: string[],
-  ): Promise<{ id: string; sessionId?: string; result: string }>;
+  awaitAllSettled(subagentIds: string[]): Promise<
+    Map<
+      string,
+      {
+        status: "done" | "failed" | "cancelled";
+        sessionId?: string;
+        result?: string;
+        error?: string;
+      }
+    >
+  >;
+  awaitAny(subagentIds: string[]): Promise<{ id: string; sessionId?: string; result: string }>;
   awaitRace(
     subagentIds: string[],
   ): Promise<{ id: string; sessionId?: string; result?: string; error?: string }>;

@@ -29,13 +29,12 @@ export function BYOKSection() {
         }}
       >
         <p style={{ fontSize: "1.25rem", marginBottom: "1rem" }}>
-          Archer doesn&apos;t hide the model behind a black box. You choose the
-          provider, you own the access, and you see the cost where the work
-          happens.
+          Archer doesn&apos;t hide the model behind a black box. You choose the provider, you own
+          the access, and you see the cost where the work happens.
         </p>
         <p className="term-gray-text">
-          Connect your credentials. Keep billing under your control. Avoid
-          lock-in. Work locally with clear approval boundaries.
+          Connect your credentials. Keep billing under your control. Avoid lock-in. Work locally
+          with clear approval boundaries.
         </p>
 
         <ul className="provider-list mono">

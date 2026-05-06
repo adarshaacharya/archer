@@ -85,19 +85,11 @@ export function clearSessionApprovalCache(sessionId?: string): void {
   sessionApprovalCaches.clear();
 }
 
-export function hasSessionApproval(
-  sessionId: string,
-  request: LocalApprovalRequest,
-): boolean {
-  return getSessionApprovalCache(sessionId).some((entry) =>
-    matchesSessionApproval(entry, request),
-  );
+export function hasSessionApproval(sessionId: string, request: LocalApprovalRequest): boolean {
+  return getSessionApprovalCache(sessionId).some((entry) => matchesSessionApproval(entry, request));
 }
 
-export function rememberSessionApproval(
-  sessionId: string,
-  request: LocalApprovalRequest,
-): void {
+export function rememberSessionApproval(sessionId: string, request: LocalApprovalRequest): void {
   const cache = getSessionApprovalCache(sessionId);
   const entry =
     request.kind === "file-write"
@@ -236,8 +228,7 @@ export async function setApprovalMode(
   if (!next) {
     return {
       type: "continue",
-      message:
-        "Unknown permission profile. Use read-only, workspace-write, or danger-full-access.",
+      message: "Unknown permission profile. Use read-only, workspace-write, or danger-full-access.",
     };
   }
 

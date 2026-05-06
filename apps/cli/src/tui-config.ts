@@ -21,7 +21,9 @@ export async function loadTuiConfig(cwd: string): Promise<TuiConfig> {
       }
       return {};
     }
-    console.warn(`[archer] Failed reading TUI config at ${path}. Falling back to default keybinds.`);
+    console.warn(
+      `[archer] Failed reading TUI config at ${path}. Falling back to default keybinds.`,
+    );
     return {};
   }
 

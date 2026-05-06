@@ -12,10 +12,7 @@ import {
   createWebOpenPageTool,
   createWebSearchTool,
 } from "@archer/tools";
-import {
-  loadEffectiveModelMessages,
-  replaceMessages,
-} from "@archer/storage";
+import { loadEffectiveModelMessages, replaceMessages } from "@archer/storage";
 import type { ModelMessage } from "ai";
 import { resolve } from "node:path";
 import { DEFAULT_MAX_STEPS } from "../types.js";
@@ -100,7 +97,9 @@ function extractFindings(text: string): string[] {
   return Array.from(new Set(cleaned)).slice(0, 8);
 }
 
-function extractCitations(text: string): Array<{ type: "file" | "url"; ref: string; excerpt?: string }> {
+function extractCitations(
+  text: string,
+): Array<{ type: "file" | "url"; ref: string; excerpt?: string }> {
   const citations: Array<{ type: "file" | "url"; ref: string; excerpt?: string }> = [];
   const fileMatches = text.match(/\b(?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\b/g) ?? [];
   const urlMatches = text.match(/https?:\/\/[^\s)<>"'`]+/g) ?? [];
@@ -356,9 +355,14 @@ export function createSpawnSubagentExecutor(options: SpawnSubagentExecutorOption
     );
 
     if (input.background && options.backgroundRegistry) {
-      const runId = options.backgroundRegistry.spawn(input.name?.trim() || `archer-${input.kind}`, childAgent, input.prompt, {
-        sessionId: childSessionId,
-      });
+      const runId = options.backgroundRegistry.spawn(
+        input.name?.trim() || `archer-${input.kind}`,
+        childAgent,
+        input.prompt,
+        {
+          sessionId: childSessionId,
+        },
+      );
       return {
         subagentId: runId,
         sessionId: childSessionId,
@@ -418,7 +422,9 @@ export function createSpawnSubagentExecutor(options: SpawnSubagentExecutorOption
       };
     }
 
-    const assistantMessages = [...session.messages].filter((message) => message.role === "assistant");
+    const assistantMessages = [...session.messages].filter(
+      (message) => message.role === "assistant",
+    );
     const lastAssistant = assistantMessages[assistantMessages.length - 1];
     const assistantText = lastAssistant ? modelMessageToText(lastAssistant.content) : "";
     const summary = assistantText.trim() || finalText.trim() || "Subagent completed.";

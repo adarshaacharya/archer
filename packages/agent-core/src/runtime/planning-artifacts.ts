@@ -190,7 +190,9 @@ export function validateCompactionReport(value: unknown): {
     return null;
   }
 
-  const criticalFiles = parsed.criticalFiles.filter((item): item is string => typeof item === "string");
+  const criticalFiles = parsed.criticalFiles.filter(
+    (item): item is string => typeof item === "string",
+  );
   const openRisks = parsed.openRisks.filter((item): item is string => typeof item === "string");
   if (
     criticalFiles.length !== parsed.criticalFiles.length ||

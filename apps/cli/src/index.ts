@@ -1,7 +1,11 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
 import type { SupportedProvider } from "@archer/model-providers";
-import { createPlainComposerSubmission, type ApprovalMode, AgentRequestSchema } from "@archer/shared";
+import {
+  createPlainComposerSubmission,
+  type ApprovalMode,
+  AgentRequestSchema,
+} from "@archer/shared";
 import { join } from "node:path";
 import {
   appendPromptHistoryEntry,
@@ -16,11 +20,7 @@ import {
 } from "@archer/storage";
 import { PiTui, type SlashCommandItem, type Tui } from "@archer/tui";
 import type { SupportedWebProvider } from "@archer/web";
-import {
-  permissionsSummary,
-  requestApproval,
-  setApprovalMode,
-} from "./approvals.js";
+import { permissionsSummary, requestApproval, setApprovalMode } from "./approvals.js";
 import {
   clearProviderEnv,
   clearWebProviderEnv,
@@ -85,7 +85,11 @@ function newSessionId(): string {
   return `session_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function persistPromptHistory(projectRoot: string, sessionId: string, text: string): Promise<void> {
+async function persistPromptHistory(
+  projectRoot: string,
+  sessionId: string,
+  text: string,
+): Promise<void> {
   const value = text.trim();
   if (!value || value.startsWith("/")) {
     return;
@@ -886,7 +890,11 @@ async function handleSlashCommand(
   }
 
   if (command === "compact") {
-    const result = await runTask(createPlainComposerSubmission(compactWorkflowPrompt()), tui, state);
+    const result = await runTask(
+      createPlainComposerSubmission(compactWorkflowPrompt()),
+      tui,
+      state,
+    );
     await persistSlashTurnResult(state.sessionId, result, "compact");
     return {
       type: "continue",

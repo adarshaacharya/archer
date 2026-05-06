@@ -1,10 +1,6 @@
 import { z } from "zod";
 
-export const ApprovalModeSchema = z.enum([
-  "read-only",
-  "workspace-write",
-  "danger-full-access",
-]);
+export const ApprovalModeSchema = z.enum(["read-only", "workspace-write", "danger-full-access"]);
 export type ApprovalMode = z.infer<typeof ApprovalModeSchema>;
 
 const LEGACY_APPROVAL_MODE_ALIASES = {
@@ -219,7 +215,12 @@ export const SpawnSubagentInputSchema = z.object({
   toolPolicy: SubagentToolPolicySchema.optional(),
   background: z.boolean().default(false).optional(),
   maxSteps: z.number().int().positive().max(100).optional(),
-  maxDurationMs: z.number().int().positive().max(10 * 60 * 1000).optional(),
+  maxDurationMs: z
+    .number()
+    .int()
+    .positive()
+    .max(10 * 60 * 1000)
+    .optional(),
   resumeKey: z.string().min(1).optional(),
   parentTurnId: z.string().min(1).optional(),
   expectedOutput: z.enum(["summary", "findings", "patch", "citations"]).optional(),

@@ -124,7 +124,6 @@ export function estimateUsageCost(input: {
   if (!cost) return 0;
 
   return (
-    (input.usage.promptTokens * cost.input + input.usage.completionTokens * cost.output) /
-    1_000_000
+    (input.usage.promptTokens * cost.input + input.usage.completionTokens * cost.output) / 1_000_000
   );
 }

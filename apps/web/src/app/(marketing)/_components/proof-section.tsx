@@ -11,12 +11,10 @@ export function ProofSection() {
       >
         <div>
           <span className="mono mb-2 block">{"03 // CONTROL & SAFETY"}</span>
-          <h2 style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>
-            Built for real repositories.
-          </h2>
+          <h2 style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>Built for real repositories.</h2>
           <p>
-            Archer asks before risky actions and routes file and shell
-            operations through explicit policy checks.
+            Archer asks before risky actions and routes file and shell operations through explicit
+            policy checks.
           </p>
         </div>
         <div style={{ marginTop: "4rem" }}>
@@ -61,8 +59,8 @@ export function ProofSection() {
             </div>
             <h3 className="mb-1">Approval Controls</h3>
             <p className="term-gray-text" style={{ fontSize: "0.875rem" }}>
-              Choose how much autonomy Archer gets. Safe reads can flow, while
-              risky writes and shell actions stay gated.
+              Choose how much autonomy Archer gets. Safe reads can flow, while risky writes and
+              shell actions stay gated.
             </p>
           </div>
           <div className="proof-item">
@@ -76,8 +74,8 @@ export function ProofSection() {
             </div>
             <h3 className="mb-1">Sandboxed Context</h3>
             <p className="term-gray-text" style={{ fontSize: "0.875rem" }}>
-              File and shell actions operate inside explicit boundaries. Control
-              which paths and commands Archer can touch.
+              File and shell actions operate inside explicit boundaries. Control which paths and
+              commands Archer can touch.
             </p>
           </div>
           <div className="proof-item">
@@ -93,8 +91,8 @@ export function ProofSection() {
             </div>
             <h3 className="mb-1">Patch-First Editing</h3>
             <p className="term-gray-text" style={{ fontSize: "0.875rem" }}>
-              Changes are proposed as reviewable patches instead of silent
-              rewrites, so they fit normal developer workflows.
+              Changes are proposed as reviewable patches instead of silent rewrites, so they fit
+              normal developer workflows.
             </p>
           </div>
           <div className="proof-item">
@@ -107,8 +105,7 @@ export function ProofSection() {
             </div>
             <h3 className="mb-1">Terminal-First Workflow</h3>
             <p className="term-gray-text" style={{ fontSize: "0.875rem" }}>
-              Works where you already code, run tests, inspect diffs, and manage
-              git.
+              Works where you already code, run tests, inspect diffs, and manage git.
             </p>
           </div>
         </div>

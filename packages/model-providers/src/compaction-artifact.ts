@@ -101,7 +101,7 @@ function extractJsonObject(text: string): string | null {
       escaped = true;
       continue;
     }
-    if (ch === "\"") {
+    if (ch === '"') {
       inString = !inString;
       continue;
     }

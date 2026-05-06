@@ -38,7 +38,9 @@ export function parseCompactionReport(raw: string): CompactionReport | null {
       return null;
     }
 
-    const criticalFiles = parsed.criticalFiles.filter((item): item is string => typeof item === "string");
+    const criticalFiles = parsed.criticalFiles.filter(
+      (item): item is string => typeof item === "string",
+    );
     const openRisks = parsed.openRisks.filter((item): item is string => typeof item === "string");
     if (
       criticalFiles.length !== parsed.criticalFiles.length ||
@@ -75,9 +77,10 @@ export function isContextPressureFailure(
   );
 }
 
-export function deriveCompactionPolicy(
-  recentTurns: Array<{ status: string; summary?: unknown }>,
-): { protectTokens: number; prunableTokens: number } {
+export function deriveCompactionPolicy(recentTurns: Array<{ status: string; summary?: unknown }>): {
+  protectTokens: number;
+  prunableTokens: number;
+} {
   const base = { protectTokens: 12_500, prunableTokens: 6_250 };
   const recentFailures = recentTurns.filter(
     (turn) => turn.status === "failed" || turn.status === "cancelled",

@@ -8,7 +8,9 @@ import {
 
 describe("execution-policy", () => {
   test("detects context budget failure", () => {
-    expect(isContextBudgetResult({ status: "failed", error: "Run exceeded maxSteps=32" })).toBe(true);
+    expect(isContextBudgetResult({ status: "failed", error: "Run exceeded maxSteps=32" })).toBe(
+      true,
+    );
     expect(isContextBudgetResult({ status: "failed", error: "Run cancelled" })).toBe(true);
     expect(isContextBudgetResult({ status: "completed" })).toBe(false);
   });
@@ -29,5 +31,4 @@ describe("execution-policy", () => {
     expect(prompt).toContain("limit reached");
     expect(prompt).toContain("where is routing");
   });
-
 });

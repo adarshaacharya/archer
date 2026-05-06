@@ -83,7 +83,12 @@ export async function runTurnWithDeps(
     });
   }
 
-  const result = await deps.runTask({ ...submission, text: trimmedInput }, tui, state, abortController);
+  const result = await deps.runTask(
+    { ...submission, text: trimmedInput },
+    tui,
+    state,
+    abortController,
+  );
 
   await persistTurnResult(deps.appendTurnResult, state.sessionId, result);
   return result;

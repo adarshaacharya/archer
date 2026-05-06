@@ -49,10 +49,7 @@ function commonPrefixLength(left: string, right: string): number {
 function commonSuffixLength(left: string, right: string, prefixLength: number): number {
   const max = Math.min(left.length, right.length) - prefixLength;
   let suffix = 0;
-  while (
-    suffix < max &&
-    left[left.length - 1 - suffix] === right[right.length - 1 - suffix]
-  ) {
+  while (suffix < max && left[left.length - 1 - suffix] === right[right.length - 1 - suffix]) {
     suffix += 1;
   }
   return suffix;
@@ -99,7 +96,10 @@ async function walkFiles(root: string, directory: string, output: string[]): Pro
   }
 }
 
-export function findActiveMentionQuery(text: string, cursorOffset: number): ActiveMentionQuery | null {
+export function findActiveMentionQuery(
+  text: string,
+  cursorOffset: number,
+): ActiveMentionQuery | null {
   const safeCursorOffset = Math.max(0, Math.min(cursorOffset, text.length));
   const beforeCursor = text.slice(0, safeCursorOffset);
   const tokenStart = Math.max(beforeCursor.lastIndexOf(" "), beforeCursor.lastIndexOf("\n")) + 1;
@@ -141,11 +141,13 @@ export function reconcileMentionBindings(
       }
 
       if (binding.start >= oldChangedEnd) {
-        return [{
-          ...binding,
-          start: binding.start + delta,
-          end: binding.end + delta,
-        }];
+        return [
+          {
+            ...binding,
+            start: binding.start + delta,
+            end: binding.end + delta,
+          },
+        ];
       }
 
       return [];
@@ -197,7 +199,9 @@ export function insertFileMention(
   };
 }
 
-export function buildComposerTextElements(bindings: ComposerMentionBinding[]): ComposerTextElement[] {
+export function buildComposerTextElements(
+  bindings: ComposerMentionBinding[],
+): ComposerTextElement[] {
   return bindings
     .slice()
     .sort((left, right) => left.start - right.start)

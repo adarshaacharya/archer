@@ -99,7 +99,9 @@ export function createAnswerTurnState(input: {
   };
 }
 
-export function runtimePhaseTotals(result: RuntimePhaseResult | null | undefined): ChangeTurnTotals {
+export function runtimePhaseTotals(
+  result: RuntimePhaseResult | null | undefined,
+): ChangeTurnTotals {
   return {
     steps: result?.steps ?? 0,
     promptTokens: result?.usage?.promptTokens ?? 0,
