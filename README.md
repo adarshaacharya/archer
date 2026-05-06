@@ -1,8 +1,8 @@
-<p align="center">
+<p align="left">
   <img
     src="./apps/web/public/logos/banner.png"
     alt="Archer wordmark"
-    width="280"
+    width="500"
   />
 </p>
 
