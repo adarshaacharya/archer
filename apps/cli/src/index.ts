@@ -1,10 +1,7 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
-import { join } from "node:path";
 import type { SupportedProvider } from "@archer/model-providers";
 import {
-  AgentRequestSchema,
-  type ApprovalMode,
   createPlainComposerSubmission,
 } from "@archer/shared";
 import {
@@ -16,11 +13,9 @@ import {
   getTurnResults,
   listPromptHistory,
   listSessions,
-  updateSessionTitle,
 } from "@archer/storage";
-import { PiTui, type SlashCommandItem, type Tui } from "@archer/tui";
 import type { SupportedWebProvider } from "@archer/web";
-import { permissionsSummary, requestApproval, setApprovalMode } from "./approvals.js";
+import { permissionsSummary, setApprovalMode } from "./approvals.js";
 import {
   clearProviderEnv,
   clearWebProviderEnv,
@@ -53,9 +48,62 @@ import { loadTuiConfig } from "./tui-config.js";
 import { runTurn } from "./turn-runner.js";
 import type { TurnResult } from "./turn-types.js";
 
-function parseInitialTask(argv: string[]): string | null {
-  const task = argv.join(" ").trim();
-  return task.length > 0 ? task : null;
+type Tui = import("@archer/tui").Tui;
+type SlashCommandItem = import("@archer/tui").SlashCommandItem;
+
+type CliArgs = {
+  help: boolean;
+  version: boolean;
+  initialTask: string | null;
+};
+
+const HELP_TEXT = `Archer CLI
+
+Usage:
+  archer
+  archer "review this repository"
+  archer --help
+  archer --version
+
+Options:
+  --help, -h     Show this help text and exit
+  --version, -v  Show the Archer version and exit
+
+Slash commands:
+  /help          Show available slash commands
+  /new           Start a fresh session
+  /resume        Restore a saved session
+  /providers     Show provider connection status
+  /connect       Connect a model provider
+  /model         Choose the active model
+  /web           Connect a web search provider
+  /bye           Exit Archer
+`;
+
+function parseCliArgs(argv: string[]): CliArgs {
+  const args = [...argv];
+  const help = args.some((arg) => arg === "--help" || arg === "-h");
+  const version = args.some((arg) => arg === "--version" || arg === "-v");
+  const positional = args.filter((arg) => !arg.startsWith("-"));
+  const initialTask = positional.join(" ").trim();
+
+  return {
+    help,
+    version,
+    initialTask: initialTask.length > 0 ? initialTask : null,
+  };
+}
+
+function printHelp(): void {
+  console.log(HELP_TEXT);
+}
+
+function printVersion(): void {
+  console.log(`archer ${requireVersion()}`);
+}
+
+function requireVersion(): string {
+  return "0.1.3";
 }
 
 function isCasualGreeting(input: string): boolean {
@@ -1147,7 +1195,17 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const initialTask = parseInitialTask(process.argv.slice(2));
+  const cliArgs = parseCliArgs(process.argv.slice(2));
+  if (cliArgs.help) {
+    printHelp();
+    return;
+  }
+  if (cliArgs.version) {
+    printVersion();
+    return;
+  }
+
+  const initialTask = cliArgs.initialTask;
   const sessionId = newSessionId();
   const cwd = process.cwd();
   const projectRoot = resolveProjectRoot(cwd);
@@ -1194,7 +1252,8 @@ async function main(): Promise<void> {
     { name: "/bye", description: "exit Archer" },
   ];
 
-  const tui: Tui = new PiTui();
+  const { ArcherTui } = await import("@archer/tui");
+  const tui: Tui = new ArcherTui();
   await tui.start();
   tui.setSlashCommands(slashCommandOptions);
   tui.loadPersistentPromptHistory(await listPromptHistory(projectRoot));

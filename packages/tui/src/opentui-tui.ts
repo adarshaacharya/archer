@@ -227,7 +227,7 @@ function slashCommandMatches(commands: SlashCommandItem[], input: string): Slash
   return matches.length > 0 ? matches : commands;
 }
 
-export class PiTui implements Tui {
+export class ArcherTui implements Tui {
   private renderer: CliRenderer | null = null;
   private footerRoot: BoxRenderable | null = null;
   private composerBox: BoxRenderable | null = null;

@@ -6,13 +6,12 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const cliRoot = path.resolve(scriptDir, "..");
-const entrypoint = path.join(cliRoot, "src", "index.ts");
 
 const TARGETS = new Map([
-  ["bun-darwin-arm64", { artifact: "darwin-arm64", binaryName: "archer" }],
-  ["bun-darwin-x64", { artifact: "darwin-x64", binaryName: "archer" }],
-  ["bun-linux-arm64", { artifact: "linux-arm64", binaryName: "archer" }],
-  ["bun-linux-x64", { artifact: "linux-x64", binaryName: "archer" }],
+  ["bun-darwin-arm64", { artifact: "darwin-arm64", platform: "darwin", arch: "arm64" }],
+  ["bun-darwin-x64", { artifact: "darwin-x64", platform: "darwin", arch: "x64" }],
+  ["bun-linux-arm64", { artifact: "linux-arm64", platform: "linux", arch: "arm64" }],
+  ["bun-linux-x64", { artifact: "linux-x64", platform: "linux", arch: "x64" }],
 ]);
 
 function defaultTarget() {
@@ -37,13 +36,17 @@ if (!targetInfo) {
   throw new Error(`Unsupported ARCHER_TARGET: ${target}`);
 }
 
-const outDir = path.join(cliRoot, "dist", "bin", targetInfo.artifact);
-const outfile = path.join(outDir, targetInfo.binaryName);
+if (process.platform !== targetInfo.platform || process.arch !== targetInfo.arch) {
+  throw new Error(
+    `ARCHER_TARGET=${target} must be built on ${targetInfo.platform}-${targetInfo.arch}; current host is ${process.platform}-${process.arch}`,
+  );
+}
 
-await mkdir(outDir, { recursive: true });
+await mkdir(path.join(cliRoot, "dist", "bin", targetInfo.artifact), { recursive: true });
 
 const build = Bun.spawn({
-  cmd: ["bun", "build", entrypoint, "--compile", `--target=${target}`, `--outfile=${outfile}`],
+  cmd: ["bun", "run", "build"],
+  cwd: cliRoot,
   stdout: "inherit",
   stderr: "inherit",
 });
@@ -53,4 +56,4 @@ if (exitCode !== 0) {
   process.exit(exitCode);
 }
 
-console.log(`Built ${target} binary at ${outfile}`);
+console.log(`Built Archer runtime bundle for ${targetInfo.artifact}`);

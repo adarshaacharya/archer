@@ -4,4 +4,4 @@ export type {
   SlashCommandItem,
   Tui,
 } from "./opentui-tui.js";
-export { PiTui } from "./opentui-tui.js";
+export { ArcherTui } from "./opentui-tui.js";
