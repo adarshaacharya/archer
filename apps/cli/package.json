@@ -10,8 +10,9 @@
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "rm -rf dist && bun build src/index.ts --target=node --format=esm --outdir dist --packages=bundle --external @opentui/core",
-    "build:binary": "rm -rf dist/bin release && bun run scripts/build-binary.mjs",
-    "package:binary": "bun run scripts/package-binary.mjs",
+    "build:binary": "rm -rf dist/bin release && bun run scripts/build.ts",
+    "build:binary:all": "rm -rf dist/bin release && bun run scripts/build.ts --all",
+    "package:binary": "bun run scripts/build.ts",
     "lint": "biome check .",
     "format": "biome check . --write",
     "check-types": "tsc -p tsconfig.json --noEmit"

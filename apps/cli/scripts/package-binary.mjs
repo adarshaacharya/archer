@@ -81,6 +81,9 @@ await cp(
   path.join(nodeModulesRoot, platformPackageName),
   { recursive: true },
 );
+await cp(path.join(repoRoot, "packages", "storage", "migrations"), path.join(runtimeRoot, "migrations"), {
+  recursive: true,
+});
 await cp(path.join(cliRoot, "README.md"), path.join(archiveRoot, "README.md"));
 await cp(path.join(repoRoot, "LICENSE"), path.join(archiveRoot, "LICENSE"));
 await writeFile(
