@@ -1,7 +1,4 @@
-import type {
-  WebAction,
-  WebActionResult,
-} from "@archer/shared/web";
+import type { WebAction, WebActionResult } from "@archer/shared/web";
 import type { WebCapability } from "@archer/tools";
 import { findInPage, openPage } from "./internal/page.js";
 import { searchArcherScout } from "./internal/providers/archer-scout.js";

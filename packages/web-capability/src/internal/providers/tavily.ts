@@ -1,8 +1,4 @@
-import type {
-  WebActionResult,
-  WebSearchAction,
-  WebSearchTopic,
-} from "@archer/shared/web";
+import type { WebActionResult, WebSearchAction, WebSearchTopic } from "@archer/shared/web";
 import { asResults, fetchJson } from "../shared.js";
 
 type WebSearchResult = Extract<WebActionResult, { type: "search" }>;

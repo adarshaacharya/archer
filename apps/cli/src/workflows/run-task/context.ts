@@ -38,7 +38,11 @@ type ContextDeps = {
   runPhase: any;
   turn: any;
   phase: any;
-  observedFacts: { changeFlowEntered: boolean; implementationAttempted: boolean; verificationAttempted: boolean };
+  observedFacts: {
+    changeFlowEntered: boolean;
+    implementationAttempted: boolean;
+    verificationAttempted: boolean;
+  };
   buildSummary: any;
   buildTurnResult: any;
   renderSummary: any;

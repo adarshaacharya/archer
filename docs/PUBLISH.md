@@ -1,4 +1,6 @@
-# Binary Release
+# CLI Release (npm + Binaries)
+
+## Release steps
 
 1. Sync `main` and confirm clean working tree.
 ```bash
@@ -26,7 +28,9 @@ git tag vX.Y.Z
 git push origin main --tags
 ```
 
-5. Confirm GitHub Actions `CLI Release` passes and the release includes:
+5. Confirm GitHub Actions `CLI Release` passes:
+- `Publish npm Package` job publishes `@adarshaacharya/archer`
+- GitHub Release includes:
 - `archer-darwin-arm64.tar.gz`
 - `archer-darwin-x64.tar.gz`
 - `archer-linux-arm64.tar.gz`

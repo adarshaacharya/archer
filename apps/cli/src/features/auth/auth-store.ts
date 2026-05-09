@@ -171,7 +171,7 @@ function parseStore(raw: unknown): AuthStore {
       : undefined;
   const defaultWebProvider =
     typeof record.defaultWebProvider === "string" &&
-      isSupportedWebProvider(record.defaultWebProvider)
+    isSupportedWebProvider(record.defaultWebProvider)
       ? record.defaultWebProvider
       : undefined;
 

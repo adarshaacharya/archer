@@ -73,17 +73,25 @@ await mkdir(nodeModulesRoot, { recursive: true });
 
 await cp(sourceEntrypoint, path.join(runtimeRoot, "dist", "index.js"));
 await cp(bunExecutablePath, path.join(runtimeRoot, "bun"));
-await cp(path.join(repoRoot, "node_modules", "@opentui", "core"), path.join(nodeModulesRoot, "core"), {
-  recursive: true,
-});
+await cp(
+  path.join(repoRoot, "node_modules", "@opentui", "core"),
+  path.join(nodeModulesRoot, "core"),
+  {
+    recursive: true,
+  },
+);
 await cp(
   path.join(repoRoot, "node_modules", "@opentui", platformPackageName),
   path.join(nodeModulesRoot, platformPackageName),
   { recursive: true },
 );
-await cp(path.join(repoRoot, "packages", "storage", "migrations"), path.join(runtimeRoot, "migrations"), {
-  recursive: true,
-});
+await cp(
+  path.join(repoRoot, "packages", "storage", "migrations"),
+  path.join(runtimeRoot, "migrations"),
+  {
+    recursive: true,
+  },
+);
 await cp(path.join(cliRoot, "README.md"), path.join(archiveRoot, "README.md"));
 await cp(path.join(repoRoot, "LICENSE"), path.join(archiveRoot, "LICENSE"));
 await writeFile(

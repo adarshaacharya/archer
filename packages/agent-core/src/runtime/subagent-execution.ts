@@ -1,9 +1,6 @@
 import { resolve } from "node:path";
-import type {
-  SpawnSubagentInput,
-  SpawnSubagentResult,
-} from "@archer/shared/subagents";
 import type { OpenHarnessRuntimeConfig } from "@archer/shared/runtime";
+import type { SpawnSubagentInput, SpawnSubagentResult } from "@archer/shared/subagents";
 import { loadEffectiveModelMessages, replaceMessages } from "@archer/storage";
 import {
   createEditTools,

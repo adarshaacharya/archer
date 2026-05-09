@@ -2,9 +2,9 @@ import { deriveCompactionPolicy, resetSessionById } from "@archer/agent-core";
 import { type ComposerSubmission, createPlainComposerSubmission } from "@archer/shared/composer";
 import { appendTurnResult, getTurnResults } from "@archer/storage";
 import type { Tui } from "@archer/tui";
-import type { SessionState } from "../../features/sessions/session-state.js";
-import type { TurnResult } from "../../features/runtime/turn-types.js";
 import { maybePruneSessionBeforeTurn } from "../../features/runtime/session-pruning.js";
+import type { TurnResult } from "../../features/runtime/turn-types.js";
+import type { SessionState } from "../../features/sessions/session-state.js";
 import { runTask } from "../task/run-task.js";
 
 type RunTurnDeps = {

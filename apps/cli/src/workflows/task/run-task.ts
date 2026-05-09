@@ -16,10 +16,10 @@ import {
   formatWebRuntimeEvent,
   isContextBudgetResult,
   isContextPressureFailure,
-  parseTurnDecision,
   type OpenHarnessRuntimeDeps,
   type OpenHarnessToolEvent,
   parseCompactionReport,
+  parseTurnDecision,
   type RuntimePhaseRunner,
   recordCompactionAttempt,
   recordQuestionStep,
@@ -30,10 +30,8 @@ import {
 } from "@archer/agent-core";
 import { createSandboxEnvironment } from "@archer/sandbox";
 import { autoApproveEditsInApprovalMode } from "@archer/shared/approval";
+import type { ComposerSubmission } from "@archer/shared/composer";
 import { AgentRequestSchema } from "@archer/shared/runtime";
-import {
-  type ComposerSubmission,
-} from "@archer/shared/composer";
 import {
   appendMessage,
   getTurnResults,
@@ -46,15 +44,19 @@ import { createWebCapability } from "../../../../../packages/web-capability/src/
 import { requestApproval, withApprovalQueue } from "../../features/approvals/approvals.js";
 import { resolveActiveWebProvider } from "../../features/auth/auth-store.js";
 import { buildExplicitFileContext } from "../../features/context/explicit-context.js";
-import { type PreRouteResult, planPreRoute, preRouteResultFromMode } from "../../features/routing/intent-router.js";
+import {
+  type PreRouteResult,
+  planPreRoute,
+  preRouteResultFromMode,
+} from "../../features/routing/intent-router.js";
 import { createEvalMetricsCollector } from "../../features/runtime/eval-metrics.js";
+import { pruneSessionAfterTurn } from "../../features/runtime/session-pruning.js";
 import { titleFromTask } from "../../features/runtime/task-title.js";
 import { createTurnStateMachine } from "../../features/runtime/turn-state-machine.js";
 import type { TurnContext, TurnResult, TurnSummary } from "../../features/runtime/turn-types.js";
 import type { SessionState } from "../../features/sessions/session-state.js";
 import { webFetchRuleForUrl } from "../../features/settings/settings-store.js";
 import { formatSubagentRuntimeEvent } from "../../features/subagents/subagent-events.js";
-import { pruneSessionAfterTurn } from "../../features/runtime/session-pruning.js";
 import { executeContextFlow } from "../run-task/context.js";
 import { executeEarlyRoute } from "../run-task/execution.js";
 import { isSuccessfulGitCommitOutput, shellOutputText } from "../run-task/output.js";
@@ -73,7 +75,6 @@ type PatchPreview = NonNullable<OpenHarnessRuntimeDeps["approvePatchApply"]> ext
   : never;
 
 type RuntimeToolCall = Parameters<NonNullable<OpenHarnessRuntimeDeps["approveToolCall"]>>[0];
-
 
 export async function runTask(
   submission: ComposerSubmission,

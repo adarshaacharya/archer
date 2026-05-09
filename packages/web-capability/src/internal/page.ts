@@ -1,4 +1,9 @@
-import type { WebAction, WebActionResult, WebFindMatch, WebOpenPageAction } from "@archer/shared/web";
+import type {
+  WebAction,
+  WebActionResult,
+  WebFindMatch,
+  WebOpenPageAction,
+} from "@archer/shared/web";
 import type { WebPermissions } from "../index.js";
 import { timeoutSignal } from "./shared.js";
 

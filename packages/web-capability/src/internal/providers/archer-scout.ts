@@ -66,7 +66,10 @@ async function searchHackerNews(query: string): Promise<WebSearchResultItem[]> {
 
 export async function searchArcherScout(input: WebSearchAction): Promise<WebSearchResult> {
   const excludedDomains = new Set(input.excludeDomains ?? []);
-  const [wiki, hn] = await Promise.all([searchWikipedia(input.query), searchHackerNews(input.query)]);
+  const [wiki, hn] = await Promise.all([
+    searchWikipedia(input.query),
+    searchHackerNews(input.query),
+  ]);
   const merged = normalize([...wiki, ...hn], excludedDomains);
   const results = merged.slice(0, input.maxResults ?? 5);
   return {
