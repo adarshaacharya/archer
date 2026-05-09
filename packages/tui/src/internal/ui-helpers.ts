@@ -79,14 +79,20 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-export function approvalDialogWidth(prompt: ApprovalPromptState, choices: ApprovalDialogChoice[]): number {
+export function approvalDialogWidth(
+  prompt: ApprovalPromptState,
+  choices: ApprovalDialogChoice[],
+): number {
   const labelWidth = Math.max(...choices.map((choice) => choice.label.length), 0);
   const detailWidth = prompt.details ? normalizeText(prompt.details).length : 0;
   const messageWidth = normalizeText(prompt.message).length;
   return clamp(Math.max(labelWidth + 10, detailWidth + 4, messageWidth + 4), 42, 88);
 }
 
-export function slashCommandMatches(commands: SlashCommandItem[], input: string): SlashCommandItem[] {
+export function slashCommandMatches(
+  commands: SlashCommandItem[],
+  input: string,
+): SlashCommandItem[] {
   const v = input.trim();
   if (!v.startsWith("/")) return [];
   const query = v.slice(1).toLowerCase();

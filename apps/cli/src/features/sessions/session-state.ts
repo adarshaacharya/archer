@@ -1,7 +1,7 @@
 import type { SupportedProvider } from "@archer/model-providers";
 import type { OpenHarnessRuntimeConfig } from "@archer/shared/runtime";
 import type { ApprovalMode } from "@archer/shared/approval";
-import type { SupportedWebProvider } from "@archer/web-capability";
+import type { SupportedWebProvider } from "../../../../../packages/web-capability/src";
 
 export type SessionState = {
   sessionId: string;

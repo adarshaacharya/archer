@@ -33,6 +33,8 @@
     "unrs-resolver"
   ],
   "turbo": {
-    "tags": ["app"]
+    "tags": [
+      "app"
+    ]
   }
 }

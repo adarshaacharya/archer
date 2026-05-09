@@ -1,13 +1,35 @@
-import { BoxRenderable, SelectRenderable, SelectRenderableEvents, TextRenderable, type CliRenderer } from "@opentui/core";
-import { approvalTitle, compactDiff, defaultApprovalChoices, normalizeText } from "./ui-helpers.js";
-import { col } from "./theme.js";
+import {
+  BoxRenderable,
+  type CliRenderer,
+  SelectRenderable,
+  SelectRenderableEvents,
+  TextRenderable,
+} from "@opentui/core";
 import type { PendingModal } from "./modal-types.js";
+import { col } from "./theme.js";
+import { approvalTitle, compactDiff, defaultApprovalChoices, normalizeText } from "./ui-helpers.js";
 
 type ApprovalDialogChoice = { value: string; label: string; description?: string };
-type PatchReviewState = { summary: string; changedFilesCount: number; files: Array<{ filePath: string; diff: string; status?: string }> };
-type ApprovalPromptState = { message: string; options?: string[]; choices?: ApprovalDialogChoice[]; selectedIndex?: number; details?: string; review?: PatchReviewState };
+type PatchReviewState = {
+  summary: string;
+  changedFilesCount: number;
+  files: Array<{ filePath: string; diff: string; status?: string }>;
+};
+type ApprovalPromptState = {
+  message: string;
+  options?: string[];
+  choices?: ApprovalDialogChoice[];
+  selectedIndex?: number;
+  details?: string;
+  review?: PatchReviewState;
+};
 
-export function createApprovalBox(renderer: CliRenderer, id: string, innerRows: number, title: string): BoxRenderable {
+export function createApprovalBox(
+  renderer: CliRenderer,
+  id: string,
+  innerRows: number,
+  title: string,
+): BoxRenderable {
   return new BoxRenderable(renderer, {
     id,
     width: "100%",
@@ -45,21 +67,75 @@ export function mountApprovalModal(args: {
   const hasDetails = Boolean(args.prompt.details?.trim());
   const showPreview = choices.some((choice) => choice.description?.trim());
   const innerRows = 1 + (hasDetails ? 1 : 0) + visibleChoices + (showPreview ? 1 : 0) + 1;
-  const box = createApprovalBox(args.renderer, "approval-modal", innerRows, approvalTitle(args.prompt));
+  const box = createApprovalBox(
+    args.renderer,
+    "approval-modal",
+    innerRows,
+    approvalTitle(args.prompt),
+  );
 
-  box.add(new TextRenderable(args.renderer, { id: "approval-msg", content: normalizeText(args.prompt.message), width: "100%", height: 1, fg: col.muted }));
+  box.add(
+    new TextRenderable(args.renderer, {
+      id: "approval-msg",
+      content: normalizeText(args.prompt.message),
+      width: "100%",
+      height: 1,
+      fg: col.muted,
+    }),
+  );
   if (hasDetails) {
-    box.add(new TextRenderable(args.renderer, { id: "approval-details", content: normalizeText(args.prompt.details ?? ""), width: "100%", height: 1, fg: col.step }));
+    box.add(
+      new TextRenderable(args.renderer, {
+        id: "approval-details",
+        content: normalizeText(args.prompt.details ?? ""),
+        width: "100%",
+        height: 1,
+        fg: col.step,
+      }),
+    );
   }
-  const selectOptions = choices.map((ch, index) => ({ name: index === selectedIndex ? `${ch.label}  (current)` : ch.label, description: ch.description ?? "", value: ch.value }));
+  const selectOptions = choices.map((ch, index) => ({
+    name: index === selectedIndex ? `${ch.label}  (current)` : ch.label,
+    description: ch.description ?? "",
+    value: ch.value,
+  }));
   const select = new SelectRenderable(args.renderer, {
-    id: "approval-select", options: selectOptions, selectedIndex, width: "100%", height: visibleChoices, backgroundColor: col.userBg, focusedBackgroundColor: col.userBg,
-    showScrollIndicator: choices.length > visibleChoices, showDescription: false, selectedBackgroundColor: col.border, selectedTextColor: col.text, textColor: col.text, descriptionColor: col.muted, selectedDescriptionColor: col.muted,
+    id: "approval-select",
+    options: selectOptions,
+    selectedIndex,
+    width: "100%",
+    height: visibleChoices,
+    backgroundColor: col.userBg,
+    focusedBackgroundColor: col.userBg,
+    showScrollIndicator: choices.length > visibleChoices,
+    showDescription: false,
+    selectedBackgroundColor: col.border,
+    selectedTextColor: col.text,
+    textColor: col.text,
+    descriptionColor: col.muted,
+    selectedDescriptionColor: col.muted,
   });
   box.add(select);
-  const preview = showPreview ? new TextRenderable(args.renderer, { id: "approval-preview", content: selectOptions[selectedIndex]?.description || "", width: "100%", height: 1, truncate: true, fg: col.step }) : null;
+  const preview = showPreview
+    ? new TextRenderable(args.renderer, {
+        id: "approval-preview",
+        content: selectOptions[selectedIndex]?.description || "",
+        width: "100%",
+        height: 1,
+        truncate: true,
+        fg: col.step,
+      })
+    : null;
   if (preview) box.add(preview);
-  box.add(new TextRenderable(args.renderer, { id: "approval-help", content: "↑↓ move   enter select   esc reject", width: "100%", height: 1, fg: col.muted }));
+  box.add(
+    new TextRenderable(args.renderer, {
+      id: "approval-help",
+      content: "↑↓ move   enter select   esc reject",
+      width: "100%",
+      height: 1,
+      fg: col.muted,
+    }),
+  );
 
   args.footerRoot.add(box);
   args.setApprovalRows(innerRows + 2);
@@ -102,20 +178,56 @@ export function mountReviewModal(args: {
 }): PendingModal | null {
   if (!args.prompt.review) return null;
   const box = createApprovalBox(args.renderer, "review-modal", 17, "review changes");
-  box.add(new TextRenderable(args.renderer, { id: "review-header", content: normalizeText(args.prompt.message), width: "100%", height: 1, fg: col.text }));
-  box.add(new TextRenderable(args.renderer, { id: "review-subtitle", content: normalizeText(args.prompt.details ?? args.prompt.review.summary), width: "100%", height: 1, fg: col.muted }));
-  box.add(new TextRenderable(args.renderer, { id: "review-files-label", content: "Files", width: "100%", height: 1, fg: col.accent }));
+  box.add(
+    new TextRenderable(args.renderer, {
+      id: "review-header",
+      content: normalizeText(args.prompt.message),
+      width: "100%",
+      height: 1,
+      fg: col.text,
+    }),
+  );
+  box.add(
+    new TextRenderable(args.renderer, {
+      id: "review-subtitle",
+      content: normalizeText(args.prompt.details ?? args.prompt.review.summary),
+      width: "100%",
+      height: 1,
+      fg: col.muted,
+    }),
+  );
+  box.add(
+    new TextRenderable(args.renderer, {
+      id: "review-files-label",
+      content: "Files",
+      width: "100%",
+      height: 1,
+      fg: col.accent,
+    }),
+  );
 
   const fileSelect = new SelectRenderable(args.renderer, {
     id: "review-files",
-    options: args.prompt.review.files.map((f) => ({ name: f.filePath, description: f.status ?? "modified", value: f.filePath })),
+    options: args.prompt.review.files.map((f) => ({
+      name: f.filePath,
+      description: f.status ?? "modified",
+      value: f.filePath,
+    })),
     selectedIndex: 0,
     width: "100%",
     height: 4,
     showDescription: true,
   });
   box.add(fileSelect);
-  box.add(new TextRenderable(args.renderer, { id: "review-diff-label", content: "Diff", width: "100%", height: 1, fg: col.accent }));
+  box.add(
+    new TextRenderable(args.renderer, {
+      id: "review-diff-label",
+      content: "Diff",
+      width: "100%",
+      height: 1,
+      fg: col.accent,
+    }),
+  );
   const preview = new TextRenderable(args.renderer, {
     id: "review-preview",
     content: compactDiff(args.prompt.review.files[0]?.diff ?? "", 10),
@@ -126,7 +238,11 @@ export function mountReviewModal(args: {
   });
   const actionSelect = new SelectRenderable(args.renderer, {
     id: "review-actions",
-    options: (args.prompt.choices ?? defaultApprovalChoices()).map((ch) => ({ name: ch.label, description: ch.description ?? "", value: ch.value })),
+    options: (args.prompt.choices ?? defaultApprovalChoices()).map((ch) => ({
+      name: ch.label,
+      description: ch.description ?? "",
+      value: ch.value,
+    })),
     selectedIndex: 1,
     width: "100%",
     height: 4,
@@ -134,13 +250,29 @@ export function mountReviewModal(args: {
   });
   box.add(preview);
   box.add(actionSelect);
-  box.add(new TextRenderable(args.renderer, { id: "review-help", content: "tab switch focus   enter choose   esc reject", width: "100%", height: 1, fg: col.muted }));
+  box.add(
+    new TextRenderable(args.renderer, {
+      id: "review-help",
+      content: "tab switch focus   enter choose   esc reject",
+      width: "100%",
+      height: 1,
+      fg: col.muted,
+    }),
+  );
 
   args.footerRoot.add(box);
   args.setApprovalRows(19);
   args.syncFooterHeight();
 
-  const modal: PendingModal = { type: "review", resolve: args.resolve, fileSelect, actionSelect, preview, box, focused: "actions" };
+  const modal: PendingModal = {
+    type: "review",
+    resolve: args.resolve,
+    fileSelect,
+    actionSelect,
+    preview,
+    box,
+    focused: "actions",
+  };
 
   let armed = false;
   queueMicrotask(() => {

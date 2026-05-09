@@ -26,6 +26,8 @@
     }
   },
   "turbo": {
-    "tags": ["pkg:tools"]
+    "tags": [
+      "pkg:tools"
+    ]
   }
 }

@@ -23,6 +23,8 @@
     "zod": "^4.3.6"
   },
   "turbo": {
-    "tags": ["pkg:evals"]
+    "tags": [
+      "pkg:evals"
+    ]
   }
 }

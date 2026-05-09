@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import "./ai-sdk-warnings.js";
+import "./app/bootstrap/ai-sdk-warnings.js";
 import type { SupportedProvider } from "@archer/model-providers";
 import { createPlainComposerSubmission } from "@archer/shared/composer";
 import {

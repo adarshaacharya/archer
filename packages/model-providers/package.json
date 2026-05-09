@@ -27,6 +27,8 @@
     }
   },
   "turbo": {
-    "tags": ["pkg:model-providers"]
+    "tags": [
+      "pkg:model-providers"
+    ]
   }
 }

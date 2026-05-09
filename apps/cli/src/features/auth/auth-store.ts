@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { SupportedProvider } from "@archer/model-providers";
-import type { SupportedWebProvider } from "@archer/web-capability";
+import type { SupportedWebProvider } from "../../../../../packages/web-capability/src";
 
 export type AuthSource = "env" | "saved";
 
@@ -166,7 +166,7 @@ function parseStore(raw: unknown): AuthStore {
       : undefined;
   const defaultWebProvider =
     typeof record.defaultWebProvider === "string" &&
-    isSupportedWebProvider(record.defaultWebProvider)
+      isSupportedWebProvider(record.defaultWebProvider)
       ? record.defaultWebProvider
       : undefined;
 

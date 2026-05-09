@@ -22,6 +22,8 @@
     }
   },
   "turbo": {
-    "tags": ["pkg:web"]
+    "tags": [
+      "pkg:web"
+    ]
   }
 }

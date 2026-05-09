@@ -27,6 +27,8 @@
     "@archer/web-capability": "workspace:*"
   },
   "turbo": {
-    "tags": ["app"]
+    "tags": [
+      "app"
+    ]
   }
 }

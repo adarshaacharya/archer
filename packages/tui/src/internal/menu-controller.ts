@@ -14,8 +14,17 @@ export function computeNextSlashState(input: {
   }
   const items = slashCommandMatches(input.slashCommands, input.value);
   const previous = input.currentItems[input.currentIndex];
-  const nextIndex = previous ? Math.max(0, items.findIndex((item) => item.name === previous.name)) : 0;
-  return { items, index: items.length > 0 ? (nextIndex >= 0 ? nextIndex : 0) : 0, shouldClear: false };
+  const nextIndex = previous
+    ? Math.max(
+        0,
+        items.findIndex((item) => item.name === previous.name),
+      )
+    : 0;
+  return {
+    items,
+    index: items.length > 0 ? (nextIndex >= 0 ? nextIndex : 0) : 0,
+    shouldClear: false,
+  };
 }
 
 export function applyCollapsedMenuHeights(
@@ -30,7 +39,10 @@ export function applyCollapsedMenuHeights(
   });
 }
 
-export function computeMentionQuery(value: string, cursorOffset: number): ReturnType<typeof findActiveMentionQuery> {
+export function computeMentionQuery(
+  value: string,
+  cursorOffset: number,
+): ReturnType<typeof findActiveMentionQuery> {
   if (value.trim().startsWith("/")) return null;
   return findActiveMentionQuery(value, cursorOffset);
 }
@@ -42,7 +54,10 @@ export function computeNextMentionState(input: {
 }): { index: number } {
   const previous = input.currentItems[input.currentIndex];
   const nextIndex = previous
-    ? Math.max(0, input.items.findIndex((item) => item.path === previous.path))
+    ? Math.max(
+        0,
+        input.items.findIndex((item) => item.path === previous.path),
+      )
     : 0;
   return { index: input.items.length > 0 ? (nextIndex >= 0 ? nextIndex : 0) : 0 };
 }

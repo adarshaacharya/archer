@@ -41,6 +41,8 @@
     }
   },
   "turbo": {
-    "tags": ["pkg:shared"]
+    "tags": [
+      "pkg:shared"
+    ]
   }
 }

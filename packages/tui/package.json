@@ -23,6 +23,8 @@
     }
   },
   "turbo": {
-    "tags": ["pkg:tui"]
+    "tags": [
+      "pkg:tui"
+    ]
   }
 }

@@ -26,6 +26,8 @@
     "@archer/tools": "workspace:*"
   },
   "turbo": {
-    "tags": ["pkg:agent-core"]
+    "tags": [
+      "pkg:agent-core"
+    ]
   }
 }

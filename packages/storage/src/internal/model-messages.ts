@@ -1,11 +1,11 @@
 import type { ModelMessage } from "ai";
+import type { CompactContinuationArtifact } from "./artifacts.js";
 import {
+  estimateModelMessageTokens,
   MODEL_MESSAGE_MINIMUM_PRUNE_TOKENS,
   MODEL_MESSAGE_PROTECT_TOKENS,
   MODEL_MESSAGE_RECENT_TO_KEEP,
-  estimateModelMessageTokens,
 } from "./compaction.js";
-import type { CompactContinuationArtifact } from "./artifacts.js";
 
 export function toArtifactSystemMessage(artifact: CompactContinuationArtifact): ModelMessage {
   return {

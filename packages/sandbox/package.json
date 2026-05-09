@@ -21,6 +21,8 @@
     }
   },
   "turbo": {
-    "tags": ["pkg:sandbox"]
+    "tags": [
+      "pkg:sandbox"
+    ]
   }
 }

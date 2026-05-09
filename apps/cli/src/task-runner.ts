@@ -42,25 +42,25 @@ import {
   updateSessionTitle,
 } from "@archer/storage";
 import type { Tui } from "@archer/tui";
-import { createWebCapability } from "@archer/web-capability";
-import { requestApproval, withApprovalQueue } from "../../features/approvals/approvals.js";
-import { resolveActiveWebProvider } from "../../features/auth/auth-store.js";
-import { buildExplicitFileContext } from "../../features/context/explicit-context.js";
-import { type PreRouteResult, planPreRoute, preRouteResultFromMode } from "../../features/routing/intent-router.js";
-import { createEvalMetricsCollector } from "../../features/runtime/eval-metrics.js";
-import { titleFromTask } from "../../features/runtime/task-title.js";
-import { createTurnStateMachine } from "../../features/runtime/turn-state-machine.js";
-import type { TurnContext, TurnResult, TurnSummary } from "../../features/runtime/turn-types.js";
-import type { SessionState } from "../../features/sessions/session-state.js";
-import { webFetchRuleForUrl } from "../../features/settings/settings-store.js";
-import { formatSubagentRuntimeEvent } from "../../features/subagents/subagent-events.js";
-import { pruneSessionAfterTurn } from "../../features/runtime/session-pruning.js";
-import { executeContextFlow } from "../run-task/context.js";
-import { executeEarlyRoute } from "../run-task/execution.js";
-import { isSuccessfulGitCommitOutput, shellOutputText } from "../run-task/output.js";
-import { resolveTaskExecutionRoute } from "../run-task/route.js";
-import { turnStatusLabel } from "../run-task/status.js";
-import { ensureWebProviderConnected, updateWebSessionState } from "../run-task/web-provider.js";
+import { createWebCapability } from "../../../packages/web-capability/src/index.js";
+import { requestApproval, withApprovalQueue } from "./features/approvals/approvals.js";
+import { resolveActiveWebProvider } from "./features/auth/auth-store.js";
+import { createEvalMetricsCollector } from "./features/runtime/eval-metrics.js";
+import { buildExplicitFileContext } from "./features/context/explicit-context.js";
+import { type PreRouteResult, planPreRoute, preRouteResultFromMode } from "./features/routing/intent-router.js";
+import { pruneSessionAfterTurn } from "./recovery/prune.js";
+import type { SessionState } from "./features/sessions/session-state.js";
+import { webFetchRuleForUrl } from "./features/settings/settings-store.js";
+import { formatSubagentRuntimeEvent } from "./features/subagents/subagent-events.js";
+import { titleFromTask } from "./features/runtime/task-title.js";
+import { createTurnStateMachine } from "./features/runtime/turn-state-machine.js";
+import type { TurnContext, TurnResult, TurnSummary } from "./features/runtime/turn-types.js";
+import { executeContextFlow } from "./workflows/run-task/context.js";
+import { executeEarlyRoute } from "./workflows/run-task/execution.js";
+import { isSuccessfulGitCommitOutput, shellOutputText } from "./workflows/run-task/output.js";
+import { resolveTaskExecutionRoute } from "./workflows/run-task/route.js";
+import { turnStatusLabel } from "./workflows/run-task/status.js";
+import { ensureWebProviderConnected, updateWebSessionState } from "./workflows/run-task/web-provider.js";
 
 function newMessageId(sessionId: string, role: string): string {
   return `${sessionId}_${role}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -407,10 +407,10 @@ export async function runTask(
           review:
             preview.files && preview.files.length > 0
               ? {
-                  summary: preview.summary ?? "Prepared changes",
-                  changedFilesCount: preview.changedFilesCount ?? preview.files.length,
-                  files: preview.files,
-                }
+                summary: preview.summary ?? "Prepared changes",
+                changedFilesCount: preview.changedFilesCount ?? preview.files.length,
+                files: preview.files,
+              }
               : undefined,
           choices: [
             {
@@ -450,13 +450,13 @@ export async function runTask(
     taskOptions?.workflowKind == null || taskOptions.workflowKind === "default"
       ? explicitFileContext.hasFileMentions
         ? {
-            status: "resolved" as const,
-            result: preRouteResultFromMode(
-              "repo-context",
-              "structured file mentions require local repository context",
-              "fast-path",
-            ),
-          }
+          status: "resolved" as const,
+          result: preRouteResultFromMode(
+            "repo-context",
+            "structured file mentions require local repository context",
+            "fast-path",
+          ),
+        }
         : planPreRoute(request.task)
       : null;
   if (
@@ -574,8 +574,8 @@ export async function runTask(
         },
         onTextDelta: persistTranscript
           ? (delta) => {
-              tui.renderAssistantDelta(delta);
-            }
+            tui.renderAssistantDelta(delta);
+          }
           : undefined,
       },
       prompt,

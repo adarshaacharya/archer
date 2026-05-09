@@ -2,24 +2,23 @@ import type { ModelMessage } from "ai";
 import { and, asc, eq, max } from "drizzle-orm";
 import { getDb } from "./db.js";
 import {
+  type CompactContinuationArtifact,
+  type CompactionEventRecord,
+  loadCompactionEvents,
+  loadLatestCompactContinuationArtifact,
+} from "./internal/artifacts.js";
+import {
   COMPACT_ARTIFACT_KIND,
   COMPACTION_EVENT_KIND,
   DEFAULT_PRUNE_MINIMUM_TOKENS,
   DEFAULT_PRUNE_PROTECT_TOKENS,
   DEFAULT_RECENT_ASSISTANT_MESSAGES_TO_KEEP,
-  estimateModelMessageTokens,
   estimateTextTokens,
   extractLikelyFiles,
   extractLikelyRisks,
   PRUNED_TRANSCRIPT_PREFIX,
   summarizeTranscript,
 } from "./internal/compaction.js";
-import {
-  type CompactContinuationArtifact,
-  type CompactionEventRecord,
-  loadCompactionEvents,
-  loadLatestCompactContinuationArtifact,
-} from "./internal/artifacts.js";
 import {
   computePrunedModelMessages,
   hasArtifactSystemMessage,
@@ -133,7 +132,9 @@ export async function loadEffectiveModelMessages(sessionId: string): Promise<Mod
     return messages;
   }
 
-  return hasArtifactSystemMessage(messages[0]) ? messages : [toArtifactSystemMessage(artifact), ...messages];
+  return hasArtifactSystemMessage(messages[0])
+    ? messages
+    : [toArtifactSystemMessage(artifact), ...messages];
 }
 export type { CompactContinuationArtifact, CompactionEventRecord };
 export { loadCompactionEvents, loadLatestCompactContinuationArtifact };
@@ -234,7 +235,6 @@ export async function saveCompactionEvent(input: {
     created_at: input.event.createdAt,
   });
 }
-
 
 export async function estimateSessionTranscriptPressure(input: {
   sessionId: string;
@@ -338,7 +338,6 @@ export async function buildCompactContinuationArtifact(input: {
     createdAt: Date.now(),
   };
 }
-
 
 export async function pruneModelMessagesWithArtifact(input: {
   sessionId: string;

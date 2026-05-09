@@ -1,12 +1,9 @@
 import {
-  type AgentStep,
-  type RunSummary,
-} from "@archer/shared/runtime";
-import {
   type ComposerMentionBinding,
   type ComposerSubmission,
   createPlainComposerSubmission,
 } from "@archer/shared/composer";
+import type { AgentStep, RunSummary } from "@archer/shared/runtime";
 import {
   BoxRenderable,
   type CliRenderer,
@@ -21,29 +18,6 @@ import {
 } from "@opentui/core";
 import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-js";
 import {
-  type ActiveMentionQuery,
-  buildComposerTextElements,
-  insertFileMention,
-  MentionFileIndex,
-  type MentionSuggestion,
-  reconcileMentionBindings,
-} from "./mention-state.js";
-import { PromptHistory, type PromptHistoryEntry } from "./prompt-history.js";
-import {
-  approvalDialogWidth,
-  approvalTitle,
-  clamp,
-  compactDiff,
-  defaultApprovalChoices,
-  normalizeText,
-  padRight,
-  truncateMiddle,
-  wrappedLineCount,
-} from "./internal/ui-helpers.js";
-import { type PendingModal } from "./internal/modal-types.js";
-import { mountApprovalModal, mountReviewModal } from "./internal/modals.js";
-import { computeMenuViewport, mapMentionOptions, mapSlashOptions } from "./internal/menu-state.js";
-import {
   applyCollapsedMenuHeights,
   computeMentionQuery,
   computeNextMentionState,
@@ -57,7 +31,26 @@ import {
   isTab,
   nextWrappedIndex,
 } from "./internal/menu-input.js";
+import { computeMenuViewport, mapMentionOptions, mapSlashOptions } from "./internal/menu-state.js";
+import type { PendingModal } from "./internal/modal-types.js";
+import { mountApprovalModal, mountReviewModal } from "./internal/modals.js";
 import { BASE_FOOTER, col, MAX_MENTION_ROWS, MAX_SLASH_ROWS } from "./internal/theme.js";
+import {
+  clamp,
+  normalizeText,
+  padRight,
+  truncateMiddle,
+  wrappedLineCount,
+} from "./internal/ui-helpers.js";
+import {
+  type ActiveMentionQuery,
+  buildComposerTextElements,
+  insertFileMention,
+  MentionFileIndex,
+  type MentionSuggestion,
+  reconcileMentionBindings,
+} from "./mention-state.js";
+import { PromptHistory, type PromptHistoryEntry } from "./prompt-history.js";
 
 type SummaryLike = RunSummary & {
   evalMetrics?: {
@@ -122,7 +115,6 @@ export type PatchReviewState = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-
 function statusPromptStyle(prompt: ApprovalPromptState): {
   primary: string;
   primaryColor: string;
@@ -144,7 +136,6 @@ function statusPromptStyle(prompt: ApprovalPromptState): {
     primaryColor: col.text,
   };
 }
-
 
 export class ArcherTui implements Tui {
   private renderer: CliRenderer | null = null;
@@ -954,7 +945,6 @@ export class ArcherTui implements Tui {
       const keyValue = (label: string, value: string): void =>
         row([{ text: padRight(label, labelWidth), color: col.muted }, { text: value }]);
       const actionRow = (command: string, hint: string): void => {
-        const content = `${padRight(command, commandWidth)}${hint}`;
         row([{ text: padRight(command, commandWidth), color: col.accent }, { text: hint }]);
       };
 

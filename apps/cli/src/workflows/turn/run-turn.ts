@@ -4,7 +4,7 @@ import { appendTurnResult, getTurnResults } from "@archer/storage";
 import type { Tui } from "@archer/tui";
 import type { SessionState } from "../../features/sessions/session-state.js";
 import type { TurnResult } from "../../features/runtime/turn-types.js";
-import { maybePruneSessionBeforeTurn } from "../../recovery/prune.js";
+import { maybePruneSessionBeforeTurn } from "../../features/runtime/session-pruning.js";
 import { runTask } from "../task/run-task.js";
 
 type RunTurnDeps = {
