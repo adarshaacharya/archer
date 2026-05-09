@@ -305,6 +305,39 @@ h3 {
   align-items: center;
 }
 
+/* Grid items default to min-height: auto, which can size the cell to all list rows
+   and defeat max-height scrolling — min-height: 0 fixes that. */
+.byok-copy-col {
+  min-height: 0;
+}
+
+.byok-provider-scroll {
+  margin-top: 2rem;
+  height: clamp(10.5rem, 36dvh, 14.5rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.35rem;
+}
+
+.byok-provider-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.byok-provider-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.byok-provider-scroll::-webkit-scrollbar-thumb {
+  background: var(--term-gray);
+  border: 2px solid var(--bg-bone);
+  border-radius: 999px;
+}
+
+.byok-provider-scroll .provider-list {
+  margin-top: 0;
+  border-top: none;
+}
+
 .pipeline-container {
   display: flex;
   flex-direction: column;

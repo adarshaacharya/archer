@@ -1,4 +1,7 @@
-const providers = ["OPENAI", "ANTHROPIC", "GEMINI", "OPENROUTER"] as const;
+const llmProviders = ["OPENAI", "ANTHROPIC", "GEMINI",
+  "DEEPSEEK",
+  "OPENROUTER"] as const;
+const webProviders = ["TAVILY", "EXA", "ARCHER SCOUT (FREE)"] as const;
 
 export function BYOKSection() {
   return (
@@ -22,28 +25,40 @@ export function BYOKSection() {
         </h2>
       </div>
       <div
-        className="col-span-6 col-last pad-box bg-bone"
+        className="byok-copy-col col-span-6 col-last pad-box bg-bone"
         style={{
           backgroundColor: "var(--bg-bone)",
           borderLeft: "var(--border)",
         }}
       >
         <p style={{ fontSize: "1.25rem", marginBottom: "1rem" }}>
-          Archer doesn&apos;t hide the model behind a black box. You choose the provider, you own
+          Archer doesn&apos;t hide the model behind a black box. Connect your llm and web search provider keys, you own
           the access, and you see the cost where the work happens.
         </p>
-        <p className="term-gray-text">
-          Connect your credentials. Keep billing under your control. Avoid lock-in. Work locally
-          with clear approval boundaries.
-        </p>
+ 
 
-        <ul className="provider-list mono">
-          {providers.map((name) => (
-            <li key={name}>
-              <span>{name}</span> <span>SUPPORTED</span>
-            </li>
-          ))}
-        </ul>
+        <div className="byok-provider-scroll mono">
+          <p className="mono term-gray-text" style={{ marginTop: 0, marginBottom: "0.5rem", fontSize: "0.8125rem" }}>
+            LLM Providers
+          </p>
+          <ul className="provider-list mono" style={{ marginTop: 0 }}>
+            {llmProviders.map((name) => (
+              <li key={name}>
+                <span>{name}</span> <span>SUPPORTED</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mono term-gray-text" style={{ marginTop: "1.25rem", marginBottom: "0.5rem", fontSize: "0.8125rem" }}>
+            Web Search
+          </p>
+          <ul className="provider-list mono" style={{ marginTop: 0 }}>
+            {webProviders.map((name) => (
+              <li key={name}>
+                <span>{name}</span> <span>SUPPORTED</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </section>
   );
