@@ -131,12 +131,48 @@ jobs:
       - name: Build CLI
         run: bun run --filter @adarshaacharya/archer build
 
+      - name: Prepare npm publish directory
+        run: |
+          rm -rf .publish
+          mkdir -p .publish
+          cp -R dist .publish/dist
+          cp README.md .publish/README.md
+          cp ../../LICENSE .publish/LICENSE
+          cat > .publish/package.json <<'JSON'
+          {
+            "name": "@adarshaacharya/archer",
+            "version": "0.0.0",
+            "type": "module",
+            "repository": {
+              "type": "git",
+              "url": "git+https://github.com/adarshaacharya/archer.git"
+            },
+            "bin": {
+              "archer": "dist/index.js"
+            },
+            "files": [
+              "dist"
+            ],
+            "license": "MIT",
+            "publishConfig": {
+              "access": "public"
+            },
+            "engines": {
+              "node": ">=18"
+            },
+            "dependencies": {
+              "@opentui/core": "^0.1.103"
+            }
+          }
+          JSON
+        working-directory: apps/cli
+
       - name: Sync publish version with tag
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           npm version "$TAG_VERSION" --no-git-tag-version
-        working-directory: apps/cli
+        working-directory: apps/cli/.publish
 
       - name: Publish to npm
         run: npm publish --access public
-        working-directory: apps/cli
+        working-directory: apps/cli/.publish
