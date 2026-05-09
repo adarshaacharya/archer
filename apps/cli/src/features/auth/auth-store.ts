@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { SupportedProvider } from "@archer/model-providers";
-import type { SupportedWebProvider } from "@archer/web";
+import type { SupportedWebProvider } from "@archer/web-capability";
 
 export type AuthSource = "env" | "saved";
 

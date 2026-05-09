@@ -1,4 +1,4 @@
-# @archer/web
+# @archer/web-capability
 
 Web capability adapters (search/open/find) for runtime usage.
 
@@ -20,5 +20,5 @@ Web capability adapters (search/open/find) for runtime usage.
 
 ## Import Rules
 
-- Import via `@archer/web` public exports.
+- Import via `@archer/web-capability` public exports.
 - Keep provider-specific details internal to package implementation.

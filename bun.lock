@@ -19,7 +19,7 @@
         "@archer/shared": "workspace:*",
         "@archer/storage": "workspace:*",
         "@archer/tui": "workspace:*",
-        "@archer/web": "workspace:*",
+        "@archer/web-capability": "workspace:*",
       },
     },
     "apps/web": {
@@ -144,7 +144,7 @@
       "version": "0.0.0",
     },
     "packages/web": {
-      "name": "@archer/web",
+      "name": "@archer/web-capability",
       "version": "0.0.1",
       "dependencies": {
         "@archer/shared": "workspace:*",
@@ -190,7 +190,7 @@
 
     "@archer/tui": ["@archer/tui@workspace:packages/tui"],
 
-    "@archer/web": ["@archer/web@workspace:packages/web"],
+    "@archer/web-capability": ["@archer/web-capability@workspace:packages/web"],
 
     "@babel/helper-string-parser": ["@babel/helper-string-parser@7.27.1", "", {}, "sha512-qMlSxKbpRlAridDExk92nSobyDdpPijUq2DW6oDnUqd0iOGxmQjyqhMIihI9+zv4LPyZdRje2cavWPbCbWm3eA=="],
 

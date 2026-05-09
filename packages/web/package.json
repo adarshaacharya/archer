@@ -1,5 +1,5 @@
 {
-  "name": "@archer/web",
+  "name": "@archer/web-capability",
   "version": "0.0.1",
   "private": true,
   "type": "module",

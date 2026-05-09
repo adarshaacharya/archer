@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import type { SessionState } from "./features/sessions/session-state.js";
-import { runTurnWithDeps } from "./turn-runner.js";
+import type { SessionState } from "../../features/sessions/session-state.js";
+import { runTurnWithDeps } from "./run-turn.js";
 
 const runTaskMock = mock(async () => ({
   status: "completed" as const,

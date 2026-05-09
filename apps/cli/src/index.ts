@@ -12,7 +12,7 @@ import {
   listPromptHistory,
   listSessions,
 } from "@archer/storage";
-import type { SupportedWebProvider } from "@archer/web";
+import type { SupportedWebProvider } from "@archer/web-capability";
 import { permissionsSummary, setApprovalMode } from "./features/approvals/approvals.js";
 import {
   clearProviderEnv,
@@ -43,10 +43,10 @@ import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./features/ui/model
 import { renderInitHintMessage, shouldShowInitHint } from "./features/onboarding/onboarding-hint.js";
 import { loadOpenHarnessConfig } from "./features/runtime/openharness-config.js";
 import type { SessionState } from "./features/sessions/session-state.js";
-import { runTask } from "./task-runner.js";
+import { runTask } from "./workflows/task/run-task.js";
 import { titleFromTask } from "./features/runtime/task-title.js";
 import { loadTuiConfig } from "./features/ui/tui-config.js";
-import { runTurn } from "./turn-runner.js";
+import { runTurn } from "./workflows/turn/run-turn.js";
 import type { TurnResult } from "./features/runtime/turn-types.js";
 
 type Tui = import("@archer/tui").Tui;
@@ -820,7 +820,7 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message:
-        "Commands: /help, /new, /resume, /init, /commit, /compact, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
+        "Commands: /help, /new, /resume, /init, /commit, /compact, /providers, /connect, /change-key, /disconnect, /provider, /model, /web-capability, /web-capability-provider, /web-capability-logout, /permissions, /logout, /bye, /exit",
     };
   }
 
@@ -1171,9 +1171,9 @@ async function main(): Promise<void> {
     { name: "/provider", description: "show the active model provider" },
     { name: "/model", description: "choose the active model" },
     { name: "/mode", description: "choose the approval mode" },
-    { name: "/web", description: "connect a web search provider" },
-    { name: "/web-provider", description: "show the active web search provider" },
-    { name: "/web-logout", description: "remove the saved web provider key" },
+    { name: "/web-capability", description: "connect a web search provider" },
+    { name: "/web-capability-provider", description: "show the active web search provider" },
+    { name: "/web-capability-logout", description: "remove the saved web provider key" },
     { name: "/permissions", description: "show saved permission rules" },
     { name: "/logout", description: "remove the saved model provider key" },
     { name: "/help", description: "show available slash commands" },
