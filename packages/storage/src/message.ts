@@ -1,6 +1,30 @@
 import type { ModelMessage } from "ai";
 import { and, asc, eq, max } from "drizzle-orm";
 import { getDb } from "./db.js";
+import {
+  COMPACT_ARTIFACT_KIND,
+  COMPACTION_EVENT_KIND,
+  DEFAULT_PRUNE_MINIMUM_TOKENS,
+  DEFAULT_PRUNE_PROTECT_TOKENS,
+  DEFAULT_RECENT_ASSISTANT_MESSAGES_TO_KEEP,
+  estimateModelMessageTokens,
+  estimateTextTokens,
+  extractLikelyFiles,
+  extractLikelyRisks,
+  PRUNED_TRANSCRIPT_PREFIX,
+  summarizeTranscript,
+} from "./internal/compaction.js";
+import {
+  type CompactContinuationArtifact,
+  type CompactionEventRecord,
+  loadCompactionEvents,
+  loadLatestCompactContinuationArtifact,
+} from "./internal/artifacts.js";
+import {
+  computePrunedModelMessages,
+  hasArtifactSystemMessage,
+  toArtifactSystemMessage,
+} from "./internal/model-messages.js";
 import { messages, model_messages } from "./schema.js";
 import { touchSession } from "./session.js";
 
@@ -109,54 +133,10 @@ export async function loadEffectiveModelMessages(sessionId: string): Promise<Mod
     return messages;
   }
 
-  const artifactText = [
-    "Continuation brief from compacted prior session context:",
-    `Summary: ${artifact.summary.trim() || "(none)"}`,
-    `Critical files: ${artifact.criticalFiles.length > 0 ? artifact.criticalFiles.join(", ") : "(none)"}`,
-    `Open risks: ${artifact.openRisks.length > 0 ? artifact.openRisks.join(" | ") : "(none)"}`,
-  ].join("\n");
-
-  const first = messages[0];
-  if (
-    first?.role === "system" &&
-    typeof first.content === "string" &&
-    first.content.includes("Continuation brief from compacted prior session context:")
-  ) {
-    return messages;
-  }
-
-  return [
-    {
-      role: "system",
-      content: artifactText,
-    },
-    ...messages,
-  ];
+  return hasArtifactSystemMessage(messages[0]) ? messages : [toArtifactSystemMessage(artifact), ...messages];
 }
-
-const DEFAULT_PRUNE_PROTECT_TOKENS = 10_000;
-const DEFAULT_PRUNE_MINIMUM_TOKENS = 5_000;
-const DEFAULT_RECENT_ASSISTANT_MESSAGES_TO_KEEP = 2;
-const PRUNED_TRANSCRIPT_PREFIX = "[pruned-transcript]";
-const COMPACT_ARTIFACT_KIND = "compact_artifact";
-const COMPACTION_EVENT_KIND = "compaction_event";
-
-export type CompactContinuationArtifact = {
-  summary: string;
-  criticalFiles: string[];
-  openRisks: string[];
-  source: "preturn-prune" | "manual";
-  createdAt: number;
-};
-
-export type CompactionEventRecord = {
-  trigger: "context-pressure" | "manual" | "preturn-prune";
-  status: "started" | "succeeded" | "failed";
-  summary: string | null;
-  criticalFiles: string[];
-  openRisks: string[];
-  createdAt: number;
-};
+export type { CompactContinuationArtifact, CompactionEventRecord };
+export { loadCompactionEvents, loadLatestCompactContinuationArtifact };
 
 export async function pruneSessionTranscripts(input: {
   sessionId: string;
@@ -255,68 +235,6 @@ export async function saveCompactionEvent(input: {
   });
 }
 
-export async function loadCompactionEvents(sessionId: string): Promise<CompactionEventRecord[]> {
-  const rows = await getDb().query.messages.findMany({
-    where: eq(messages.session_id, sessionId),
-    orderBy: [asc(messages.seq)],
-  });
-
-  return rows.flatMap((row) => {
-    if (row.kind !== COMPACTION_EVENT_KIND) {
-      return [];
-    }
-
-    try {
-      const parsed = JSON.parse(row.content) as CompactionEventRecord;
-      if (
-        typeof parsed.trigger === "string" &&
-        typeof parsed.status === "string" &&
-        (typeof parsed.summary === "string" || parsed.summary === null) &&
-        Array.isArray(parsed.criticalFiles) &&
-        Array.isArray(parsed.openRisks) &&
-        typeof parsed.createdAt === "number"
-      ) {
-        return [parsed];
-      }
-    } catch {
-      return [];
-    }
-
-    return [];
-  });
-}
-
-export async function loadLatestCompactContinuationArtifact(
-  sessionId: string,
-): Promise<CompactContinuationArtifact | null> {
-  const rows = await getDb().query.messages.findMany({
-    where: eq(messages.session_id, sessionId),
-    orderBy: [asc(messages.seq)],
-  });
-
-  for (const row of [...rows].reverse()) {
-    if (row.kind !== COMPACT_ARTIFACT_KIND) {
-      continue;
-    }
-
-    try {
-      const parsed = JSON.parse(row.content) as CompactContinuationArtifact;
-      if (
-        typeof parsed.summary === "string" &&
-        Array.isArray(parsed.criticalFiles) &&
-        Array.isArray(parsed.openRisks) &&
-        typeof parsed.source === "string" &&
-        typeof parsed.createdAt === "number"
-      ) {
-        return parsed;
-      }
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
-}
 
 export async function estimateSessionTranscriptPressure(input: {
   sessionId: string;
@@ -421,35 +339,6 @@ export async function buildCompactContinuationArtifact(input: {
   };
 }
 
-function summarizeTranscript(content: string): string {
-  const cleaned = content.replace(/\s+/g, " ").trim();
-  if (cleaned.length <= 1200) {
-    return cleaned;
-  }
-  return `${cleaned.slice(0, 1200)}...`;
-}
-
-function extractLikelyFiles(content: string): string[] {
-  const matches = content.match(/\b(?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\b/g) ?? [];
-  return Array.from(new Set(matches)).filter((value) => /[/.]/.test(value));
-}
-
-function extractLikelyRisks(content: string): string[] {
-  const lines = content
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const riskLines = lines.filter((line) =>
-    /(fail|error|risk|todo|follow-up|follow up|unknown|uncertain|blocked|warning)/i.test(line),
-  );
-  return Array.from(
-    new Set(riskLines.map((line) => (line.length > 220 ? `${line.slice(0, 220)}...` : line))),
-  );
-}
-
-const MODEL_MESSAGE_PROTECT_TOKENS = 12_500;
-const MODEL_MESSAGE_MINIMUM_PRUNE_TOKENS = 5_000;
-const MODEL_MESSAGE_RECENT_TO_KEEP = 12;
 
 export async function pruneModelMessagesWithArtifact(input: {
   sessionId: string;
@@ -461,82 +350,19 @@ export async function pruneModelMessagesWithArtifact(input: {
   pruned: boolean;
   removedCount: number;
 }> {
-  const protectTokens = input.protectTokens ?? MODEL_MESSAGE_PROTECT_TOKENS;
-  const minimumPruneTokens = input.minimumPruneTokens ?? MODEL_MESSAGE_MINIMUM_PRUNE_TOKENS;
-  const keepRecentMessages = input.keepRecentMessages ?? MODEL_MESSAGE_RECENT_TO_KEEP;
-  const estimateMessageTokens = input.estimateModelMessageTokens ?? estimateModelMessageTokens;
-
   const [rawMessages, artifact] = await Promise.all([
     loadModelMessages(input.sessionId),
     loadLatestCompactContinuationArtifact(input.sessionId),
   ]);
-
-  if (rawMessages.length <= keepRecentMessages) {
-    return { pruned: false, removedCount: 0 };
-  }
-
-  const recent = rawMessages.slice(-keepRecentMessages);
-  const older = rawMessages.slice(0, -keepRecentMessages);
-  const olderTokens = older.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
-  const recentTokens = recent.reduce((sum, message) => sum + estimateMessageTokens(message), 0);
-
-  if (olderTokens < minimumPruneTokens && recentTokens < protectTokens) {
-    return { pruned: false, removedCount: 0 };
-  }
-
-  let nextMessages = recent;
-  if (artifact) {
-    const artifactSystemMessage: ModelMessage = {
-      role: "system",
-      content: [
-        "Continuation brief from compacted prior session context:",
-        `Summary: ${artifact.summary.trim() || "(none)"}`,
-        `Critical files: ${artifact.criticalFiles.length > 0 ? artifact.criticalFiles.join(", ") : "(none)"}`,
-        `Open risks: ${artifact.openRisks.length > 0 ? artifact.openRisks.join(" | ") : "(none)"}`,
-      ].join("\n"),
-    };
-
-    const first = nextMessages[0];
-    if (
-      !(
-        first?.role === "system" &&
-        typeof first.content === "string" &&
-        first.content.includes("Continuation brief from compacted prior session context:")
-      )
-    ) {
-      nextMessages = [artifactSystemMessage, ...nextMessages];
-    }
-  }
-
-  await replaceMessages(input.sessionId, nextMessages);
-
-  return {
-    pruned: true,
-    removedCount: older.length,
-  };
-}
-
-function estimateModelMessageTokens(message: ModelMessage): number {
-  return estimateTextTokens(modelMessageToText(message));
-}
-
-function modelMessageToText(message: ModelMessage): string {
-  if (typeof message.content === "string") {
-    return message.content;
-  }
-
-  try {
-    return JSON.stringify(message.content);
-  } catch {
-    return String(message.content);
-  }
-}
-
-function estimateTextTokens(text: string): number {
-  const normalized = text.replace(/\s+/g, " ").trim();
-  if (!normalized) {
-    return 0;
-  }
-
-  return Math.ceil(normalized.length / 4);
+  const result = computePrunedModelMessages({
+    rawMessages,
+    artifact,
+    protectTokens: input.protectTokens,
+    minimumPruneTokens: input.minimumPruneTokens,
+    keepRecentMessages: input.keepRecentMessages,
+    estimateModelMessageTokens: input.estimateModelMessageTokens,
+  });
+  if (!result.pruned) return { pruned: false, removedCount: 0 };
+  await replaceMessages(input.sessionId, result.nextMessages);
+  return { pruned: true, removedCount: result.removedCount };
 }

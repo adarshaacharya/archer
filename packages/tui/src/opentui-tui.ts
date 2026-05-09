@@ -23,13 +23,41 @@ import { batch, createEffect, createRoot, createSignal, onCleanup } from "solid-
 import {
   type ActiveMentionQuery,
   buildComposerTextElements,
-  findActiveMentionQuery,
   insertFileMention,
   MentionFileIndex,
   type MentionSuggestion,
   reconcileMentionBindings,
 } from "./mention-state.js";
 import { PromptHistory, type PromptHistoryEntry } from "./prompt-history.js";
+import {
+  approvalDialogWidth,
+  approvalTitle,
+  clamp,
+  compactDiff,
+  defaultApprovalChoices,
+  normalizeText,
+  padRight,
+  truncateMiddle,
+  wrappedLineCount,
+} from "./internal/ui-helpers.js";
+import { type PendingModal } from "./internal/modal-types.js";
+import { mountApprovalModal, mountReviewModal } from "./internal/modals.js";
+import { computeMenuViewport, mapMentionOptions, mapSlashOptions } from "./internal/menu-state.js";
+import {
+  applyCollapsedMenuHeights,
+  computeMentionQuery,
+  computeNextMentionState,
+  computeNextSlashState,
+} from "./internal/menu-controller.js";
+import {
+  isArrowDown,
+  isArrowUp,
+  isEnter,
+  isEscape,
+  isTab,
+  nextWrappedIndex,
+} from "./internal/menu-input.js";
+import { BASE_FOOTER, col, MAX_MENTION_ROWS, MAX_SLASH_ROWS } from "./internal/theme.js";
 
 type SummaryLike = RunSummary & {
   evalMetrics?: {
@@ -92,112 +120,8 @@ export type PatchReviewState = {
   files: PatchReviewFile[];
 };
 
-// Color palette ───────────────────────────────────────────────────────────────
-
-const col = {
-  bg: "#0D1117",
-  userBg: "#161B22",
-  text: "#E6EDF3",
-  muted: "#6E7681",
-  border: "#30363D",
-  accent: "#58A6FF",
-  user: "#3FB950",
-  step: "#6E7681",
-  summary: "#F0883E",
-};
-
-// Footer sizing: status(2) + composer box(5) = 7 before slash menu or dialogs.
-const BASE_FOOTER = 7;
-const MAX_SLASH_ROWS = 6;
-const MAX_MENTION_ROWS = 8;
-
 // ─────────────────────────────────────────────────────────────────────────────
 
-type PendingModal =
-  | {
-      type: "approval";
-      resolve: (value: string) => void;
-      select: SelectRenderable;
-      box: BoxRenderable;
-    }
-  | {
-      type: "review";
-      resolve: (value: string) => void;
-      fileSelect: SelectRenderable;
-      actionSelect: SelectRenderable;
-      preview: TextRenderable;
-      box: BoxRenderable;
-      focused: "files" | "actions";
-    };
-
-function normalizeText(value: string): string {
-  return value.trim().replace(/\r\n/g, "\n");
-}
-
-function truncateMiddle(value: string, max: number): string {
-  if (value.length <= max) return value;
-  if (max <= 3) return value.slice(0, max);
-  const head = Math.ceil((max - 1) / 2);
-  const tail = Math.floor((max - 1) / 2);
-  return `${value.slice(0, head)}…${value.slice(-tail)}`;
-}
-
-function padRight(value: string, width: number): string {
-  return value.length >= width ? value : `${value}${" ".repeat(width - value.length)}`;
-}
-
-function wrappedLineCount(value: string, width: number): number {
-  const safeWidth = Math.max(1, width);
-  const lines = value.length === 0 ? [""] : value.split("\n");
-  return lines.reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / safeWidth)), 0);
-}
-
-function compactDiff(diff: string, maxLines = 16): string {
-  const lines: string[] = [];
-  let inHunk = false;
-  for (const raw of diff.split("\n")) {
-    if (raw.startsWith("@@")) {
-      inHunk = true;
-      lines.push(raw);
-      continue;
-    }
-    if (raw.startsWith("--- ") || raw.startsWith("+++ ")) {
-      lines.push(raw);
-      continue;
-    }
-    if (!inHunk) continue;
-    if (raw.startsWith("+") || raw.startsWith("-") || raw.startsWith(" ")) lines.push(raw);
-  }
-  if (lines.length <= maxLines) return lines.join("\n").trim() || "(no diff)";
-  return `${lines.slice(0, maxLines).join("\n")}\n... truncated ...`;
-}
-
-function defaultApprovalChoices(): ApprovalDialogChoice[] {
-  return [
-    { value: "reject", label: "Reject", description: "Deny this action" },
-    { value: "once", label: "Approve once", description: "Allow this action this time only" },
-    { value: "always", label: "Always approve", description: "Remember this rule for next time" },
-  ];
-}
-
-function approvalTitle(prompt: ApprovalPromptState): string {
-  const message = normalizeText(prompt.message).toLowerCase();
-  if (message.includes("choose model")) return "model picker";
-  if (message.includes("choose model provider")) return "provider picker";
-  if (message.includes("review")) return "review changes";
-  return "selection";
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function approvalDialogWidth(prompt: ApprovalPromptState, choices: ApprovalDialogChoice[]): number {
-  const labelWidth = Math.max(...choices.map((choice) => choice.label.length), 0);
-  const detailWidth = prompt.details ? normalizeText(prompt.details).length : 0;
-  const messageWidth = normalizeText(prompt.message).length;
-  return clamp(Math.max(labelWidth + 10, detailWidth + 4, messageWidth + 4), 42, 88);
-}
 
 function statusPromptStyle(prompt: ApprovalPromptState): {
   primary: string;
@@ -221,13 +145,6 @@ function statusPromptStyle(prompt: ApprovalPromptState): {
   };
 }
 
-function slashCommandMatches(commands: SlashCommandItem[], input: string): SlashCommandItem[] {
-  const v = input.trim();
-  if (!v.startsWith("/")) return [];
-  const query = v.slice(1).toLowerCase();
-  const matches = commands.filter((c) => c.name.slice(1).toLowerCase().startsWith(query));
-  return matches.length > 0 ? matches : commands;
-}
 
 export class ArcherTui implements Tui {
   private renderer: CliRenderer | null = null;
@@ -1191,32 +1108,24 @@ export class ArcherTui implements Tui {
     const renderer = this.renderer;
     if (!menuSelect || !menuBox || !renderer) return;
 
-    if (!value.trim().startsWith("/")) {
+    const next = computeNextSlashState({
+      value,
+      slashCommands: this.slashCommands,
+      currentItems: this.slashMenuItems,
+      currentIndex: this.slashMenuIndex,
+    });
+    if (next.shouldClear) {
       this.slashMenuItems = [];
       this.slashMenuIndex = 0;
       this.slashMenuScrollOffset = 0;
       this.slashLineCount = 0;
-      batch(() => {
-        menuSelect.options = [];
-        menuSelect.selectedIndex = 0;
-        menuSelect.height = 0;
-        menuBox.height = 0;
-      });
+      applyCollapsedMenuHeights(menuSelect, menuBox);
       this.syncFooterHeight();
       return;
     }
 
-    const items = slashCommandMatches(this.slashCommands, value);
-    const previous = this.slashMenuItems[this.slashMenuIndex];
-    const nextIndex = previous
-      ? Math.max(
-          0,
-          items.findIndex((item) => item.name === previous.name),
-        )
-      : 0;
-
-    this.slashMenuItems = items;
-    this.slashMenuIndex = items.length > 0 ? (nextIndex >= 0 ? nextIndex : 0) : 0;
+    this.slashMenuItems = next.items;
+    this.slashMenuIndex = next.index;
     this.syncSlashMenuViewport();
 
     batch(() => {
@@ -1234,12 +1143,7 @@ export class ArcherTui implements Tui {
     const input = this.input;
     if (!menuSelect || !menuBox || !renderer || !input) return;
 
-    if (value.trim().startsWith("/")) {
-      this.clearMentionMenu();
-      return;
-    }
-
-    const mentionQuery = findActiveMentionQuery(value, input.cursorOffset);
+    const mentionQuery = computeMentionQuery(value, input.cursorOffset);
     if (!mentionQuery) {
       this.clearMentionMenu();
       return;
@@ -1252,16 +1156,13 @@ export class ArcherTui implements Tui {
     }
 
     this.activeMentionQuery = mentionQuery;
-    const previous = this.mentionMenuItems[this.mentionMenuIndex];
-    const nextIndex = previous
-      ? Math.max(
-          0,
-          items.findIndex((item) => item.path === previous.path),
-        )
-      : 0;
-
+    const previousItems = this.mentionMenuItems;
     this.mentionMenuItems = items;
-    this.mentionMenuIndex = items.length > 0 ? (nextIndex >= 0 ? nextIndex : 0) : 0;
+    this.mentionMenuIndex = computeNextMentionState({
+      items,
+      currentItems: previousItems,
+      currentIndex: this.mentionMenuIndex,
+    }).index;
     this.syncMentionMenuViewport();
 
     batch(() => {
@@ -1281,25 +1182,27 @@ export class ArcherTui implements Tui {
     const input = this.input;
     if (!menuSelect || !renderer || !input) return false;
 
-    if (seq === "\x1b[A") {
-      this.slashMenuIndex =
-        this.slashMenuIndex <= 0 ? this.slashMenuItems.length - 1 : this.slashMenuIndex - 1;
+    if (isArrowUp(seq)) {
+      this.slashMenuIndex = nextWrappedIndex(this.slashMenuIndex, this.slashMenuItems.length, "up");
       this.syncSlashMenuViewport();
       this.syncSlashMenuSelect();
       renderer.requestRender();
       return true;
     }
 
-    if (seq === "\x1b[B") {
-      this.slashMenuIndex =
-        this.slashMenuIndex >= this.slashMenuItems.length - 1 ? 0 : this.slashMenuIndex + 1;
+    if (isArrowDown(seq)) {
+      this.slashMenuIndex = nextWrappedIndex(
+        this.slashMenuIndex,
+        this.slashMenuItems.length,
+        "down",
+      );
       this.syncSlashMenuViewport();
       this.syncSlashMenuSelect();
       renderer.requestRender();
       return true;
     }
 
-    if (seq === "\t") {
+    if (isTab(seq)) {
       const selected = this.slashMenuItems[this.slashMenuIndex];
       if (!selected) return false;
       input.setText(selected.name);
@@ -1311,7 +1214,7 @@ export class ArcherTui implements Tui {
       return true;
     }
 
-    if (seq === "\r") {
+    if (isEnter(seq)) {
       const selected = this.slashMenuItems[this.slashMenuIndex];
       if (!selected) return false;
       this.submitSlashMenuSelection();
@@ -1329,30 +1232,36 @@ export class ArcherTui implements Tui {
     const renderer = this.renderer;
     if (!renderer) return false;
 
-    if (seq === "\x1b[A") {
-      this.mentionMenuIndex =
-        this.mentionMenuIndex <= 0 ? this.mentionMenuItems.length - 1 : this.mentionMenuIndex - 1;
+    if (isArrowUp(seq)) {
+      this.mentionMenuIndex = nextWrappedIndex(
+        this.mentionMenuIndex,
+        this.mentionMenuItems.length,
+        "up",
+      );
       this.syncMentionMenuViewport();
       this.syncMentionMenuSelect();
       renderer.requestRender();
       return true;
     }
 
-    if (seq === "\x1b[B") {
-      this.mentionMenuIndex =
-        this.mentionMenuIndex >= this.mentionMenuItems.length - 1 ? 0 : this.mentionMenuIndex + 1;
+    if (isArrowDown(seq)) {
+      this.mentionMenuIndex = nextWrappedIndex(
+        this.mentionMenuIndex,
+        this.mentionMenuItems.length,
+        "down",
+      );
       this.syncMentionMenuViewport();
       this.syncMentionMenuSelect();
       renderer.requestRender();
       return true;
     }
 
-    if (seq === "\t" || seq === "\r") {
+    if (isTab(seq) || isEnter(seq)) {
       void this.submitMentionMenuSelection();
       return true;
     }
 
-    if (seq === "\x1b") {
+    if (isEscape(seq)) {
       this.clearMentionMenu();
       renderer.requestRender();
       return true;
@@ -1362,58 +1271,34 @@ export class ArcherTui implements Tui {
   }
 
   private syncSlashMenuViewport(): void {
-    const total = this.slashMenuItems.length;
-    const visibleRows = Math.min(total, MAX_SLASH_ROWS);
-    this.slashLineCount = visibleRows;
-
-    if (visibleRows === 0) {
-      this.slashMenuScrollOffset = 0;
-      return;
-    }
-
-    if (this.slashMenuIndex < this.slashMenuScrollOffset) {
-      this.slashMenuScrollOffset = this.slashMenuIndex;
-    } else if (this.slashMenuIndex >= this.slashMenuScrollOffset + visibleRows) {
-      this.slashMenuScrollOffset = this.slashMenuIndex - visibleRows + 1;
-    }
-
-    const maxOffset = Math.max(0, total - visibleRows);
-    if (this.slashMenuScrollOffset > maxOffset) {
-      this.slashMenuScrollOffset = maxOffset;
-    }
+    const next = computeMenuViewport({
+      total: this.slashMenuItems.length,
+      index: this.slashMenuIndex,
+      scrollOffset: this.slashMenuScrollOffset,
+      maxRows: MAX_SLASH_ROWS,
+    });
+    this.slashLineCount = next.visibleRows;
+    this.slashMenuScrollOffset = next.scrollOffset;
   }
 
   private syncMentionMenuViewport(): void {
-    const total = this.mentionMenuItems.length;
-    const visibleRows = Math.min(total, MAX_MENTION_ROWS);
-    this.mentionLineCount = visibleRows;
-
-    if (visibleRows === 0) {
-      this.mentionMenuScrollOffset = 0;
-      return;
-    }
-
-    if (this.mentionMenuIndex < this.mentionMenuScrollOffset) {
-      this.mentionMenuScrollOffset = this.mentionMenuIndex;
-    } else if (this.mentionMenuIndex >= this.mentionMenuScrollOffset + visibleRows) {
-      this.mentionMenuScrollOffset = this.mentionMenuIndex - visibleRows + 1;
-    }
-
-    const maxOffset = Math.max(0, total - visibleRows);
-    if (this.mentionMenuScrollOffset > maxOffset) {
-      this.mentionMenuScrollOffset = maxOffset;
-    }
+    const next = computeMenuViewport({
+      total: this.mentionMenuItems.length,
+      index: this.mentionMenuIndex,
+      scrollOffset: this.mentionMenuScrollOffset,
+      maxRows: MAX_MENTION_ROWS,
+    });
+    this.mentionLineCount = next.visibleRows;
+    this.mentionMenuScrollOffset = next.scrollOffset;
   }
 
   private syncSlashMenuSelect(): void {
     if (!this.slashMenuSelect) return;
-    const visibleItems = this.slashMenuItems
-      .slice(this.slashMenuScrollOffset, this.slashMenuScrollOffset + MAX_SLASH_ROWS)
-      .map((item, index) => ({
-        name: `${item.name.padEnd(16)} ${item.description}`,
-        description: "",
-        value: this.slashMenuScrollOffset + index,
-      }));
+    const visibleItems = mapSlashOptions(
+      this.slashMenuItems,
+      this.slashMenuScrollOffset,
+      MAX_SLASH_ROWS,
+    );
     this.slashMenuSelect.options = visibleItems;
     this.slashMenuSelect.selectedIndex = Math.max(
       0,
@@ -1424,13 +1309,11 @@ export class ArcherTui implements Tui {
 
   private syncMentionMenuSelect(): void {
     if (!this.mentionMenuSelect) return;
-    const visibleItems = this.mentionMenuItems
-      .slice(this.mentionMenuScrollOffset, this.mentionMenuScrollOffset + MAX_MENTION_ROWS)
-      .map((item, index) => ({
-        name: item.label,
-        description: "",
-        value: this.mentionMenuScrollOffset + index,
-      }));
+    const visibleItems = mapMentionOptions(
+      this.mentionMenuItems,
+      this.mentionMenuScrollOffset,
+      MAX_MENTION_ROWS,
+    );
     this.mentionMenuSelect.options = visibleItems;
     this.mentionMenuSelect.selectedIndex = Math.max(
       0,
@@ -1551,298 +1434,47 @@ export class ArcherTui implements Tui {
     this.renderer?.requestRender();
   }
 
-  /**
-   * Create a box appended below the composer in the footer column.
-   * Footer height is driven by the Solid signal in start().
-   */
-  private approvalBox(
-    id: string,
-    innerRows: number,
-    title: string,
-    width: number | "100%" = "100%",
-  ): BoxRenderable {
-    if (!this.renderer) throw new Error("renderer not ready");
-    return new BoxRenderable(this.renderer, {
-      id,
-      width,
-      maxWidth: "100%",
-      height: innerRows + 2, // +2 for border-top and border-bottom
-      flexShrink: 0,
-      flexDirection: "column",
-      alignItems: "stretch",
-      border: ["left"],
-      borderColor: col.accent,
-      backgroundColor: "#0b1016",
-      paddingLeft: 2,
-      paddingRight: 2,
-      paddingTop: 1,
-      paddingBottom: 1,
-      title: ` ${title} `,
-    });
-  }
-
-  private armSelectAfterMount(callback: () => void): () => boolean {
-    let armed = false;
-    queueMicrotask(() => {
-      armed = true;
-      callback();
-    });
-    return () => armed;
-  }
-
   private showApprovalModal(prompt: ApprovalPromptState, resolve: (value: string) => void): void {
     if (!this.renderer || !this.footerRoot) return;
-
-    const choices = prompt.choices ?? defaultApprovalChoices();
-    const selectedIndex = Math.max(0, Math.min(choices.length - 1, prompt.selectedIndex ?? 1));
-    const visibleChoices = Math.min(choices.length, 12);
-    const hasDetails = Boolean(prompt.details?.trim());
-    const showPreview = choices.some((choice) => choice.description?.trim());
-    // innerRows = message(1) + details?(1) + choices viewport + preview?(1) + help(1)
-    const innerRows = 1 + (hasDetails ? 1 : 0) + visibleChoices + (showPreview ? 1 : 0) + 1;
-    const box = this.approvalBox("approval-modal", innerRows, approvalTitle(prompt), "100%");
-
-    box.add(
-      new TextRenderable(this.renderer, {
-        id: "approval-msg",
-        content: normalizeText(prompt.message),
-        width: "100%",
-        height: 1,
-        fg: col.muted,
-      }),
-    );
-
-    if (hasDetails) {
-      box.add(
-        new TextRenderable(this.renderer, {
-          id: "approval-details",
-          content: normalizeText(prompt.details ?? ""),
-          width: "100%",
-          height: 1,
-          fg: col.step,
-        }),
-      );
-    }
-
-    const selectOptions = choices.map((ch, index) => ({
-      name: index === selectedIndex ? `${ch.label}  (current)` : ch.label,
-      description: ch.description ?? "",
-      value: ch.value,
-    }));
-
-    const select = new SelectRenderable(this.renderer, {
-      id: "approval-select",
-      options: selectOptions,
-      selectedIndex,
-      width: "100%",
-      height: visibleChoices,
-      backgroundColor: col.userBg,
-      focusedBackgroundColor: col.userBg,
-      showScrollIndicator: choices.length > visibleChoices,
-      showDescription: false,
-      selectedBackgroundColor: col.border,
-      selectedTextColor: col.text,
-      textColor: col.text,
-      descriptionColor: col.muted,
-      selectedDescriptionColor: col.muted,
+    const modal = mountApprovalModal({
+      renderer: this.renderer,
+      footerRoot: this.footerRoot,
+      prompt,
+      resolve,
+      closePendingModal: () => this.closePendingModal(),
+      onResolved: (value) => {
+        this.pendingApprovalResolve?.(value);
+        this.pendingApprovalResolve = null;
+      },
+      focusInput: () => this.input?.focus(),
+      requestRender: () => this.renderer?.requestRender(),
+      setApprovalRows: (rows) => this.setApprovalRows?.(rows),
+      syncFooterHeight: () => this.syncFooterHeight(),
     });
-
-    box.add(select);
-    const preview = showPreview
-      ? new TextRenderable(this.renderer, {
-          id: "approval-preview",
-          content: selectOptions[selectedIndex]?.description || "",
-          width: "100%",
-          height: 1,
-          truncate: true,
-          fg: col.step,
-        })
-      : null;
-    if (preview) {
-      box.add(preview);
-    }
-    box.add(
-      new TextRenderable(this.renderer, {
-        id: "approval-help",
-        content: "↑↓ move   enter select   esc reject",
-        width: "100%",
-        height: 1,
-        fg: col.muted,
-      }),
-    );
-
-    this.footerRoot.add(box);
-    this.setApprovalRows?.(innerRows + 2);
-    this.pendingModal = { type: "approval", resolve, select, box };
-    this.syncFooterHeight();
-
-    const isArmed = this.armSelectAfterMount(() => {
-      select.focus();
-      this.syncFooterHeight();
-    });
-
-    if (preview) {
-      select.on(SelectRenderableEvents.SELECTION_CHANGED, (index: number) => {
-        preview.content = selectOptions[index]?.description || "";
-        this.renderer?.requestRender();
-      });
-    }
-
-    select.on(SelectRenderableEvents.ITEM_SELECTED, (_i: number, item: { value: string }) => {
-      if (!isArmed()) return;
-      this.closePendingModal();
-      this.pendingApprovalResolve?.(item.value);
-      this.pendingApprovalResolve = null;
-      this.input?.focus();
-      this.renderer?.requestRender();
-    });
+    if (modal) this.pendingModal = modal;
   }
 
   private showReviewModal(prompt: ApprovalPromptState, resolve: (value: string) => void): void {
     if (!this.renderer || !this.footerRoot || !prompt.review) return;
-
-    // innerRows = header(1) + subtitle(1) + files-label(1) + fileSelect(4) + diff-label(1) + preview(5) + actions(3) + help(1) = 17
-    const box = this.approvalBox("review-modal", 17, "review changes");
-
-    box.add(
-      new TextRenderable(this.renderer, {
-        id: "review-header",
-        content: normalizeText(prompt.message),
-        width: "100%",
-        height: 1,
-        fg: col.text,
-      }),
-    );
-    box.add(
-      new TextRenderable(this.renderer, {
-        id: "review-subtitle",
-        content: normalizeText(prompt.details ?? prompt.review.summary),
-        width: "100%",
-        height: 1,
-        fg: col.muted,
-      }),
-    );
-    box.add(
-      new TextRenderable(this.renderer, {
-        id: "review-files-label",
-        content: "Files",
-        width: "100%",
-        height: 1,
-        fg: col.accent,
-      }),
-    );
-
-    const fileSelect = new SelectRenderable(this.renderer, {
-      id: "review-files",
-      options: prompt.review.files.map((f) => ({
-        name: f.filePath,
-        description: f.status ?? "modified",
-        value: f.filePath,
-      })),
-      selectedIndex: 0,
-      width: "100%",
-      height: 4,
-      showDescription: true,
-    });
-
-    box.add(fileSelect);
-    box.add(
-      new TextRenderable(this.renderer, {
-        id: "review-diff-label",
-        content: "Diff",
-        width: "100%",
-        height: 1,
-        fg: col.accent,
-      }),
-    );
-
-    const preview = new TextRenderable(this.renderer, {
-      id: "review-preview",
-      content: compactDiff(prompt.review.files[0]?.diff ?? "", 10),
-      width: "100%",
-      height: 5,
-      wrapMode: "word",
-      fg: col.muted,
-    });
-
-    const actionSelect = new SelectRenderable(this.renderer, {
-      id: "review-actions",
-      options: (prompt.choices ?? defaultApprovalChoices()).map((ch) => ({
-        name: ch.label,
-        description: ch.description ?? "",
-        value: ch.value,
-      })),
-      selectedIndex: 1,
-      width: "100%",
-      height: 4,
-      showDescription: true,
-    });
-
-    box.add(preview);
-    box.add(actionSelect);
-    box.add(
-      new TextRenderable(this.renderer, {
-        id: "review-help",
-        content: "tab switch focus   enter choose   esc reject",
-        width: "100%",
-        height: 1,
-        fg: col.muted,
-      }),
-    );
-
-    this.footerRoot.add(box);
-    this.setApprovalRows?.(17 + 2);
-
-    const modal: PendingModal = {
-      type: "review",
+    const modal = mountReviewModal({
+      renderer: this.renderer,
+      footerRoot: this.footerRoot,
+      prompt,
       resolve,
-      fileSelect,
-      actionSelect,
-      preview,
-      box,
-      focused: "actions",
-    };
-    this.pendingModal = modal;
-    this.syncFooterHeight();
-    const isArmed = this.armSelectAfterMount(() => {
-      actionSelect.focus();
-      this.syncFooterHeight();
+      closePendingModal: () => this.closePendingModal(),
+      onResolved: (value) => {
+        this.pendingApprovalResolve?.(value);
+        this.pendingApprovalResolve = null;
+      },
+      focusInput: () => this.input?.focus(),
+      requestRender: () => this.renderer?.requestRender(),
+      setApprovalRows: (rows) => this.setApprovalRows?.(rows),
+      syncFooterHeight: () => this.syncFooterHeight(),
+      registerInputHandler: (handler) =>
+        this.renderer?.addInputHandler((seq) =>
+          this.pendingModal?.type === "review" ? handler(seq) : false,
+        ),
     });
-
-    fileSelect.on(SelectRenderableEvents.SELECTION_CHANGED, () => {
-      const sel = fileSelect.getSelectedOption();
-      const file = prompt.review?.files.find((f) => f.filePath === sel?.value);
-      preview.content = file ? compactDiff(file.diff, 10) : "(no file selected)";
-      this.renderer?.requestRender();
-    });
-    fileSelect.on(SelectRenderableEvents.ITEM_SELECTED, () => {
-      modal.focused = "actions";
-      actionSelect.focus();
-      this.renderer?.requestRender();
-    });
-    actionSelect.on(SelectRenderableEvents.ITEM_SELECTED, (_i: number, item: { value: string }) => {
-      if (!isArmed()) return;
-      this.closePendingModal();
-      this.pendingApprovalResolve?.(item.value);
-      this.pendingApprovalResolve = null;
-      this.input?.focus();
-      this.renderer?.requestRender();
-    });
-
-    this.renderer.addInputHandler((seq) => {
-      if (seq !== "\t" || this.pendingModal?.type !== "review") return false;
-      const m = this.pendingModal;
-      if (m.focused === "files") {
-        m.focused = "actions";
-        m.actionSelect.focus();
-      } else {
-        m.focused = "files";
-        m.fileSelect.focus();
-      }
-      this.renderer?.requestRender();
-      return true;
-    });
-
-    fileSelect.focus();
+    if (modal) this.pendingModal = modal;
   }
 }
