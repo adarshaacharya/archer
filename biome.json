@@ -14,5 +14,17 @@
   },
   "files": {
     "includes": ["**", "!**/dist", "!**/.turbo", "!**/.next", "!**/node_modules"]
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/web/src/app/globals.css"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noUnknownAtRules": "off"
+          }
+        }
+      }
+    }
+  ]
 }

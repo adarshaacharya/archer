@@ -4,16 +4,7 @@ import { ArrowRightIcon } from "@/app/(marketing)/_components/arrow-right-icon";
 export function HeroLead() {
   return (
     <div className="col-span-6 pad-box">
-      <div
-        className="mono mb-2"
-        style={{
-          paddingBottom: "1rem",
-          borderBottom: "1px solid #111",
-          display: "inline-block",
-        }}
-      >
-        AGENT_INIT
-      </div>
+      <div className="mono mb-2 inline-block border-b border-charcoal pb-4">AGENT_INIT</div>
 
       <div className="mt-6 mb-4 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
         <div className="relative h-16 w-16 shrink-0 overflow-hidden sm:h-20 sm:w-20 md:h-20 md:w-20">
@@ -26,7 +17,7 @@ export function HeroLead() {
             className="object-contain object-center"
           />
         </div>
-        <div className="hidden h-16 w-px bg-[#111]/40 sm:block sm:h-20" aria-hidden />
+        <div className="hidden h-16 w-px bg-charcoal/40 sm:block sm:h-20" aria-hidden />
         <h1
           className="font-[var(--font-archer-display)] text-[clamp(3.1rem,6vw,5.2rem)] leading-none tracking-[0.02em] uppercase"
           aria-label="Archer"
@@ -36,13 +27,13 @@ export function HeroLead() {
       </div>
       <p className="hero-lead">AI coding from your terminal, inside your local repo.</p>
       <p className="mb-2">
-        Archer reads your codebase, proposes edits as patches, runs approved commands, and helps with
-        web research when the task needs it.
+        Archer reads your codebase, proposes edits as patches, runs approved commands, and helps
+        with web research when the task needs it.
       </p>
 
       <div className="hero-support">LOCAL REPO. YOUR KEYS. APPROVED ACTIONS.</div>
 
-      <div className="cta-group" style={{ justifyContent: "flex-start" }}>
+      <div className="flex flex-wrap gap-4 justify-start">
         <a href="#install" className="btn btn-primary">
           Start Building
           <ArrowRightIcon className="arrow-icon" />
@@ -57,6 +48,7 @@ export function HeroLead() {
         </a>
       </div>
 
+      {/* biome-ignore lint/correctness/useUniqueElementIds: stable hash target for #install */}
       <div id="install" className="install-block scroll-mt-28">
         <div className="install-header mono">
           <span>INSTALLATION</span>

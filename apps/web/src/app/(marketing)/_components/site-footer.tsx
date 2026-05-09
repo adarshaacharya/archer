@@ -26,7 +26,6 @@ export function SiteFooter() {
         <div className="col-span-full pad-box flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="mono space-y-1">
             <div>© 2026 Archer</div>
-            <div style={{ color: "rgba(244, 243, 239, 0.72)" }}>MIT License</div>
           </div>
 
           <nav aria-label="Footer" className="flex flex-wrap gap-4">

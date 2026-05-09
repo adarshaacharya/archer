@@ -1,18 +1,29 @@
 @import "tailwindcss";
 
+/* Design tokens: utilities (bg-*, text-*, border-*) + var(--color-*) for inline/CSS. */
+@theme {
+  --color-bone: #f4f3ef;
+  --color-charcoal: #111111;
+  --color-accent: #e0ff3e;
+  --color-term-bg: #0a0a0a;
+  --color-term-fg: #eaeaea;
+  --color-term-gray: #666666;
+}
+
 :root {
-  --bg-bone: #f4f3ef;
-  --fg-charcoal: #111111;
-  --accent-green: #e0ff3e;
-  --term-bg: #0a0a0a;
-  --term-fg: #eaeaea;
-  --term-gray: #666666;
+  /* Legacy names used across globals/components — alias theme colors. */
+  --bg-bone: var(--color-bone);
+  --fg-charcoal: var(--color-charcoal);
+  --accent-green: var(--color-accent);
+  --term-bg: var(--color-term-bg);
+  --term-fg: var(--color-term-fg);
+  --term-gray: var(--color-term-gray);
 
   --font-sans: var(--font-archer-inter), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-archer-display), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-archer-mono), ui-monospace, monospace;
 
-  --border: 1px solid var(--fg-charcoal);
+  --border: 1px solid var(--color-charcoal);
   --pad: 2rem;
 }
 
@@ -45,21 +56,6 @@ h3 {
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 0.05em;
-}
-
-.text-accent {
-  color: var(--accent-green);
-}
-.bg-accent {
-  background-color: var(--accent-green);
-}
-
-.text-charcoal {
-  color: var(--fg-charcoal);
-}
-
-.bg-bone {
-  background-color: var(--bg-bone);
 }
 
 .term-gray-text {
