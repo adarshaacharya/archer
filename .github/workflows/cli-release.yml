@@ -135,8 +135,8 @@ jobs:
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           npm version "$TAG_VERSION" --no-git-tag-version
-        working-directory: apps/cli/.publish
+        working-directory: apps/cli
 
       - name: Publish to npm
         run: npm publish --access public
-        working-directory: apps/cli/.publish
+        working-directory: apps/cli
