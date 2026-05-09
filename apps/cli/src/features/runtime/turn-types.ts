@@ -1,4 +1,4 @@
-import type { InputIntent } from "./intent-router.js";
+import type { InputIntent } from "../routing/intent-router.js";
 
 export type TurnStatus = "completed" | "failed" | "cancelled" | "clarify";
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import type { SessionState } from "./session-state.js";
+import type { SessionState } from "./features/sessions/session-state.js";
 import { runTurnWithDeps } from "./turn-runner.js";
 
 const runTaskMock = mock(async () => ({

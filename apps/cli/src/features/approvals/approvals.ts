@@ -14,7 +14,7 @@ import {
   hasStoredPermission,
   type PermissionRequest,
   readSettings,
-} from "./settings-store.js";
+} from "../settings/settings-store.js";
 
 export type LocalApprovalRequest = ApprovalRequest | PermissionRequest;
 

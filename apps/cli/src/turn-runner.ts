@@ -3,9 +3,9 @@ import { type ComposerSubmission, createPlainComposerSubmission } from "@archer/
 import { appendTurnResult, getTurnResults } from "@archer/storage";
 import type { Tui } from "@archer/tui";
 import { maybePruneSessionBeforeTurn } from "./recovery/prune.js";
-import type { SessionState } from "./session-state.js";
+import type { SessionState } from "./features/sessions/session-state.js";
 import { runTask } from "./task-runner.js";
-import type { TurnResult } from "./turn-types.js";
+import type { TurnResult } from "./features/runtime/turn-types.js";
 
 type RunTurnDeps = {
   getTurnResults: typeof getTurnResults;

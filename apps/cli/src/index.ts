@@ -15,7 +15,7 @@ import {
   listSessions,
 } from "@archer/storage";
 import type { SupportedWebProvider } from "@archer/web";
-import { permissionsSummary, setApprovalMode } from "./approvals.js";
+import { permissionsSummary, setApprovalMode } from "./features/approvals/approvals.js";
 import {
   clearProviderEnv,
   clearWebProviderEnv,
@@ -33,78 +33,26 @@ import {
   resolveActiveWebProvider,
   saveProviderAuth,
   saveWebProviderAuth,
-} from "./auth-store.js";
+} from "./features/auth/auth-store.js";
+import { parseCliArgs, printHelp } from "./app/cli-args.js";
+import { resolveProjectRoot } from "./app/project-root.js";
+import { printVersion } from "./app/version.js";
 import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.js";
 import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compact.js";
 import { bootstrapWorkspace, initSlashCommandItem } from "./commands/init.js";
-import { KeybindManager } from "./keybinds.js";
-import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./model-picker-options.js";
-import { renderInitHintMessage, shouldShowInitHint } from "./onboarding-hint.js";
-import { loadOpenHarnessConfig } from "./openharness-config.js";
-import type { SessionState } from "./session-state.js";
+import { KeybindManager } from "./features/ui/keybinds.js";
+import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./features/ui/model-picker-options.js";
+import { renderInitHintMessage, shouldShowInitHint } from "./features/onboarding/onboarding-hint.js";
+import { loadOpenHarnessConfig } from "./features/runtime/openharness-config.js";
+import type { SessionState } from "./features/sessions/session-state.js";
 import { runTask } from "./task-runner.js";
-import { titleFromTask } from "./task-title.js";
-import { loadTuiConfig } from "./tui-config.js";
+import { titleFromTask } from "./features/runtime/task-title.js";
+import { loadTuiConfig } from "./features/ui/tui-config.js";
 import { runTurn } from "./turn-runner.js";
-import type { TurnResult } from "./turn-types.js";
+import type { TurnResult } from "./features/runtime/turn-types.js";
 
 type Tui = import("@archer/tui").Tui;
 type SlashCommandItem = import("@archer/tui").SlashCommandItem;
-
-type CliArgs = {
-  help: boolean;
-  version: boolean;
-  initialTask: string | null;
-};
-
-const HELP_TEXT = `Archer CLI
-
-Usage:
-  archer
-  archer "review this repository"
-  archer --help
-  archer --version
-
-Options:
-  --help, -h     Show this help text and exit
-  --version, -v  Show the Archer version and exit
-
-Slash commands:
-  /help          Show available slash commands
-  /new           Start a fresh session
-  /resume        Restore a saved session
-  /providers     Show provider connection status
-  /connect       Connect a model provider
-  /model         Choose the active model
-  /web           Connect a web search provider
-  /bye           Exit Archer
-`;
-
-function parseCliArgs(argv: string[]): CliArgs {
-  const args = [...argv];
-  const help = args.some((arg) => arg === "--help" || arg === "-h");
-  const version = args.some((arg) => arg === "--version" || arg === "-v");
-  const positional = args.filter((arg) => !arg.startsWith("-"));
-  const initialTask = positional.join(" ").trim();
-
-  return {
-    help,
-    version,
-    initialTask: initialTask.length > 0 ? initialTask : null,
-  };
-}
-
-function printHelp(): void {
-  console.log(HELP_TEXT);
-}
-
-function printVersion(): void {
-  console.log(`archer ${requireVersion()}`);
-}
-
-function requireVersion(): string {
-  return "0.1.3";
-}
 
 function isCasualGreeting(input: string): boolean {
   const text = input.trim().toLowerCase();
@@ -149,24 +97,6 @@ async function persistPromptHistory(
     sessionId,
     text: value,
   });
-}
-
-function resolveProjectRoot(startDir: string): string {
-  const result = Bun.spawnSync({
-    cmd: ["git", "rev-parse", "--show-toplevel"],
-    cwd: startDir,
-    stdout: "pipe",
-    stderr: "ignore",
-  });
-
-  if (result.exitCode === 0) {
-    const root = new TextDecoder().decode(result.stdout).trim();
-    if (root) {
-      return root;
-    }
-  }
-
-  return startDir;
 }
 
 type SlashCommandResult =

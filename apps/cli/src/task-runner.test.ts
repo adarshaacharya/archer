@@ -6,8 +6,8 @@ import {
   evaluateQuestionAnswerReadiness,
   type QuestionExplorationState,
 } from "@archer/agent-core";
-import { prerouteInput } from "./intent-router.js";
-import { resolveTaskExecutionRoute } from "./task-runner.js";
+import { prerouteInput } from "./features/routing/intent-router.js";
+import { resolveTaskExecutionRoute } from "./workflows/run-task/route.js";
 
 function exploration(overrides: Partial<QuestionExplorationState> = {}): QuestionExplorationState {
   return { ...createQuestionExplorationState(), ...overrides };

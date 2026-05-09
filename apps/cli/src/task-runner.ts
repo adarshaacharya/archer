@@ -1,13 +1,9 @@
 import { performance } from "node:perf_hooks";
 import {
   buildContextGatheringPrompt,
-  buildDirectAnswerPrompt,
-  buildDirectAnswerSystemPrompt,
   buildPriorTurnPlanningGuidance,
   buildQuestionStrategy,
   buildResearchAnswerPrompt,
-  buildWebAnswerPrompt,
-  buildWebAnswerSystemPrompt,
   createCompactionMetadata,
   createOpenHarnessEngineAdapter,
   createQuestionExplorationState,
@@ -21,22 +17,18 @@ import {
   evaluateQuestionAnswerReadiness,
   expandedContextSteps,
   formatWebRuntimeEvent,
-  handleTaskContextOutcome,
   isContextBudgetResult,
   isContextPressureFailure,
+  parseTurnDecision,
   type OpenHarnessRuntimeDeps,
   type OpenHarnessToolEvent,
   parseCompactionReport,
-  parseTurnDecision,
-  prependContinuationBrief,
   type RuntimePhaseRunner,
   recordCompactionAttempt,
   recordQuestionStep,
   resolveObservedTurnIntent,
   shouldAttemptVerification,
-  shouldContinueAfterContextFailure,
   shouldStopCommitWorkflowAfterContext,
-  summarizeQuestionExploration,
   type TurnObservedFacts,
   validateTurnDecision,
 } from "@archer/agent-core";
@@ -55,20 +47,24 @@ import {
 } from "@archer/storage";
 import type { Tui } from "@archer/tui";
 import { createWebCapability } from "@archer/web";
-import { requestApproval, withApprovalQueue } from "./approvals.js";
-import { resolveActiveWebProvider } from "./auth-store.js";
-import { createEvalMetricsCollector } from "./eval-metrics.js";
-import { buildExplicitFileContext, prependExplicitFileContext } from "./explicit-context.js";
-import { type PreRouteResult, planPreRoute, preRouteResultFromMode } from "./intent-router.js";
+import { requestApproval, withApprovalQueue } from "./features/approvals/approvals.js";
+import { resolveActiveWebProvider } from "./features/auth/auth-store.js";
+import { createEvalMetricsCollector } from "./features/runtime/eval-metrics.js";
+import { buildExplicitFileContext, prependExplicitFileContext } from "./features/context/explicit-context.js";
+import { type PreRouteResult, planPreRoute, preRouteResultFromMode } from "./features/routing/intent-router.js";
 import { pruneSessionAfterTurn } from "./recovery/prune.js";
-import type { SessionState } from "./session-state.js";
-import { webFetchRuleForUrl } from "./settings-store.js";
-import { formatSubagentRuntimeEvent } from "./subagent-events.js";
-import { titleFromTask } from "./task-title.js";
-import { createTurnStateMachine } from "./turn-state-machine.js";
-import type { TurnContext, TurnResult, TurnSummary } from "./turn-types.js";
-
-export type TaskExecutionRoute = "direct-answer" | "web-context" | "research" | "change";
+import type { SessionState } from "./features/sessions/session-state.js";
+import { webFetchRuleForUrl } from "./features/settings/settings-store.js";
+import { formatSubagentRuntimeEvent } from "./features/subagents/subagent-events.js";
+import { titleFromTask } from "./features/runtime/task-title.js";
+import { createTurnStateMachine } from "./features/runtime/turn-state-machine.js";
+import type { TurnContext, TurnResult, TurnSummary } from "./features/runtime/turn-types.js";
+import { executeContextFlow } from "./workflows/run-task/context.js";
+import { executeEarlyRoute } from "./workflows/run-task/execution.js";
+import { isSuccessfulGitCommitOutput, shellOutputText } from "./workflows/run-task/output.js";
+import { resolveTaskExecutionRoute, type TaskExecutionRoute } from "./workflows/run-task/route.js";
+import { turnStatusLabel } from "./workflows/run-task/status.js";
+import { ensureWebProviderConnected, updateWebSessionState } from "./workflows/run-task/web-provider.js";
 
 function newMessageId(sessionId: string, role: string): string {
   return `${sessionId}_${role}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -82,98 +78,6 @@ type PatchPreview = NonNullable<OpenHarnessRuntimeDeps["approvePatchApply"]> ext
 
 type RuntimeToolCall = Parameters<NonNullable<OpenHarnessRuntimeDeps["approveToolCall"]>>[0];
 
-export function resolveTaskExecutionRoute(
-  resolvedPreRoute: PreRouteResult | null,
-  declaredIntent: TurnResult["intent"],
-): TaskExecutionRoute {
-  if (declaredIntent === "change") {
-    return "change";
-  }
-  if (!resolvedPreRoute) {
-    return "research";
-  }
-  if (resolvedPreRoute.mode === "change") {
-    return "change";
-  }
-  if (resolvedPreRoute.mode === "direct-answer") {
-    return "direct-answer";
-  }
-  if (resolvedPreRoute.mode === "web-context") {
-    return "web-context";
-  }
-  return "research";
-}
-
-function shellOutputText(output: unknown): string {
-  if (!output || typeof output !== "object") {
-    return typeof output === "string" ? output : "";
-  }
-
-  const stdout =
-    typeof (output as { stdout?: unknown }).stdout === "string"
-      ? (output as { stdout: string }).stdout
-      : "";
-  const stderr =
-    typeof (output as { stderr?: unknown }).stderr === "string"
-      ? (output as { stderr: string }).stderr
-      : "";
-
-  return [stdout, stderr].filter(Boolean).join("\n");
-}
-
-function isSuccessfulGitCommitOutput(output: unknown): boolean {
-  const text = shellOutputText(output);
-  return /^\[[^\]]+\s+[0-9a-f]{7,}\]/m.test(text);
-}
-
-function updateWebSessionState(
-  state: SessionState,
-  resolved: Awaited<ReturnType<typeof resolveActiveWebProvider>>,
-): void {
-  if (!resolved) {
-    state.webProvider = null;
-    state.webAuthSource = null;
-    return;
-  }
-
-  state.webProvider = resolved.provider;
-  state.webAuthSource = resolved.authSource;
-}
-
-async function ensureWebProviderConnected(tui: Tui, state: SessionState): Promise<boolean> {
-  const resolved = await resolveActiveWebProvider();
-  updateWebSessionState(state, resolved);
-  if (resolved) {
-    return true;
-  }
-
-  tui.renderApprovalPrompt({
-    message: "Web search is not connected.",
-    options: ["wait"],
-  });
-  return false;
-}
-
-function turnStatusLabel(stateName: string): string {
-  switch (stateName) {
-    case "routing":
-      return "Routing turn";
-    case "researching":
-      return "Gathering context";
-    case "planning":
-      return "Planning";
-    case "implementing":
-      return "Implementing";
-    case "verifying":
-      return "Verifying";
-    case "repairing":
-      return "Repairing";
-    case "compacting":
-      return "Compacting context";
-    default:
-      return "Processing task";
-  }
-}
 
 export async function runTask(
   submission: ComposerSubmission,
@@ -761,199 +665,51 @@ export async function runTask(
       observedFacts.changeFlowEntered = true;
     }
 
-    if (executionRoute === "direct-answer") {
-      renderApprovalMessage("Answering directly...");
-      const directResult = await runPhase(buildDirectAnswerPrompt(request.task), true, 8, {
-        allowTools: false,
-        allowedToolNames,
-        instructions: buildDirectAnswerSystemPrompt(),
-      });
-
-      if (directResult.status === "completed") {
-        turn.finish();
-        const summary = buildSummary({
-          success: true,
-          steps: directResult.steps,
-          durationMs: elapsedMs(),
-          promptTokens: directResult.usage?.promptTokens ?? 0,
-          completionTokens: directResult.usage?.completionTokens ?? 0,
-          estimatedCostUsd: directResult.estimatedCostUsd ?? 0,
-        });
-        renderSummary(summary);
-        pruneAfterTurn();
-        return buildTurnResult("completed", summary, directResult.outputText);
-      }
-
-      if (directResult.status === "cancelled") {
-        turn.cancel();
-        return buildTurnResult("cancelled", undefined, directResult.outputText);
-      }
-
-      turn.fail();
-      return buildTurnResult("failed", undefined, directResult.outputText);
-    }
-
-    if (executionRoute === "web-context") {
-      renderApprovalMessage("Inspecting web content...");
-      const webResult = await runPhase(buildWebAnswerPrompt(request.task), true, 8, {
-        allowedToolNames,
-        instructions: buildWebAnswerSystemPrompt(),
-      });
-
-      if (webResult.status === "completed") {
-        turn.finish();
-        const summary = buildSummary({
-          success: true,
-          steps: webResult.steps,
-          durationMs: elapsedMs(),
-          promptTokens: webResult.usage?.promptTokens ?? 0,
-          completionTokens: webResult.usage?.completionTokens ?? 0,
-          estimatedCostUsd: webResult.estimatedCostUsd ?? 0,
-        });
-        renderSummary(summary);
-        pruneAfterTurn();
-        return buildTurnResult("completed", summary, webResult.outputText);
-      }
-
-      if (webResult.status === "cancelled") {
-        turn.cancel();
-        return buildTurnResult("cancelled", undefined, webResult.outputText);
-      }
-
-      turn.fail();
-      return buildTurnResult("failed", undefined, webResult.outputText);
-    }
-
-    turn.beginResearch();
-    if (questionStrategy) {
-      tui.renderApprovalPrompt({
-        message: "Researching repository context...",
-        options: ["esc=abort"],
-      });
-    }
-    const researchPrompt = prependContinuationBrief(
-      prependExplicitFileContext(
-        isChangeTurn
-          ? buildContextGatheringPrompt(request.task)
-          : buildResearchAnswerPrompt(request.task, "question", questionStrategy ?? undefined),
-        explicitFileContext,
-      ),
-      continuationArtifact,
-    );
-    let contextResult = await runPhase(
-      researchPrompt,
-      isAnswerTurn,
-      isChangeTurn ? contextMaxSteps : answerMaxSteps,
-      {},
-    );
-
-    if (
-      shouldContinueAfterContextFailure({
-        intent: declaredIntent,
-        status: contextResult.status,
-        isContextBudgetResult: isContextBudgetResult(contextResult),
-      })
-    ) {
-      const retrySteps = expandedContextSteps(request.maxSteps, contextMaxSteps);
-      contextResult = await runPhase(researchPrompt, false, retrySteps);
-    }
-
-    if (unifiedTurn && contextResult.status === "completed") {
-      let submittedDecision: ReturnType<typeof validateTurnDecision> = null;
-      const decisionResult = await runPhase(
-        [
-          "Decide what the task needs next based on the task and inspected repository context.",
-          "Submit the routing decision with the submitTurnDecision tool.",
-          "Do not return raw JSON when the tool is available.",
-          "The decision shape is:",
-          '{ mode: "answer" | "change", rationale: string }',
-          "",
-          'Use "answer" when the user primarily asked for inspection, explanation, review, or current state.',
-          'Use "change" when the user clearly wants code or file modifications.',
-          "",
-          "Task:",
-          request.task,
-          "",
-          "Inspected context summary:",
-          contextResult.outputText || "(empty)",
-        ].join("\n"),
-        false,
-        12,
-        {
-          onToolEvent: (event) => {
-            if (event.phase !== "done" || event.toolName !== "submitTurnDecision") {
-              return;
-            }
-            const validated = validateTurnDecision(event.output);
-            if (validated) {
-              submittedDecision = validated;
-            }
-          },
-        },
-      );
-      const decision = submittedDecision ?? parseTurnDecision(decisionResult.outputText);
-      if (decision?.mode === "change") {
-        isChangeTurn = true;
-        isAnswerTurn = false;
-        observedFacts.changeFlowEntered = true;
-      } else {
-        isChangeTurn = false;
-        isAnswerTurn = true;
-      }
-    }
-
-    if (
-      shouldStopCommitWorkflowAfterContext({
-        workflowKind: taskOptions?.workflowKind,
-        commitWorkflowCompleted,
-      })
-    ) {
-      turn.finish();
-      const summary = buildSummary({
-        success: true,
-        steps: contextResult.steps,
-        durationMs: Math.round(performance.now() - started),
-        promptTokens: contextResult.usage?.promptTokens ?? 0,
-        completionTokens: contextResult.usage?.completionTokens ?? 0,
-        estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
-      });
-      tui.renderSummary(summary);
-      void pruneSessionAfterTurn(state.sessionId);
-      return buildTurnResult(
-        "completed",
-        summary,
-        commitWorkflowOutput || "Created the git commit successfully.",
-      );
-    }
-
-    return await handleTaskContextOutcome({
-      mode: isAnswerTurn ? "answer" : "change",
-      contextResult,
+    const earlyRouteResult = await executeEarlyRoute({
+      route: executionRoute,
       task: request.task,
-      questionAnswerReadyReason,
-      explorationSummary: questionExploration
-        ? summarizeQuestionExploration(questionExploration)
-        : undefined,
-      priorTurnGuidance: priorTurnGuidance ?? undefined,
+      allowedToolNames,
+      runPhase,
+      renderApprovalMessage,
+      elapsedMs,
+      buildSummary,
+      renderSummary,
+      pruneAfterTurn,
+      buildTurnResult,
+      onCompleted: () => turn.finish(),
+      onCancelled: () => turn.cancel(),
+      onFailed: () => turn.fail(),
+    });
+    if (earlyRouteResult) {
+      return earlyRouteResult as TurnResult;
+    }
+
+    const contextFlow = await executeContextFlow({
+      request,
+      declaredIntent,
+      unifiedTurn,
+      isAnswerTurn,
+      isChangeTurn,
+      questionStrategy,
+      explicitFileContext,
+      continuationArtifact,
+      contextMaxSteps,
+      answerMaxSteps,
       planningMaxSteps,
       verificationMaxSteps,
       compactionMaxSteps,
-      maxSteps: request.maxSteps,
-      workflowKind: taskOptions?.workflowKind,
-      elapsedMs,
+      taskWorkflowKind: taskOptions?.workflowKind,
+      commitWorkflowCompleted,
+      commitWorkflowOutput,
+      stateSessionId: state.sessionId,
+      started,
+      priorTurnGuidance: priorTurnGuidance ?? undefined,
+      questionAnswerReadyReason,
+      questionExploration,
       runPhase,
       turn,
-      beginImplementationPhase: () => phase.beginImplementation(),
-      beginVerificationPhase: () => phase.beginVerification(),
-      onImplementationAttempted: () => {
-        observedFacts.implementationAttempted = true;
-      },
-      onVerificationAttempted: () => {
-        observedFacts.verificationAttempted = true;
-      },
-      onChangeFlowEntered: () => {
-        observedFacts.changeFlowEntered = true;
-      },
+      phase,
+      observedFacts,
       buildSummary,
       buildTurnResult,
       renderSummary,
@@ -963,7 +719,7 @@ export async function runTask(
       },
       persistAssistantTranscript,
       pruneAfterTurn,
-      deriveValidationScope: deriveCurrentValidationScope,
+      deriveCurrentValidationScope,
       isContextBudgetResult,
       shouldAttemptVerification,
       saveCompactionStarted,
@@ -971,7 +727,11 @@ export async function runTask(
       updateCompactionMetadata,
       parseCompactionReport,
       isContextPressureFailure,
+      pruneSessionAfterTurn,
     });
+    isAnswerTurn = contextFlow.isAnswerTurn;
+    isChangeTurn = contextFlow.isChangeTurn;
+    return contextFlow.result;
   } finally {
     clearInterval(spinner);
     tui.onCancelRunning(null);
