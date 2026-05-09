@@ -1,23 +1,23 @@
 const steps = [
   {
     n: "1",
-    title: "Prompt",
-    body: "Turn plain-language requests into real repository work.",
+    title: "Ask",
+    body: "Describe a coding task in plain English.",
   },
   {
     n: "2",
-    title: "Plan",
-    body: "Archer analyzes context and proposes a structured execution plan.",
+    title: "Read",
+    body: "Archer inspects files, repo context, and the web when needed.",
   },
   {
     n: "3",
     title: "Approve",
-    body: "Review risky actions before they run.",
+    body: "Review risky commands and writes before they run.",
   },
   {
     n: "4",
-    title: "Patch",
-    body: "Inspect proposed code changes as standard patches before applying them.",
+    title: "Apply",
+    body: "Accept patch-based edits instead of silent rewrites.",
   },
 ] as const;
 

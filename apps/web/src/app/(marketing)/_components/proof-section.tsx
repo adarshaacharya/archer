@@ -11,10 +11,10 @@ export function ProofSection() {
       >
         <div>
           <span className="mono mb-2 block">{"03 // CONTROL & SAFETY"}</span>
-          <h2 style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>Built for real repositories.</h2>
+          <h2 style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>What Archer actually does.</h2>
           <p>
-            Archer asks before risky actions and routes file and shell operations through explicit
-            policy checks.
+            It helps you read code, research dependencies, edit files, and run repo tasks without
+            giving up control of the machine.
           </p>
         </div>
         <div style={{ marginTop: "4rem" }}>
@@ -59,8 +59,8 @@ export function ProofSection() {
             </div>
             <h3 className="mb-1">Approval Controls</h3>
             <p className="term-gray-text" style={{ fontSize: "0.875rem" }}>
-              Choose how much autonomy Archer gets. Safe reads can flow, while risky writes and
-              shell actions stay gated.
+              Safe reads can flow quickly. Risky writes and shell commands stay behind approval
+              prompts.
             </p>
           </div>
           <div className="proof-item">
@@ -72,10 +72,10 @@ export function ProofSection() {
                 <line x1="9" y1="21" x2="9" y2="9" />
               </svg>
             </div>
-            <h3 className="mb-1">Sandboxed Context</h3>
+            <h3 className="mb-1">Local Repo Boundaries</h3>
             <p className="term-gray-text" style={{ fontSize: "0.875rem" }}>
-              File and shell actions operate inside explicit boundaries. Control which paths and
-              commands Archer can touch.
+              Control which files and commands Archer can touch instead of letting the agent roam
+              freely.
             </p>
           </div>
           <div className="proof-item">
@@ -89,10 +89,9 @@ export function ProofSection() {
                 <polyline points="10 9 9 9 8 9" />
               </svg>
             </div>
-            <h3 className="mb-1">Patch-First Editing</h3>
+            <h3 className="mb-1">Patch-First Edits</h3>
             <p className="term-gray-text" style={{ fontSize: "0.875rem" }}>
-              Changes are proposed as reviewable patches instead of silent rewrites, so they fit
-              normal developer workflows.
+              Review code changes as patches before they land in your working tree.
             </p>
           </div>
           <div className="proof-item">
@@ -103,9 +102,10 @@ export function ProofSection() {
                 <line x1="12" y1="19" x2="20" y2="19" />
               </svg>
             </div>
-            <h3 className="mb-1">Terminal-First Workflow</h3>
+            <h3 className="mb-1">Web Research</h3>
             <p className="term-gray-text" style={{ fontSize: "0.875rem" }}>
-              Works where you already code, run tests, inspect diffs, and manage git.
+              Use Archer Scout for built-in free search, or connect Exa or Tavily for broader web
+              results.
             </p>
           </div>
         </div>

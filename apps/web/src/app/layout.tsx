@@ -21,7 +21,7 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Archer — Terminal-First AI Agent",
   description:
-    "Bring your own API key. Terminal-first AI coding agent with approvals, sandboxed tools, and patch-first edits.",
+    "Terminal-first AI coding agent for local repos with patch-based edits, approval controls, and optional web research via Archer Scout, Exa, or Tavily.",
 };
 
 export default function RootLayout({

@@ -3,8 +3,8 @@ import { ArrowRightIcon } from "@/app/(marketing)/_components/arrow-right-icon";
 export function FinalCTA() {
   return (
     <section className="final-cta section-border">
-      <h2>AI coding in your repo, on your terms.</h2>
-      <p>Bring your own key. Keep control of the work.</p>
+      <h2>Code locally. Research when needed. Approve what matters.</h2>
+      <p>Use your own provider keys and keep the agent inside clear repo boundaries.</p>
 
       <div className="cta-group">
         <a href="#install" className="btn btn-primary">

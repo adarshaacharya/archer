@@ -1,10 +1,7 @@
 import Image from "next/image";
-import { useId } from "react";
 import { ArrowRightIcon } from "@/app/(marketing)/_components/arrow-right-icon";
 
 export function HeroLead() {
-  const installId = useId();
-
   return (
     <div className="col-span-6 pad-box">
       <div
@@ -37,13 +34,13 @@ export function HeroLead() {
           Archer
         </h1>
       </div>
-      <p className="hero-lead">The terminal-first AI coding agent for real local work.</p>
+      <p className="hero-lead">AI coding from your terminal, inside your local repo.</p>
       <p className="mb-2">
-        Bring your own API key. Review patches, approve risky actions, and keep control over how the
-        agent works inside your repo.
+        Archer reads your codebase, proposes edits as patches, runs approved commands, and helps with
+        web research when the task needs it.
       </p>
 
-      <div className="hero-support">YOUR KEYS. YOUR PROVIDER. YOUR SPEND.</div>
+      <div className="hero-support">LOCAL REPO. YOUR KEYS. APPROVED ACTIONS.</div>
 
       <div className="cta-group" style={{ justifyContent: "flex-start" }}>
         <a href="#install" className="btn btn-primary">
@@ -60,7 +57,7 @@ export function HeroLead() {
         </a>
       </div>
 
-      <div id={installId} className="install-block scroll-mt-28">
+      <div id="install" className="install-block scroll-mt-28">
         <div className="install-header mono">
           <span>INSTALLATION</span>
           <span>macOS, Linux, WSL</span>
