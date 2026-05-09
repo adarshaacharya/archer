@@ -591,8 +591,9 @@ async function promptForProvider(
 async function promptForWebProvider(tui: Tui): Promise<SupportedWebProvider | "skip" | "exit"> {
   while (true) {
     tui.renderApprovalPrompt({
-      message: "No web search provider configured. Enter provider: tavily, exa, or skip",
-      options: ["tavily", "exa", "skip", "/exit"],
+      message:
+        "No web search provider configured. Enter provider: archer-scout, tavily, exa, or skip",
+      options: ["archer-scout", "tavily", "exa", "skip", "/exit"],
     });
     const value = (await tui.readInputLine()).trim();
     if (!value) continue;
@@ -604,7 +605,7 @@ async function promptForWebProvider(tui: Tui): Promise<SupportedWebProvider | "s
 
     tui.renderApprovalPrompt({
       message: `Unknown web provider: ${value}`,
-      options: ["tavily", "exa", "skip"],
+      options: ["archer-scout", "tavily", "exa", "skip"],
     });
   }
 }
@@ -684,6 +685,19 @@ async function connectWebProvider(
   if (selectedProvider === "exit") return { type: "exit" };
   if (selectedProvider === "skip") {
     return { type: "continue", message: "Skipped web provider setup." };
+  }
+
+  if (selectedProvider === "archer-scout") {
+    await saveWebProviderAuth(selectedProvider, "builtin");
+    process.env.ARCHER_WEB_PROVIDER = selectedProvider;
+    process.env.ARCHER_SCOUT_KEY = "builtin";
+
+    const resolved = await resolveActiveWebProvider();
+    updateWebSessionState(state, resolved);
+    return {
+      type: "continue",
+      message: "Connected Archer Scout (In-house free web search provider).",
+    };
   }
 
   while (true) {

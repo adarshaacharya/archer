@@ -40,7 +40,7 @@ export type ProviderStatus = {
 const AUTH_DIR = path.join(os.homedir(), ".local", "share", "archer");
 const AUTH_FILE = path.join(AUTH_DIR, "auth.json");
 const SUPPORTED_PROVIDERS: SupportedProvider[] = ["openrouter", "openai", "anthropic", "gemini"];
-const SUPPORTED_WEB_PROVIDERS: SupportedWebProvider[] = ["tavily", "exa"];
+const SUPPORTED_WEB_PROVIDERS: SupportedWebProvider[] = ["tavily", "exa", "archer-scout"];
 
 function isSupportedProvider(value: string): value is SupportedProvider {
   return SUPPORTED_PROVIDERS.includes(value as SupportedProvider);
@@ -112,12 +112,17 @@ function webProviderEnvVar(provider: SupportedWebProvider): string {
   switch (provider) {
     case "exa":
       return "EXA_API_KEY";
+    case "archer-scout":
+      return "ARCHER_SCOUT_KEY";
     default:
       return "TAVILY_API_KEY";
   }
 }
 
 function getWebEnvKey(provider: SupportedWebProvider, env: NodeJS.ProcessEnv): string | undefined {
+  if (provider === "archer-scout") {
+    return "builtin";
+  }
   return env[webProviderEnvVar(provider)];
 }
 
