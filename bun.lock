@@ -11,7 +11,7 @@
     },
     "apps/cli": {
       "name": "@adarshaacharya/archer",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "dependencies": {
         "@archer/agent-core": "workspace:*",
         "@archer/model-providers": "workspace:*",
@@ -143,7 +143,7 @@
       "name": "@repo/typescript-config",
       "version": "0.0.0",
     },
-    "packages/web": {
+    "packages/web-capability": {
       "name": "@archer/web-capability",
       "version": "0.0.1",
       "dependencies": {
@@ -190,7 +190,7 @@
 
     "@archer/tui": ["@archer/tui@workspace:packages/tui"],
 
-    "@archer/web-capability": ["@archer/web-capability@workspace:packages/web"],
+    "@archer/web-capability": ["@archer/web-capability@workspace:packages/web-capability"],
 
     "@babel/helper-string-parser": ["@babel/helper-string-parser@7.27.1", "", {}, "sha512-qMlSxKbpRlAridDExk92nSobyDdpPijUq2DW6oDnUqd0iOGxmQjyqhMIihI9+zv4LPyZdRje2cavWPbCbWm3eA=="],
 
