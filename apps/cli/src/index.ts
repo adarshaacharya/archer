@@ -12,7 +12,7 @@ import {
   listPromptHistory,
   listSessions,
 } from "@archer/storage";
-import type { SupportedWebProvider } from "@archer/web-capability";
+import type { SupportedWebProvider } from "../../../packages/web-capability/src/index.js";
 import { permissionsSummary, setApprovalMode } from "./features/approvals/approvals.js";
 import {
   clearProviderEnv,

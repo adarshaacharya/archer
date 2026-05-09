@@ -42,7 +42,7 @@ import {
   updateSessionTitle,
 } from "@archer/storage";
 import type { Tui } from "@archer/tui";
-import { createWebCapability } from "@archer/web-capability";
+import { createWebCapability } from "../../../../../packages/web-capability/src/index.js";
 import { requestApproval, withApprovalQueue } from "../../features/approvals/approvals.js";
 import { resolveActiveWebProvider } from "../../features/auth/auth-store.js";
 import { buildExplicitFileContext } from "../../features/context/explicit-context.js";
@@ -206,7 +206,7 @@ export async function runTask(
       }
     },
     {
-      allowUrl: async (url) => {
+      allowUrl: async (url: string) => {
         const rule = webFetchRuleForUrl(url);
         if (!rule) {
           throw new Error(`Invalid URL for web fetch: ${url}`);
