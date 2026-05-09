@@ -122,8 +122,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
+
+      - name: Upgrade npm
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -155,7 +158,8 @@ jobs:
             ],
             "license": "MIT",
             "publishConfig": {
-              "access": "public"
+              "access": "public",
+              "registry": "https://registry.npmjs.org/"
             },
             "engines": {
               "node": ">=18"
