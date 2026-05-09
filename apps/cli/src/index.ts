@@ -13,6 +13,12 @@ import {
   listSessions,
 } from "@archer/storage";
 import type { SupportedWebProvider } from "../../../packages/web-capability/src/index.js";
+import { parseCliArgs, printHelp } from "./app/cli-args.js";
+import { resolveProjectRoot } from "./app/project-root.js";
+import { printVersion } from "./app/version.js";
+import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.js";
+import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compact.js";
+import { bootstrapWorkspace, initSlashCommandItem } from "./commands/init.js";
 import { permissionsSummary, setApprovalMode } from "./features/approvals/approvals.js";
 import {
   clearProviderEnv,
@@ -32,22 +38,19 @@ import {
   saveProviderAuth,
   saveWebProviderAuth,
 } from "./features/auth/auth-store.js";
-import { parseCliArgs, printHelp } from "./app/cli-args.js";
-import { resolveProjectRoot } from "./app/project-root.js";
-import { printVersion } from "./app/version.js";
-import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.js";
-import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compact.js";
-import { bootstrapWorkspace, initSlashCommandItem } from "./commands/init.js";
+import {
+  renderInitHintMessage,
+  shouldShowInitHint,
+} from "./features/onboarding/onboarding-hint.js";
+import { loadOpenHarnessConfig } from "./features/runtime/openharness-config.js";
+import { titleFromTask } from "./features/runtime/task-title.js";
+import type { TurnResult } from "./features/runtime/turn-types.js";
+import type { SessionState } from "./features/sessions/session-state.js";
 import { KeybindManager } from "./features/ui/keybinds.js";
 import { MODEL_CHOICES_BY_PROVIDER, PROVIDER_CHOICES } from "./features/ui/model-picker-options.js";
-import { renderInitHintMessage, shouldShowInitHint } from "./features/onboarding/onboarding-hint.js";
-import { loadOpenHarnessConfig } from "./features/runtime/openharness-config.js";
-import type { SessionState } from "./features/sessions/session-state.js";
-import { runTask } from "./workflows/task/run-task.js";
-import { titleFromTask } from "./features/runtime/task-title.js";
 import { loadTuiConfig } from "./features/ui/tui-config.js";
+import { runTask } from "./workflows/task/run-task.js";
 import { runTurn } from "./workflows/turn/run-turn.js";
-import type { TurnResult } from "./features/runtime/turn-types.js";
 
 type Tui = import("@archer/tui").Tui;
 type SlashCommandItem = import("@archer/tui").SlashCommandItem;
@@ -834,7 +837,7 @@ async function handleSlashCommand(
     return {
       type: "continue",
       message:
-        "Commands: /help, /new, /resume, /init, /commit, /compact, /providers, /connect, /change-key, /disconnect, /provider, /model, /web-capability, /web-capability-provider, /web-capability-logout, /permissions, /logout, /bye, /exit",
+        "Commands: /help, /new, /resume, /init, /commit, /compact, /providers, /connect, /change-key, /disconnect, /provider, /model, /web, /web-provider, /web-logout, /permissions, /logout, /bye, /exit",
     };
   }
 
@@ -1185,9 +1188,9 @@ async function main(): Promise<void> {
     { name: "/provider", description: "show the active model provider" },
     { name: "/model", description: "choose the active model" },
     { name: "/mode", description: "choose the approval mode" },
-    { name: "/web-capability", description: "connect a web search provider" },
-    { name: "/web-capability-provider", description: "show the active web search provider" },
-    { name: "/web-capability-logout", description: "remove the saved web provider key" },
+    { name: "/web", description: "connect a web search provider" },
+    { name: "/web-provider", description: "show the active web search provider" },
+    { name: "/web-logout", description: "remove the saved web provider key" },
     { name: "/permissions", description: "show saved permission rules" },
     { name: "/logout", description: "remove the saved model provider key" },
     { name: "/help", description: "show available slash commands" },
