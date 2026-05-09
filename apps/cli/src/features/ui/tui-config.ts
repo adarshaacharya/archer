@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { type TuiConfig, TuiConfigSchema } from "@archer/shared";
+import { type TuiConfig, TuiConfigSchema } from "@archer/shared/runtime";
 
 const DEFAULT_TUI_CONFIG_FILE = "tui.json";
 const TUI_CONFIG_ENV_VAR = "ARCHER_TUI_CONFIG";

@@ -15,7 +15,7 @@ import {
   SubagentStatusInputSchema,
   type SubagentStatusResult,
   SubagentStatusResultSchema,
-} from "@archer/shared";
+} from "@archer/shared/subagents";
 import { tool } from "ai";
 
 export type SpawnSubagentExecutor = (

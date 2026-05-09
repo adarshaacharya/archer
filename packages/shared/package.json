@@ -18,6 +18,29 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
+    },
+    "./approval": {
+      "types": "./src/approval/index.ts",
+      "import": "./src/approval/index.ts"
+    },
+    "./composer": {
+      "types": "./src/composer/index.ts",
+      "import": "./src/composer/index.ts"
+    },
+    "./web": {
+      "types": "./src/web/index.ts",
+      "import": "./src/web/index.ts"
+    },
+    "./subagents": {
+      "types": "./src/subagents/index.ts",
+      "import": "./src/subagents/index.ts"
+    },
+    "./runtime": {
+      "types": "./src/runtime/index.ts",
+      "import": "./src/runtime/index.ts"
     }
+  },
+  "turbo": {
+    "tags": ["pkg:shared"]
   }
 }

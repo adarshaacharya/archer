@@ -1,10 +1,12 @@
 import {
   type AgentStep,
+  type RunSummary,
+} from "@archer/shared/runtime";
+import {
   type ComposerMentionBinding,
   type ComposerSubmission,
   createPlainComposerSubmission,
-  type RunSummary,
-} from "@archer/shared";
+} from "@archer/shared/composer";
 import {
   BoxRenderable,
   type CliRenderer,

@@ -29,5 +29,8 @@
   "devDependencies": {
     "@types/bun": "^1.3.13",
     "drizzle-kit": "^0.31.10"
+  },
+  "turbo": {
+    "tags": ["pkg:storage"]
   }
 }

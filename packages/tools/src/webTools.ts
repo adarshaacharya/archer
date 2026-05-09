@@ -1,4 +1,4 @@
-import type { WebAction, WebActionResult, WebSearchAction } from "@archer/shared";
+import type { WebAction, WebActionResult, WebSearchAction } from "@archer/shared/web";
 import { tool } from "ai";
 import { z } from "zod";
 

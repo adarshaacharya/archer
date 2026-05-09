@@ -6,7 +6,7 @@ import type {
   WebSearchAction,
   WebSearchResultItem,
   WebSearchTopic,
-} from "@archer/shared";
+} from "@archer/shared/web";
 import type { WebCapability } from "@archer/tools";
 
 type WebSearchResult = Extract<WebActionResult, { type: "search" }>;

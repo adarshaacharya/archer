@@ -1,4 +1,4 @@
-import type { ApprovalMode } from "@archer/shared";
+import type { ApprovalMode } from "@archer/shared/approval";
 import { type FsProvider, NodeFsProvider, type ShellProvider } from "@openharness/core";
 import type { ApprovalHandler } from "./approvals.js";
 import { DefaultSandboxPolicy } from "./policy.js";

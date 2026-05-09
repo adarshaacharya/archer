@@ -31,5 +31,8 @@
   "trustedDependencies": [
     "sharp",
     "unrs-resolver"
-  ]
+  ],
+  "turbo": {
+    "tags": ["app"]
+  }
 }

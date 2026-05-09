@@ -1,5 +1,5 @@
 import { deriveCompactionPolicy, resetSessionById } from "@archer/agent-core";
-import { type ComposerSubmission, createPlainComposerSubmission } from "@archer/shared";
+import { type ComposerSubmission, createPlainComposerSubmission } from "@archer/shared/composer";
 import { appendTurnResult, getTurnResults } from "@archer/storage";
 import type { Tui } from "@archer/tui";
 import { maybePruneSessionBeforeTurn } from "./recovery/prune.js";

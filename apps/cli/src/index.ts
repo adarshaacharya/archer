@@ -1,9 +1,7 @@
 #!/usr/bin/env bun
 import "./ai-sdk-warnings.js";
 import type { SupportedProvider } from "@archer/model-providers";
-import {
-  createPlainComposerSubmission,
-} from "@archer/shared";
+import { createPlainComposerSubmission } from "@archer/shared/composer";
 import {
   appendPromptHistoryEntry,
   appendTurnResult,

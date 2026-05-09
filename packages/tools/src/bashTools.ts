@@ -1,4 +1,4 @@
-import type { ToolResult } from "@archer/shared";
+import type { ToolResult } from "@archer/shared/runtime";
 import { type CreateBashToolOptions, createBashTool } from "bash-tool";
 
 export type BashToolName = "bash";

@@ -20,5 +20,8 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     }
+  },
+  "turbo": {
+    "tags": ["pkg:web"]
   }
 }

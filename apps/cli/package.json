@@ -25,5 +25,8 @@
     "@archer/shared": "workspace:*",
     "@archer/tui": "workspace:*",
     "@archer/web": "workspace:*"
+  },
+  "turbo": {
+    "tags": ["app"]
   }
 }

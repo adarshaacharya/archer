@@ -1,4 +1,4 @@
-import type { TuiKeybinds } from "@archer/shared";
+import type { TuiKeybinds } from "@archer/shared/runtime";
 
 type ParsedCombo = {
   leader: boolean;

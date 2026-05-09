@@ -1,9 +1,7 @@
 import { performance } from "node:perf_hooks";
 import {
-  buildContextGatheringPrompt,
   buildPriorTurnPlanningGuidance,
   buildQuestionStrategy,
-  buildResearchAnswerPrompt,
   createCompactionMetadata,
   createOpenHarnessEngineAdapter,
   createQuestionExplorationState,
@@ -15,7 +13,6 @@ import {
   deriveCompactionPolicy,
   deriveValidationScope,
   evaluateQuestionAnswerReadiness,
-  expandedContextSteps,
   formatWebRuntimeEvent,
   isContextBudgetResult,
   isContextPressureFailure,
@@ -28,16 +25,15 @@ import {
   recordQuestionStep,
   resolveObservedTurnIntent,
   shouldAttemptVerification,
-  shouldStopCommitWorkflowAfterContext,
   type TurnObservedFacts,
   validateTurnDecision,
 } from "@archer/agent-core";
 import { createSandboxEnvironment } from "@archer/sandbox";
+import { autoApproveEditsInApprovalMode } from "@archer/shared/approval";
+import { AgentRequestSchema } from "@archer/shared/runtime";
 import {
-  AgentRequestSchema,
-  autoApproveEditsInApprovalMode,
   type ComposerSubmission,
-} from "@archer/shared";
+} from "@archer/shared/composer";
 import {
   appendMessage,
   getTurnResults,
@@ -50,7 +46,7 @@ import { createWebCapability } from "@archer/web";
 import { requestApproval, withApprovalQueue } from "./features/approvals/approvals.js";
 import { resolveActiveWebProvider } from "./features/auth/auth-store.js";
 import { createEvalMetricsCollector } from "./features/runtime/eval-metrics.js";
-import { buildExplicitFileContext, prependExplicitFileContext } from "./features/context/explicit-context.js";
+import { buildExplicitFileContext } from "./features/context/explicit-context.js";
 import { type PreRouteResult, planPreRoute, preRouteResultFromMode } from "./features/routing/intent-router.js";
 import { pruneSessionAfterTurn } from "./recovery/prune.js";
 import type { SessionState } from "./features/sessions/session-state.js";
@@ -62,7 +58,7 @@ import type { TurnContext, TurnResult, TurnSummary } from "./features/runtime/tu
 import { executeContextFlow } from "./workflows/run-task/context.js";
 import { executeEarlyRoute } from "./workflows/run-task/execution.js";
 import { isSuccessfulGitCommitOutput, shellOutputText } from "./workflows/run-task/output.js";
-import { resolveTaskExecutionRoute, type TaskExecutionRoute } from "./workflows/run-task/route.js";
+import { resolveTaskExecutionRoute } from "./workflows/run-task/route.js";
 import { turnStatusLabel } from "./workflows/run-task/status.js";
 import { ensureWebProviderConnected, updateWebSessionState } from "./workflows/run-task/web-provider.js";
 

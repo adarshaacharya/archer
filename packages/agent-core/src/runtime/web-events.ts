@@ -1,4 +1,4 @@
-import type { WebAction, WebActionResult } from "@archer/shared";
+import type { WebAction, WebActionResult } from "@archer/shared/web";
 
 export type WebRuntimeEvent =
   | {

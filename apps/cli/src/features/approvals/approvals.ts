@@ -6,7 +6,7 @@ import {
   autoApproveEditsInApprovalMode,
   canWriteInApprovalMode,
   normalizeApprovalMode,
-} from "@archer/shared";
+} from "@archer/shared/approval";
 import type { Tui } from "@archer/tui";
 import {
   applyApprovalChoice,

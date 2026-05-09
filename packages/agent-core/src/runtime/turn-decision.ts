@@ -1,4 +1,4 @@
-import { TurnDecisionSchema } from "@archer/shared";
+import { TurnDecisionSchema } from "@archer/shared/runtime";
 
 export type TurnObservedFacts = {
   changeFlowEntered: boolean;

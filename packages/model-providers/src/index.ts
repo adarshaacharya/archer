@@ -1,7 +1,7 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
-import { ProviderError } from "@archer/shared";
+import { ProviderError } from "@archer/shared/runtime";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel, ModelMessage } from "ai";
 import { generateText } from "ai";

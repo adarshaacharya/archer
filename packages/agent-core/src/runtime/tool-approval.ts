@@ -4,7 +4,7 @@ import {
   autoApproveCommandsInApprovalMode,
   autoApproveEditsInApprovalMode,
   canWriteInApprovalMode,
-} from "@archer/shared";
+} from "@archer/shared/approval";
 import type { TaskPhaseController } from "./task-flow.js";
 
 export type ToolApprovalAction = "allow" | "ask" | "deny";

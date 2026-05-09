@@ -1,11 +1,5 @@
 import { z } from "zod";
-
-export * from "./approval/index.js";
-export * from "./composer/index.js";
-export * from "./subagents/index.js";
-export * from "./web/index.js";
-
-import { ApprovalModeSchema } from "./approval/index.js";
+import { ApprovalModeSchema } from "../approval/index.js";
 
 export const AgentRequestSchema = z.object({
   task: z.string().min(1),

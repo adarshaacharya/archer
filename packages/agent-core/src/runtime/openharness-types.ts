@@ -1,4 +1,4 @@
-import type { OpenHarnessRuntimeConfig } from "@archer/shared";
+import type { OpenHarnessRuntimeConfig } from "@archer/shared/runtime";
 import type { WebCapability } from "@archer/tools";
 import type { FsProvider, ShellProvider, ToolCallInfo } from "@openharness/core";
 
