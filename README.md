@@ -166,11 +166,3 @@ If you touch workspace commands or package boundaries, keep the changes consiste
 
 [MIT](LICENSE)
 
-
-bun install
-bun run build:binary
-
-cd apps/cli/release
-tar -xzf archer-darwin-arm64.tar.gz
-cd archer-0.1.3-darwin-arm64
-./archer

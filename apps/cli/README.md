@@ -1,5 +1,5 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/adarshaacharya/archer/master/apps/web/public/logos/logo-cropped.png" alt="Archer logo" width="120" />
+<p align="left">
+  <img src="https://raw.githubusercontent.com/adarshaacharya/archer/refs/heads/main/apps/web/public/logos/banner.png" alt="Archer banner" width="240" />
 </p>
 
 # Archer CLI
@@ -13,6 +13,12 @@ AI coding agent that runs in your terminal, works inside your repo, and uses you
 curl -fsSL https://usearcher.vercel.app/install.sh | bash
 ```
 
+or using bun:
+
+```bash
+bun install -g @adarshaacharya/archer
+```
+
 The installer downloads the latest release binary for your platform and installs `archer` into `~/.local/bin`.
 
 ## Quick Start
@@ -23,14 +29,3 @@ archer
 # Give it a task can be feature, bug, etc.
 ```
 
-
-## Repository
-
-Source: https://github.com/adarshaacharya/archer
-
-## From Source
-
-```bash
-bun install
-bun run cli
-```
