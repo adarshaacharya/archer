@@ -34,7 +34,8 @@
     "@archer/storage": "workspace:*",
     "@archer/shared": "workspace:*",
     "@archer/tui": "workspace:*",
-    "@archer/web-capability": "workspace:*"
+    "@archer/web-capability": "workspace:*",
+    "@opentui/core": "^0.1.103"
   },
   "turbo": {
     "tags": [
