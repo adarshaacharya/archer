@@ -1017,9 +1017,7 @@ export class ArcherTui implements Tui {
         paddingTop: 1,
         paddingBottom: 1,
       });
-      actionsInner.add(
-        actionRow("startup-card-action-type", "type anything", "start a new turn"),
-      );
+      actionsInner.add(actionRow("startup-card-action-type", "type anything", "start a new turn"));
       actionsInner.add(actionRow("startup-card-action-slash", "/", "browse commands"));
       actionsInner.add(
         actionRow("startup-card-action-resume", "/resume", "restore a saved session"),
