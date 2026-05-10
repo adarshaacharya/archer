@@ -22,16 +22,34 @@ git add apps/cli/package.json
 git commit -m "Release vX.Y.Z"
 ```
 
-4. Tag and push.
+4. Tag the release commit after the version bump commit exists.
 ```bash
 git tag vX.Y.Z
+git show --stat --oneline vX.Y.Z
+```
+
+The tag must point at the release commit you just created. Do not tag first and bump later.
+
+5. Push `main` and the tag.
+```bash
 git push origin main --tags
 ```
 
-5. Confirm GitHub Actions `CLI Release` passes:
+6. Confirm GitHub Actions `CLI Release` passes:
 - `Publish npm Package` job publishes `@adarshaacharya/archer`
 - GitHub Release includes:
 - `archer-darwin-arm64.tar.gz`
 - `archer-darwin-x64.tar.gz`
 - `archer-linux-arm64.tar.gz`
 - `archer-linux-x64.tar.gz`
+
+## Manual Run
+
+You can also trigger the workflow from GitHub Actions with `workflow_dispatch`.
+
+Use that for:
+- re-running checks manually
+- testing workflow changes
+- debugging release packaging without creating a new tag
+
+Release jobs still only publish assets and npm packages when the ref is a `v*` tag.
