@@ -39,7 +39,13 @@ export type ProviderStatus = {
 
 const AUTH_DIR = path.join(os.homedir(), ".local", "share", "archer");
 const AUTH_FILE = path.join(AUTH_DIR, "auth.json");
-const SUPPORTED_PROVIDERS: SupportedProvider[] = ["openrouter", "openai", "anthropic", "gemini"];
+const SUPPORTED_PROVIDERS: SupportedProvider[] = [
+  "openrouter",
+  "openai",
+  "anthropic",
+  "gemini",
+  "deepseek",
+];
 const SUPPORTED_WEB_PROVIDERS: SupportedWebProvider[] = ["tavily", "exa", "archer-scout"];
 
 function isSupportedProvider(value: string): value is SupportedProvider {
@@ -62,6 +68,8 @@ export function defaultModelForProvider(provider: SupportedProvider): string {
       return "claude-3-5-sonnet-latest";
     case "gemini":
       return "gemini-2.0-flash";
+    case "deepseek":
+      return "deepseek-v4-flash";
     default:
       return "openai/gpt-4o-mini";
   }
@@ -72,6 +80,7 @@ export function normalizeProvider(input: string): SupportedProvider | null {
   if (value === "codex") return "openai";
   if (value === "claude") return "anthropic";
   if (value === "google") return "gemini";
+  if (value === "deepseek") return "deepseek";
   return isSupportedProvider(value) ? value : null;
 }
 
@@ -88,6 +97,8 @@ function providerEnvVar(provider: SupportedProvider): string {
       return "ANTHROPIC_API_KEY";
     case "gemini":
       return "GEMINI_API_KEY";
+    case "deepseek":
+      return "DEEPSEEK_API_KEY";
     default:
       return "OPENROUTER_API_KEY";
   }

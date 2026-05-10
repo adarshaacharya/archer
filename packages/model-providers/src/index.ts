@@ -1,4 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { ProviderError } from "@archer/shared/runtime";
@@ -16,7 +17,7 @@ export type { ModelPricing } from "./model-pricing.js";
 export { estimateUsageCost, resolveModelPricing } from "./model-pricing.js";
 export { estimateModelMessageTokens, estimateTextTokens } from "./token-estimation.js";
 
-export type SupportedProvider = "openrouter" | "openai" | "anthropic" | "gemini";
+export type SupportedProvider = "openrouter" | "openai" | "anthropic" | "gemini" | "deepseek";
 
 export interface ResolveModelOptions {
   provider?: string;
@@ -68,9 +69,10 @@ function normalizeProvider(input?: string): SupportedProvider {
   if (normalized === "openai" || normalized === "codex") return "openai";
   if (normalized === "anthropic" || normalized === "claude") return "anthropic";
   if (normalized === "gemini" || normalized === "google") return "gemini";
+  if (normalized === "deepseek") return "deepseek";
 
   throw new ProviderError(
-    `Unsupported provider: ${input}. Expected one of openrouter, openai, anthropic, gemini.`,
+    `Unsupported provider: ${input}. Expected one of openrouter, openai, anthropic, gemini, deepseek.`,
   );
 }
 
@@ -82,6 +84,8 @@ function defaultModelId(provider: SupportedProvider): string {
       return "claude-3-5-sonnet-latest";
     case "gemini":
       return "gemini-2.0-flash";
+    case "deepseek":
+      return "deepseek-v4-flash";
     default:
       return "openai/gpt-4o-mini";
   }
@@ -98,6 +102,8 @@ function normalizeModelId(provider: SupportedProvider, modelId: string): string 
       return trimmed.replace(/^anthropic\//, "");
     case "gemini":
       return trimmed.replace(/^(google|gemini)\//, "");
+    case "deepseek":
+      return trimmed.replace(/^deepseek\//, "");
     default:
       return trimmed;
   }
@@ -109,6 +115,8 @@ function compactionModelId(provider: SupportedProvider, activeModelId: string): 
       return "gpt-4o-mini";
     case "gemini":
       return "gemini-2.0-flash";
+    case "deepseek":
+      return "deepseek-v4-flash";
     case "openrouter":
       return "openai/gpt-4o-mini";
     case "anthropic":
@@ -145,6 +153,12 @@ function resolveApiKey(
         apiKey,
         envVar: env.GEMINI_API_KEY ? "GEMINI_API_KEY" : "GOOGLE_GENERATIVE_AI_API_KEY",
       };
+    }
+    case "deepseek": {
+      const apiKey = env.DEEPSEEK_API_KEY;
+      if (!apiKey)
+        throw new ProviderError("DEEPSEEK_API_KEY is required when ARCHER_PROVIDER=deepseek");
+      return { apiKey, envVar: "DEEPSEEK_API_KEY" };
     }
     default: {
       const apiKey = env.OPENROUTER_API_KEY;
@@ -196,6 +210,12 @@ export function resolveLanguageModel(options: ResolveModelOptions = {}): Resolve
       return {
         ...config,
         model: createGoogleGenerativeAI({ apiKey })(config.modelId),
+        pricing,
+      };
+    case "deepseek":
+      return {
+        ...config,
+        model: createDeepSeek({ apiKey })(config.modelId),
         pricing,
       };
     default: {

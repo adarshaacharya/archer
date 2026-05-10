@@ -51,6 +51,10 @@ function tokenDivisorForModel(provider?: SupportedProvider | null, modelId?: str
     return 4.2;
   }
 
+  if (normalizedProvider === "deepseek" || normalizedModel.includes("deepseek")) {
+    return 4;
+  }
+
   if (
     normalizedProvider === "openai" ||
     normalizedProvider === "openrouter" ||

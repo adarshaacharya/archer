@@ -51,6 +51,10 @@ const MODEL_COSTS: Record<string, Record<string, ModelCostRates>> = {
     "gemini-1.5-flash": { input: 0.075, output: 0.3, cacheRead: 0.01875 },
     "gemini-1.5-pro": { input: 1.25, output: 5, cacheRead: 0.3125 },
   },
+  deepseek: {
+    "deepseek-v4-flash": { input: 0.14, output: 0.28, cacheRead: 0.028 },
+    "deepseek-v4-pro": { input: 1.74, output: 3.48, cacheRead: 0.145 },
+  },
 };
 
 function normalizeProvider(provider: string): string {
@@ -58,6 +62,7 @@ function normalizeProvider(provider: string): string {
   if (value === "google") return "gemini";
   if (value === "claude") return "anthropic";
   if (value === "codex") return "openai";
+  if (value === "deepseek") return "deepseek";
   return value;
 }
 
@@ -66,6 +71,7 @@ function normalizeModelId(provider: string, modelId: string): string {
   if (provider === "openai") return value.replace(/^openai\//, "");
   if (provider === "anthropic") return value.replace(/^anthropic\//, "");
   if (provider === "gemini") return value.replace(/^(google|gemini)\//, "");
+  if (provider === "deepseek") return value.replace(/^deepseek\//, "");
   return value;
 }
 

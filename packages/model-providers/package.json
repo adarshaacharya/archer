@@ -13,10 +13,11 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.12",
+    "@ai-sdk/deepseek": "^2.0.34",
     "@ai-sdk/google": "^2.0.11",
     "@ai-sdk/openai": "^2.0.16",
-    "@openrouter/ai-sdk-provider": "^2.3.3",
     "@archer/shared": "workspace:*",
+    "@openrouter/ai-sdk-provider": "^2.3.3",
     "ai": "^6.0.141",
     "zod": "^4.1.5"
   },

@@ -144,6 +144,8 @@ function normalizeModelIdForProvider(provider: SupportedProvider, modelId: strin
       return value.replace(/^anthropic\//, "");
     case "gemini":
       return value.replace(/^(google|gemini)\//, "");
+    case "deepseek":
+      return value.replace(/^deepseek\//, "");
     default:
       return value;
   }
@@ -650,6 +652,9 @@ async function connectProvider(
         break;
       case "gemini":
         process.env.GEMINI_API_KEY = key;
+        break;
+      case "deepseek":
+        process.env.DEEPSEEK_API_KEY = key;
         break;
       default:
         process.env.OPENROUTER_API_KEY = key;

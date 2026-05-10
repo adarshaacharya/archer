@@ -11,6 +11,7 @@ export const PROVIDER_CHOICES: Array<ModelChoice & { value: SupportedProvider }>
   { value: "openai", label: "OpenAI", description: "Use OpenAI models" },
   { value: "anthropic", label: "Anthropic", description: "Use Claude models" },
   { value: "gemini", label: "Gemini", description: "Use Google Gemini models" },
+  { value: "deepseek", label: "DeepSeek", description: "Use DeepSeek models" },
 ];
 
 export const MODEL_CHOICES_BY_PROVIDER: Record<SupportedProvider, ModelChoice[]> = {
@@ -120,6 +121,18 @@ export const MODEL_CHOICES_BY_PROVIDER: Record<SupportedProvider, ModelChoice[]>
       value: "gemini-1.5-pro",
       label: "Gemini 1.5 Pro",
       description: "Stronger Gemini model for harder tasks",
+    },
+  ],
+  deepseek: [
+    {
+      value: "deepseek-v4-flash",
+      label: "DeepSeek V4 Flash",
+      description: "Fast default DeepSeek model",
+    },
+    {
+      value: "deepseek-v4-pro",
+      label: "DeepSeek V4 Pro",
+      description: "Stronger DeepSeek model for harder tasks",
     },
   ],
 };
