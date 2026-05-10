@@ -39,7 +39,6 @@ import {
   clamp,
   normalizeText,
   padRight,
-  shouldUseUnicodeBoxDrawing,
   truncateMiddle,
   wrappedLineCount,
 } from "./internal/ui-helpers.js";
@@ -913,92 +912,126 @@ export class ArcherTui implements Tui {
   private renderStartupCard(): void {
     this.writeScrollback((ctx) => {
       const width = clamp(ctx.width - 8, 68, 86);
-      const innerWidth = width - 2;
-      const useUnicodeBorders = shouldUseUnicodeBoxDrawing();
-      const borders = useUnicodeBorders
-        ? {
-            topLeft: "┌",
-            topRight: "┐",
-            midLeft: "├",
-            midRight: "┤",
-            bottomLeft: "└",
-            bottomRight: "┘",
-            horizontal: "─",
-            vertical: "│",
-          }
-        : {
-            topLeft: "+",
-            topRight: "+",
-            midLeft: "+",
-            midRight: "+",
-            bottomLeft: "+",
-            bottomRight: "+",
-            horizontal: "-",
-            vertical: "|",
-          };
+      const innerTextWidth = Math.max(1, width - 4);
       const labelWidth = 10;
       const commandWidth = 18;
       const directory = truncateMiddle(
         process.cwd().replace(/^\/Users\/[^/]+/, "~"),
-        innerWidth - labelWidth - 3,
+        Math.max(1, innerTextWidth - labelWidth - 1),
       );
       const modelLine = truncateMiddle(
         this.activeModelLabel.replace(/^model=/, ""),
-        innerWidth - labelWidth - 3,
+        Math.max(1, innerTextWidth - labelWidth - 1),
       );
-      const chunks: TextChunk[] = [];
-      const push = (color: string, content: string): void => {
-        chunks.push(fg(color)(content));
-      };
-      const pushLine = (): void => push(col.border, "\n");
-      const borderLine = (left: string, fill: string, right: string): void => {
-        push(col.border, `${left}${fill.repeat(innerWidth)}${right}`);
-        pushLine();
-      };
-      const row = (segments: Array<{ text: string; color?: string }>): void => {
-        const contentLength = segments.reduce((sum, segment) => sum + segment.text.length, 0);
-        push(col.border, `${borders.vertical} `);
-        for (const segment of segments) {
-          push(segment.color ?? col.text, segment.text);
-        }
-        push(col.text, " ".repeat(Math.max(0, innerWidth - contentLength - 1)));
-        push(col.border, borders.vertical);
-        pushLine();
-      };
-      const keyValue = (label: string, value: string): void =>
-        row([{ text: padRight(label, labelWidth), color: col.muted }, { text: value }]);
-      const actionRow = (command: string, hint: string): void => {
-        row([{ text: padRight(command, commandWidth), color: col.accent }, { text: hint }]);
+
+      const styledText = (segments: Array<{ text: string; color?: string }>): StyledText => {
+        const chunks: TextChunk[] = segments.map((segment) =>
+          fg(segment.color ?? col.text)(segment.text),
+        );
+        return new StyledText(chunks);
       };
 
-      borderLine(borders.topLeft, borders.horizontal, borders.topRight);
-      row([
-        { text: ">_ ", color: col.accent },
-        { text: "Archer", color: col.accent },
-        { text: `  v${Bun.version}`, color: col.muted },
-      ]);
-      row([{ text: "ready for a task", color: col.muted }]);
-      borderLine(borders.midLeft, borders.horizontal, borders.midRight);
-      keyValue("workspace", directory);
-      keyValue("model", modelLine);
-      borderLine(borders.midLeft, borders.horizontal, borders.midRight);
-      actionRow("type anything", "start a new turn");
-      actionRow("/", "browse commands");
-      actionRow("/resume", "restore a saved session");
-      actionRow("ctrl+c", "quit");
-      borderLine(borders.bottomLeft, borders.horizontal, borders.bottomRight);
-      if (chunks[chunks.length - 1]?.text === "\n") {
-        chunks.pop();
-      }
-      const text = new TextRenderable(ctx.renderContext, {
-        id: "startup-card-text",
-        content: new StyledText(chunks),
+      const textRow = (
+        id: string,
+        segments: Array<{ text: string; color?: string }>,
+      ): TextRenderable =>
+        new TextRenderable(ctx.renderContext, {
+          id,
+          content: styledText(segments),
+          width: innerTextWidth,
+          height: 1,
+          wrapMode: "none",
+          truncate: true,
+        });
+
+      const keyValueRow = (id: string, label: string, value: string): TextRenderable =>
+        textRow(id, [{ text: padRight(label, labelWidth), color: col.muted }, { text: value }]);
+
+      const actionRow = (id: string, command: string, hint: string): TextRenderable =>
+        textRow(id, [{ text: padRight(command, commandWidth), color: col.accent }, { text: hint }]);
+
+      const sectionBox = (id: string, height: number, showBottomBorder: boolean): BoxRenderable =>
+        new BoxRenderable(ctx.renderContext, {
+          id,
+          width: innerTextWidth + 2,
+          height,
+          flexShrink: 0,
+          flexDirection: "column",
+          alignItems: "stretch",
+          paddingLeft: 1,
+          paddingRight: 1,
+          border: showBottomBorder ? ["bottom"] : false,
+          borderStyle: "single",
+          borderColor: col.border,
+        });
+
+      // Rows: header 3 + meta 3 + actions stack; section borders extend past declared
+      // heights (+2). Actions use a nested bordered box with vertical padding (+6 vs flat 4).
+      const outer = new BoxRenderable(ctx.renderContext, {
+        id: "startup-card",
         width,
-        height: 12,
-        wrapMode: "none",
-        truncate: false,
+        height: 18,
+        flexDirection: "column",
+        alignItems: "stretch",
+        border: true,
+        borderStyle: "single",
+        borderColor: col.border,
       });
-      return { root: text, width: ctx.width, startOnNewLine: true, trailingNewline: true };
+
+      const headerSection = sectionBox("startup-card-header", 3, true);
+      headerSection.add(
+        textRow("startup-card-title", [
+          { text: ">_ ", color: col.accent },
+          { text: "Archer", color: col.accent },
+          { text: `  v${Bun.version}`, color: col.muted },
+        ]),
+      );
+      headerSection.add(
+        textRow("startup-card-tagline", [{ text: "ready for a task", color: col.muted }]),
+      );
+
+      const metaSection = sectionBox("startup-card-meta", 3, true);
+      metaSection.add(keyValueRow("startup-card-workspace", "workspace", directory));
+      metaSection.add(keyValueRow("startup-card-model", "model", modelLine));
+
+      const actionsSection = new BoxRenderable(ctx.renderContext, {
+        id: "startup-card-actions",
+        width: innerTextWidth + 2,
+        height: 10,
+        flexShrink: 0,
+        flexDirection: "column",
+        alignItems: "stretch",
+        paddingTop: 1,
+        paddingBottom: 1,
+      });
+      const actionsInner = new BoxRenderable(ctx.renderContext, {
+        id: "startup-card-actions-inner",
+        width: "100%",
+        height: 8,
+        flexShrink: 0,
+        flexDirection: "column",
+        alignItems: "stretch",
+        border: true,
+        borderStyle: "single",
+        borderColor: col.border,
+        paddingTop: 1,
+        paddingBottom: 1,
+      });
+      actionsInner.add(
+        actionRow("startup-card-action-type", "type anything", "start a new turn"),
+      );
+      actionsInner.add(actionRow("startup-card-action-slash", "/", "browse commands"));
+      actionsInner.add(
+        actionRow("startup-card-action-resume", "/resume", "restore a saved session"),
+      );
+      actionsInner.add(actionRow("startup-card-action-quit", "ctrl+c", "quit"));
+      actionsSection.add(actionsInner);
+
+      outer.add(headerSection);
+      outer.add(metaSection);
+      outer.add(actionsSection);
+
+      return { root: outer, width: ctx.width, startOnNewLine: true, trailingNewline: true };
     });
   }
 
