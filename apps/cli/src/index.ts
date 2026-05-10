@@ -16,6 +16,7 @@ import type { SupportedWebProvider } from "../../../packages/web-capability/src/
 import { parseCliArgs, printHelp } from "./app/cli-args.js";
 import { resolveProjectRoot } from "./app/project-root.js";
 import { printVersion } from "./app/version.js";
+import { getArcherUpdateNotice, updateArcher } from "./app/update.js";
 import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.js";
 import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compact.js";
 import { bootstrapWorkspace, initSlashCommandItem } from "./commands/init.js";
@@ -1154,6 +1155,10 @@ async function main(): Promise<void> {
     printVersion();
     return;
   }
+  if (cliArgs.update) {
+    console.log(await updateArcher({ force: cliArgs.updateForce, checkOnly: cliArgs.updateCheck }));
+    return;
+  }
 
   const initialTask = cliArgs.initialTask;
   const sessionId = newSessionId();
@@ -1238,6 +1243,10 @@ async function main(): Promise<void> {
     }
 
     tui.renderApprovalPrompt(null);
+    const updateNotice = await getArcherUpdateNotice();
+    if (updateNotice) {
+      tui.renderInfoMessage(updateNotice);
+    }
 
     if (initialTask) {
       if (isCasualGreeting(initialTask)) {

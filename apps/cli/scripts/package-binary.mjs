@@ -99,6 +99,7 @@ await writeFile(
   `#!/usr/bin/env bash
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export ARCHER_INSTALL_DIR="$SCRIPT_DIR"
 exec "$SCRIPT_DIR/runtime/bun" "$SCRIPT_DIR/runtime/dist/index.js" "$@"
 `,
 );

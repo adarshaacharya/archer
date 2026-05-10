@@ -19,7 +19,9 @@ or using bun:
 bun install -g @adarshaacharya/archer
 ```
 
-The installer downloads the latest release binary for your platform and installs `archer` into `~/.local/bin`.
+The installer downloads the latest release binary for your platform and installs the app under `~/.local/share/archer` with a launcher in `~/.local/bin`.
+After installing from the release script, run `archer update` or `archer --update` to upgrade to the latest release.
+If you installed Archer with `bun install -g`, update it with Bun instead of the built-in updater.
 
 ## Quick Start
 
@@ -28,4 +30,3 @@ archer
 
 # Give it a task can be feature, bug, etc.
 ```
-

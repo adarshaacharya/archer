@@ -17,7 +17,8 @@ The supported end-user install path is the release binary:
 curl -fsSL https://usearcher.vercel.app/install.sh | bash
 ```
 
-The installer downloads the latest GitHub release for your platform and places `archer` in `~/.local/bin`.
+The installer downloads the latest GitHub release for your platform and installs the app under `~/.local/share/archer` with a launcher in `~/.local/bin`.
+Later, run `archer update` or `archer --update` to replace the installed app with the latest release.
 
 ## Features
 
@@ -26,7 +27,7 @@ The installer downloads the latest GitHub release for your platform and places `
 - Approval-aware tool execution
 - Patch-based editing
 - Local policy enforcement for paths and commands
-- Provider support for OpenAI, Anthropic, Gemini, and OpenRouter
+- Provider support for OpenAI, Anthropic, Gemini, DeepSeek, and OpenRouter
 - Web search and page navigation tools
 - Session and turn persistence
 - CLI commands for new sessions, resumes, compaction, and provider changes
@@ -69,6 +70,8 @@ bun run build:binary
 bun run package:binary
 ```
 
+`archer update` is intended for release-installer builds. If you are running Archer from the workspace, keep using `bun install`, `bun run build`, and your normal dev workflow.
+
 ## Configuration
 
 Archer reads configuration from environment variables.
@@ -97,6 +100,11 @@ AGENT_MODEL=gemini-2.0-flash
 ARCHER_PROVIDER=openrouter
 OPENROUTER_API_KEY=...
 AGENT_MODEL=openai/gpt-4o-mini
+
+# DeepSeek
+ARCHER_PROVIDER=deepseek
+DEEPSEEK_API_KEY=...
+AGENT_MODEL=deepseek-v4-flash
 ```
 
 ## Project Layout
@@ -165,4 +173,3 @@ If you touch workspace commands or package boundaries, keep the changes consiste
 ## License
 
 [MIT](LICENSE)
-

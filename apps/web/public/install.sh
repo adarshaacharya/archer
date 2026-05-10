@@ -3,7 +3,8 @@ set -euo pipefail
 
 OS_NAME="$(uname -s)"
 ARCH_NAME="$(uname -m)"
-INSTALL_DIR="${ARCHER_INSTALL_DIR:-$HOME/.local/bin}"
+INSTALL_DIR="${ARCHER_INSTALL_DIR:-$HOME/.local/share/archer}"
+BIN_DIR="${ARCHER_BIN_DIR:-$HOME/.local/bin}"
 VERSION="${ARCHER_VERSION:-latest}"
 REPO_SLUG="${ARCHER_REPO:-adarshaacharya/archer}"
 
@@ -68,15 +69,25 @@ if [[ -z "$extracted_dir" || ! -f "$extracted_dir/archer" ]]; then
   exit 1
 fi
 
-cp "$extracted_dir/archer" "$INSTALL_DIR/archer"
-chmod +x "$INSTALL_DIR/archer"
+rm -rf "$INSTALL_DIR"
+mkdir -p "$INSTALL_DIR"
+cp -R "$extracted_dir"/. "$INSTALL_DIR"/
+
+mkdir -p "$BIN_DIR"
+cat >"$BIN_DIR/archer" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+export ARCHER_INSTALL_DIR="$INSTALL_DIR"
+exec "$INSTALL_DIR/archer" "\$@"
+EOF
+chmod +x "$BIN_DIR/archer"
 
 case ":$PATH:" in
-  *":$INSTALL_DIR:"*) ;;
+  *":$BIN_DIR:"*) ;;
   *)
   echo >&2
-  echo "Add $INSTALL_DIR to your PATH to run Archer from new shells." >&2
-  echo "For zsh: echo 'export PATH=\"$INSTALL_DIR:\$PATH\"' >> ~/.zshrc" >&2
+  echo "Add $BIN_DIR to your PATH to run Archer from new shells." >&2
+  echo "For zsh: echo 'export PATH=\"$BIN_DIR:\$PATH\"' >> ~/.zshrc" >&2
   ;;
 esac
 

@@ -1,5 +1,7 @@
+import packageJson from "../../package.json" with { type: "json" };
+
 export function requireVersion(): string {
-  return "0.1.3";
+  return packageJson.version;
 }
 
 export function printVersion(): void {
