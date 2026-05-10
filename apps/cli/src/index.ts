@@ -15,8 +15,8 @@ import {
 import type { SupportedWebProvider } from "../../../packages/web-capability/src/index.js";
 import { parseCliArgs, printHelp } from "./app/cli-args.js";
 import { resolveProjectRoot } from "./app/project-root.js";
-import { printVersion } from "./app/version.js";
 import { getArcherUpdateNotice, updateArcher } from "./app/update.js";
+import { printVersion } from "./app/version.js";
 import { commitSlashCommandItem, commitWorkflowPrompt } from "./commands/commit.js";
 import { compactSlashCommandItem, compactWorkflowPrompt } from "./commands/compact.js";
 import { bootstrapWorkspace, initSlashCommandItem } from "./commands/init.js";

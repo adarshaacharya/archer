@@ -27,7 +27,9 @@ function platformArtifact(): string {
     case "linux-x64":
       return "linux-x64";
     default:
-      throw new Error(`Unsupported platform for Archer update: ${process.platform}-${process.arch}`);
+      throw new Error(
+        `Unsupported platform for Archer update: ${process.platform}-${process.arch}`,
+      );
   }
 }
 
@@ -96,15 +98,20 @@ async function fetchWithTimeout(
 }
 
 async function fetchLatestReleaseTag(): Promise<string> {
-  const response = await fetchWithTimeout(`https://api.github.com/repos/${REPO_SLUG}/releases/latest`, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": "archer",
+  const response = await fetchWithTimeout(
+    `https://api.github.com/repos/${REPO_SLUG}/releases/latest`,
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "archer",
+      },
     },
-  });
+  );
 
   if (!response.ok) {
-    throw new Error(`Failed to fetch latest Archer release: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Failed to fetch latest Archer release: ${response.status} ${response.statusText}`,
+    );
   }
 
   const data = (await response.json()) as ReleaseInfo;
@@ -123,7 +130,9 @@ async function downloadArchive(url: string, destination: string): Promise<void> 
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to download Archer release asset: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Failed to download Archer release asset: ${response.status} ${response.statusText}`,
+    );
   }
 
   const bytes = new Uint8Array(await response.arrayBuffer());
@@ -170,7 +179,9 @@ async function findTopLevelDirectory(dir: string): Promise<string> {
   return path.join(dir, onlyDir.name);
 }
 
-export async function updateArcher(options: { checkOnly?: boolean; force?: boolean } = {}): Promise<string> {
+export async function updateArcher(
+  options: { checkOnly?: boolean; force?: boolean } = {},
+): Promise<string> {
   const { currentVersion, latestTag, latestVersion } = await getLatestReleaseInfo();
 
   if (options.checkOnly) {
