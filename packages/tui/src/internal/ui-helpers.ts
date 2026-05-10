@@ -79,6 +79,28 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+function containsUtf8Locale(value: string | undefined): boolean {
+  return /utf-?8/i.test(value ?? "");
+}
+
+export function shouldUseUnicodeBoxDrawing(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (env.TERM?.trim().toLowerCase() === "dumb") {
+    return false;
+  }
+
+  if (
+    containsUtf8Locale(env.LC_ALL) ||
+    containsUtf8Locale(env.LC_CTYPE) ||
+    containsUtf8Locale(env.LANG)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function approvalDialogWidth(
   prompt: ApprovalPromptState,
   choices: ApprovalDialogChoice[],

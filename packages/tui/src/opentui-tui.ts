@@ -39,6 +39,7 @@ import {
   clamp,
   normalizeText,
   padRight,
+  shouldUseUnicodeBoxDrawing,
   truncateMiddle,
   wrappedLineCount,
 } from "./internal/ui-helpers.js";
@@ -913,6 +914,28 @@ export class ArcherTui implements Tui {
     this.writeScrollback((ctx) => {
       const width = clamp(ctx.width - 8, 68, 86);
       const innerWidth = width - 2;
+      const useUnicodeBorders = shouldUseUnicodeBoxDrawing();
+      const borders = useUnicodeBorders
+        ? {
+            topLeft: "┌",
+            topRight: "┐",
+            midLeft: "├",
+            midRight: "┤",
+            bottomLeft: "└",
+            bottomRight: "┘",
+            horizontal: "─",
+            vertical: "│",
+          }
+        : {
+            topLeft: "+",
+            topRight: "+",
+            midLeft: "+",
+            midRight: "+",
+            bottomLeft: "+",
+            bottomRight: "+",
+            horizontal: "-",
+            vertical: "|",
+          };
       const labelWidth = 10;
       const commandWidth = 18;
       const directory = truncateMiddle(
@@ -934,12 +957,12 @@ export class ArcherTui implements Tui {
       };
       const row = (segments: Array<{ text: string; color?: string }>): void => {
         const contentLength = segments.reduce((sum, segment) => sum + segment.text.length, 0);
-        push(col.border, "│ ");
+        push(col.border, `${borders.vertical} `);
         for (const segment of segments) {
           push(segment.color ?? col.text, segment.text);
         }
         push(col.text, " ".repeat(Math.max(0, innerWidth - contentLength - 1)));
-        push(col.border, "│");
+        push(col.border, borders.vertical);
         pushLine();
       };
       const keyValue = (label: string, value: string): void =>
@@ -948,22 +971,22 @@ export class ArcherTui implements Tui {
         row([{ text: padRight(command, commandWidth), color: col.accent }, { text: hint }]);
       };
 
-      borderLine("┌", "─", "┐");
+      borderLine(borders.topLeft, borders.horizontal, borders.topRight);
       row([
         { text: ">_ ", color: col.accent },
         { text: "Archer", color: col.accent },
         { text: `  v${Bun.version}`, color: col.muted },
       ]);
       row([{ text: "ready for a task", color: col.muted }]);
-      borderLine("├", "─", "┤");
+      borderLine(borders.midLeft, borders.horizontal, borders.midRight);
       keyValue("workspace", directory);
       keyValue("model", modelLine);
-      borderLine("├", "─", "┤");
+      borderLine(borders.midLeft, borders.horizontal, borders.midRight);
       actionRow("type anything", "start a new turn");
       actionRow("/", "browse commands");
       actionRow("/resume", "restore a saved session");
       actionRow("ctrl+c", "quit");
-      borderLine("└", "─", "┘");
+      borderLine(borders.bottomLeft, borders.horizontal, borders.bottomRight);
       if (chunks[chunks.length - 1]?.text === "\n") {
         chunks.pop();
       }

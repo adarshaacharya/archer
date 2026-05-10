@@ -2,7 +2,7 @@
   <img src="https://raw.githubusercontent.com/adarshaacharya/archer/refs/heads/main/apps/web/public/logos/banner.png" alt="Archer banner" width="240" />
 </p>
 
-# Archer CLI
+---
 
 AI coding agent that runs in your terminal, works inside your repo, and uses your own API keys, totally free to use.
 
