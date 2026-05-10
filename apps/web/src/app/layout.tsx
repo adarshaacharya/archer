@@ -19,9 +19,13 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://usearcher.vercel.app"),
   title: "Archer — Terminal-First AI Agent",
   description:
     "Terminal-first AI coding agent for local repos with patch-based edits, approval controls, and optional web research via Archer Scout, Exa, or Tavily.",
+  twitter: {
+    card: "summary_large_image",
+  },
 };
 
 export default function RootLayout({
