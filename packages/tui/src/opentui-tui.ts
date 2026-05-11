@@ -5,6 +5,7 @@ import {
 } from "@archer/shared/composer";
 import type { AgentStep, RunSummary } from "@archer/shared/runtime";
 import {
+  BorderChars,
   BoxRenderable,
   type CliRenderer,
   createCliRenderer,
@@ -168,6 +169,8 @@ export class ArcherTui implements Tui {
   private applyingComposerUpdate = false;
   private nextMentionBindingsOverride: ComposerMentionBinding[] | null = null;
   private assistantStreamText = "";
+  /** Emit extra scrollback space before the next user message (after a prior assistant turn). */
+  private gapBeforeNextUserMessage = false;
   private pendingReadResolve: ((line: string) => void) | null = null;
   private pendingSubmissionResolve: ((submission: ComposerSubmission) => void) | null = null;
   private pendingApprovalResolve: ((choice: string) => void) | null = null;
@@ -250,6 +253,7 @@ export class ArcherTui implements Tui {
   }
 
   async start(): Promise<void> {
+    this.gapBeforeNextUserMessage = false;
     this.renderer = await createCliRenderer({
       screenMode: "split-footer",
       footerHeight: BASE_FOOTER,
@@ -446,7 +450,7 @@ export class ArcherTui implements Tui {
     this.input = new TextareaRenderable(this.renderer, {
       id: "input",
       initialValue: "",
-      placeholder: "message Archer…",
+      placeholder: "message Archer...",
       wrapMode: "word",
       flexGrow: 1,
       flexShrink: 1,
@@ -555,9 +559,14 @@ export class ArcherTui implements Tui {
   renderUserMessage(message: string): void {
     const text = normalizeText(message);
     if (!text) return;
+    if (this.gapBeforeNextUserMessage) {
+      this.print("");
+      this.print("");
+      this.gapBeforeNextUserMessage = false;
+    }
     this.renderMessageBlock(text, {
       textColor: col.text,
-      prefix: "› ",
+      prefix: "> ",
       backgroundColor: "#1b1f24",
       fullWidthBackground: true,
       paddingLeft: 2,
@@ -573,9 +582,10 @@ export class ArcherTui implements Tui {
     if (!text) return;
     this.renderMessageBlock(text, {
       textColor: col.text,
-      prefix: "‹ ",
+      prefix: "",
     });
     this.renderMessageSeparator();
+    this.gapBeforeNextUserMessage = true;
   }
 
   renderInfoMessage(message: string): void {
@@ -589,7 +599,7 @@ export class ArcherTui implements Tui {
   renderEventMessage(message: string): void {
     const text = normalizeText(message);
     if (!text) return;
-    this.renderInfoCard(`◇ ${text}`, col.accent);
+    this.renderInfoCard(`* ${text}`, col.accent);
     this.print("");
   }
 
@@ -603,7 +613,7 @@ export class ArcherTui implements Tui {
     const observation = step.observation
       ? normalizeText(step.observation).split("\n").slice(0, 3).join("\n")
       : "";
-    this.print(`● ${step.action}  step ${step.step}`, col.step);
+    this.print(`* ${step.action}  step ${step.step}`, col.step);
     if (!observation) return;
     for (const line of observation.split("\n")) {
       this.print(`  ${line}`, col.step);
@@ -631,6 +641,7 @@ export class ArcherTui implements Tui {
       });
       this.print("");
     }
+    this.gapBeforeNextUserMessage = true;
   }
 
   renderApprovalPrompt(prompt: ApprovalPromptState | null): void {
@@ -688,7 +699,7 @@ export class ArcherTui implements Tui {
     ]
       .filter(Boolean)
       .join("  ");
-    this.renderTranscriptCard(`◆ ${line}`, {
+    this.renderTranscriptCard(`* ${line}`, {
       boxId: "run-summary-box",
       textId: "run-summary-text",
       borderColor: col.summary,
@@ -816,7 +827,8 @@ export class ArcherTui implements Tui {
 
   private renderMessageSeparator(): void {
     this.writeScrollback((ctx) => {
-      const line = "─".repeat(Math.max(1, ctx.width));
+      const h = BorderChars.single.horizontal;
+      const line = h.repeat(Math.max(1, ctx.width));
       const text = new TextRenderable(ctx.renderContext, {
         id: "sb-message-separator",
         content: line,

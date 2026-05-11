@@ -26,7 +26,7 @@ export function truncateMiddle(value: string, max: number): string {
   if (max <= 3) return value.slice(0, max);
   const head = Math.ceil((max - 1) / 2);
   const tail = Math.floor((max - 1) / 2);
-  return `${value.slice(0, head)}…${value.slice(-tail)}`;
+  return `${value.slice(0, head)}...${value.slice(-tail)}`;
 }
 
 export function padRight(value: string, width: number): string {

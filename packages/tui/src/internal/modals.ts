@@ -130,7 +130,7 @@ export function mountApprovalModal(args: {
   box.add(
     new TextRenderable(args.renderer, {
       id: "approval-help",
-      content: "↑↓ move   enter select   esc reject",
+      content: "arrows move   enter select   esc reject",
       width: "100%",
       height: 1,
       fg: col.muted,
