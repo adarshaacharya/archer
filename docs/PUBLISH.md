@@ -53,3 +53,14 @@ Use that for:
 - debugging release packaging without creating a new tag
 
 Release jobs still only publish assets and npm packages when the ref is a `v*` tag.
+
+
+## Full flow:
+
+```bash
+bun run bump:cli:patch
+  git add .
+  git commit -m "chore: bump version to 0.1.21"
+  git tag v0.1.21
+  git push origin main --tags
+```
