@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "archer",
@@ -11,9 +12,9 @@
     },
     "apps/cli": {
       "name": "@adarshaacharya/archer",
-      "version": "0.1.17",
+      "version": "0.1.21",
       "bin": {
-        "archer": "dist/index.js"
+        "archer": "dist/index.js",
       },
       "dependencies": {
         "@archer/agent-core": "workspace:*",

@@ -114,6 +114,10 @@ export type PatchReviewState = {
   files: PatchReviewFile[];
 };
 
+const LARGE_PASTE_THRESHOLD = 12000;
+const PASTED_TOKEN_PREFIX = "[Pasted Content ";
+const PASTED_TOKEN_REGEX = /\[Pasted Content (\d+) chars\]/g;
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 function statusPromptStyle(prompt: ApprovalPromptState): {
@@ -181,6 +185,9 @@ export class ArcherTui implements Tui {
   private setInputValue: ((value: string) => void) | null = null;
   private setSlashCommandsState: ((value: SlashCommandItem[]) => void) | null = null;
   private setApprovalRows: ((value: number) => void) | null = null;
+  private skipNextSubmitAfterPaste = false;
+  private pastedContentStore = new Map<string, string>();
+  private prePasteSnapshot: { text: string; cursor: number } | null = null;
 
   private setStatus(
     primary: string,
@@ -512,6 +519,10 @@ export class ArcherTui implements Tui {
     this.syncComposerLayout();
 
     this.renderer.addInputHandler((seq) => {
+      if (this.skipNextSubmitAfterPaste && (seq === "\r" || seq === "\n")) {
+        this.skipNextSubmitAfterPaste = false;
+        return true;
+      }
       if (seq === "\x03") {
         this.cancelRunningHandler?.();
         this.renderer?.destroy();
@@ -536,6 +547,31 @@ export class ArcherTui implements Tui {
         return true;
       }
       return false;
+    });
+
+    this.renderer.keyInput.on("paste", () => {
+      // Some terminals emit an immediate trailing enter after paste.
+      this.skipNextSubmitAfterPaste = true;
+      if (this.input) {
+        this.prePasteSnapshot = {
+          text: this.input.plainText,
+          cursor: this.input.cursorOffset,
+        };
+      }
+    });
+    this.renderer.keyInput.on("paste", (event: { bytes: Uint8Array }) => {
+      const pastedText = new TextDecoder().decode(event.bytes ?? new Uint8Array());
+      if (!pastedText) return;
+      if (pastedText.length < LARGE_PASTE_THRESHOLD) return;
+      if (!this.input) return;
+
+      const token = `${PASTED_TOKEN_PREFIX}${pastedText.length} chars]`;
+      // Strict placeholder mode: never render large pasted body in composer.
+      // Keep only the placeholder token visible.
+      this.input.setText(token);
+      this.prePasteSnapshot = null;
+      this.pastedContentStore.set(token, pastedText);
+      this.setStatus("Stored large paste as token. Full content will be submitted.", col.accent);
     });
 
     this.input.focus();
@@ -1080,18 +1116,19 @@ export class ArcherTui implements Tui {
   }
 
   private submitComposerValue(submit: string): void {
+    const expandedSubmit = this.expandPastedContentTokens(submit);
     this.promptHistory.record({
-      text: submit,
+      text: expandedSubmit,
       mentions: this.currentMentionBindings,
     });
-    const submission = submit
+    const submission = expandedSubmit
       ? {
-          text: submit,
+          text: expandedSubmit,
           textElements: buildComposerTextElements(this.currentMentionBindings),
           mentions: this.currentMentionBindings.slice(),
           attachments: [],
         }
-      : createPlainComposerSubmission(submit);
+      : createPlainComposerSubmission(expandedSubmit);
     this.currentInput = "";
     this.currentMentionBindings = [];
     this.activeMentionQuery = null;
@@ -1112,15 +1149,29 @@ export class ArcherTui implements Tui {
     if (this.pendingReadResolve) {
       const resolve = this.pendingReadResolve;
       this.pendingReadResolve = null;
-      resolve(submit);
+      resolve(expandedSubmit);
       return;
     }
 
-    if (submit.startsWith("/")) {
-      const command = submit.slice(1).split(/\s+/)[0];
+    if (expandedSubmit.startsWith("/")) {
+      const command = expandedSubmit.slice(1).split(/\s+/)[0];
       const match = this.slashCommands.find((item) => item.name === `/${command}`);
-      if (match) this.renderUserMessage(submit);
+      if (match) this.renderUserMessage(expandedSubmit);
     }
+  }
+
+  private expandPastedContentTokens(input: string): string {
+    return input.replace(PASTED_TOKEN_REGEX, (full) => {
+      return this.pastedContentStore.get(full) ?? full;
+    });
+  }
+
+  private insertTextAtCursor(text: string): void {
+    if (!this.input) return;
+    const current = this.input.plainText;
+    const cursor = this.input.cursorOffset;
+    const next = `${current.slice(0, cursor)}${text}${current.slice(cursor)}`;
+    this.input.setText(next);
   }
 
   private handlePromptHistoryInput(seq: string): boolean {
