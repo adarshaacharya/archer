@@ -644,7 +644,7 @@ function Composer({
         : "^C quit";
 
   return (
-    <Box flexDirection="column" paddingX={1} paddingBottom={1}>
+    <Box flexDirection="column" paddingX={1}>
       <Box flexDirection="column" borderStyle="round" borderColor={borderColor} paddingX={1}>
         {state.promptMessage ? (
           <Text color={col.text} wrap="wrap">
@@ -697,7 +697,7 @@ function Composer({
 
       {/* Command palette — scrollable window of 6 */}
       {hasCommandMatches ? (
-        <Box flexDirection="column" paddingX={2} marginTop={1}>
+        <Box flexDirection="column" paddingX={2}>
           {(() => {
             const WINDOW = 6;
             const sel = state.commandSelectedIndex;
@@ -810,17 +810,15 @@ function App({ store }: { store: UiStore }): React.ReactNode {
   });
 
   const showBanner = state.logs.length === 0 && !state.pendingAssistantText;
-  const termHeight = stdout?.rows ?? 24;
 
   return (
-    <Box flexDirection="column" height={termHeight}>
+    <Box flexDirection="column">
       <Header state={state} />
       {showBanner ? (
         <WelcomeBanner state={state} />
       ) : (
         <ActivityLog logs={state.logs} pendingText={state.pendingAssistantText} />
       )}
-      <Box flexGrow={1} />
       <Divider width={termWidth} />
       <Composer state={state} commandMatches={commandMatches} />
     </Box>
