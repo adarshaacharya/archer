@@ -46,10 +46,8 @@ const packageJson = JSON.parse(await readFile(path.join(cliRoot, "package.json")
 const stageDir = await mkdtemp(path.join(os.tmpdir(), "archer-release-"));
 const archiveRoot = path.join(stageDir, `archer-${packageJson.version}-${targetInfo.artifact}`);
 const runtimeRoot = path.join(archiveRoot, "runtime");
-const nodeModulesRoot = path.join(runtimeRoot, "node_modules", "@opentui");
 const launcherPath = path.join(archiveRoot, "archer");
 const bunExecutablePath = process.execPath;
-const platformPackageName = `core-${targetInfo.platform}-${targetInfo.arch}`;
 
 try {
   await stat(sourceEntrypoint);
@@ -69,22 +67,9 @@ try {
 await mkdir(archiveRoot, { recursive: true });
 await mkdir(releaseDir, { recursive: true });
 await mkdir(path.join(runtimeRoot, "dist"), { recursive: true });
-await mkdir(nodeModulesRoot, { recursive: true });
 
 await cp(sourceEntrypoint, path.join(runtimeRoot, "dist", "index.js"));
 await cp(bunExecutablePath, path.join(runtimeRoot, "bun"));
-await cp(
-  path.join(repoRoot, "node_modules", "@opentui", "core"),
-  path.join(nodeModulesRoot, "core"),
-  {
-    recursive: true,
-  },
-);
-await cp(
-  path.join(repoRoot, "node_modules", "@opentui", platformPackageName),
-  path.join(nodeModulesRoot, platformPackageName),
-  { recursive: true },
-);
 await cp(
   path.join(repoRoot, "packages", "storage", "migrations"),
   path.join(runtimeRoot, "migrations"),

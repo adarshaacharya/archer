@@ -19,7 +19,7 @@
   },
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "rm -rf dist && bun build src/index.ts --target=node --format=esm --outdir dist --packages=bundle --external @opentui/core",
+    "build": "rm -rf dist && bun build src/index.ts --target=node --format=esm --outdir dist --packages=bundle",
     "build:binary": "rm -rf dist/bin release && bun run scripts/build.ts",
     "build:binary:all": "rm -rf dist/bin release && bun run scripts/build.ts --all",
     "package:binary": "bun run scripts/build.ts",
@@ -34,8 +34,7 @@
     "@archer/storage": "workspace:*",
     "@archer/shared": "workspace:*",
     "@archer/tui": "workspace:*",
-    "@archer/web-capability": "workspace:*",
-    "@opentui/core": "^0.1.103"
+    "@archer/web-capability": "workspace:*"
   },
   "turbo": {
     "tags": [

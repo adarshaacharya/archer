@@ -24,7 +24,6 @@ import {
 import { reduceAnswerTurnState, reduceChangeTurnState } from "./turn-reducer.js";
 import { createAnswerTurnState, createChangeTurnState } from "./turn-state.js";
 import { buildVerificationScopeInstruction } from "./validation-policy.js";
-
 export type RuntimeSummaryFields = {
   success: boolean;
   steps: number;
@@ -34,6 +33,11 @@ export type RuntimeSummaryFields = {
   estimatedCostUsd: number;
   exploration?: unknown;
 };
+
+type UiEvent =
+  | { type: "summary"; summary: any }
+  | { type: "assistant-message"; message: string }
+  | { type: "approval-prompt"; prompt: { message: string } | null };
 
 type TurnLifecycle = {
   finish(): void;
@@ -61,8 +65,7 @@ export async function handleAnswerContextOutcome<TResult, TSummary>(deps: {
     summary?: TSummary,
     message?: string,
   ) => TResult;
-  renderSummary: (summary: TSummary) => void;
-  renderAssistantError: (message: string) => void;
+  emitUiEvent: (event: UiEvent) => void;
   persistAssistantTranscript: (message: string) => void | Promise<void>;
   pruneAfterTurn: () => void;
 }): Promise<TResult> {
@@ -76,8 +79,7 @@ export async function handleAnswerContextOutcome<TResult, TSummary>(deps: {
     turn,
     buildSummary,
     buildTurnResult,
-    renderSummary,
-    renderAssistantError,
+    emitUiEvent,
     persistAssistantTranscript,
     pruneAfterTurn,
   } = deps;
@@ -95,7 +97,7 @@ export async function handleAnswerContextOutcome<TResult, TSummary>(deps: {
   if (contextResult.status === "completed") {
     const message = contextResult.outputText.trim();
     turn.finish();
-    renderSummary(baseSummary);
+    emitUiEvent({ type: "summary", summary: baseSummary });
     pruneAfterTurn();
     return buildTurnResult("completed", baseSummary, message || undefined);
   }
@@ -108,7 +110,7 @@ export async function handleAnswerContextOutcome<TResult, TSummary>(deps: {
     const message = `${partialAnswer}\n\nNote: ${limitReason}. This answer is based on the useful evidence collected so far.`;
     await persistAssistantTranscript(message);
     turn.finish();
-    renderSummary(baseSummary);
+    emitUiEvent({ type: "summary", summary: baseSummary });
     pruneAfterTurn();
     return buildTurnResult("completed", baseSummary, message);
   }
@@ -148,7 +150,7 @@ export async function handleAnswerContextOutcome<TResult, TSummary>(deps: {
           (contextResult.estimatedCostUsd ?? 0) + (finalAnswerResult.estimatedCostUsd ?? 0),
         ...(explorationSummary ? { exploration: explorationSummary } : {}),
       });
-      renderSummary(summary);
+      emitUiEvent({ type: "summary", summary });
       pruneAfterTurn();
       return buildTurnResult("completed", summary, message);
     }
@@ -156,17 +158,19 @@ export async function handleAnswerContextOutcome<TResult, TSummary>(deps: {
 
   if (contextResult.status === "cancelled") {
     turn.cancel();
-    renderSummary(baseSummary);
+    emitUiEvent({ type: "summary", summary: baseSummary });
     return buildTurnResult("cancelled", baseSummary, contextResult.error);
   }
 
   turn.fail();
-  renderAssistantError(
-    contextResult.error
-      ? `Research failed: ${contextResult.error}`
-      : "Research failed before an answer could be produced.",
-  );
-  renderSummary(baseSummary);
+  emitUiEvent({
+    type: "assistant-message",
+    message:
+      contextResult.error
+        ? `Research failed: ${contextResult.error}`
+        : "Research failed before an answer could be produced.",
+  });
+  emitUiEvent({ type: "summary", summary: baseSummary });
   pruneAfterTurn();
   return buildTurnResult(
     "failed",
@@ -201,9 +205,7 @@ export async function handleTaskContextOutcome<TResult, TSummary>(deps: {
     summary?: TSummary,
     message?: string,
   ) => TResult;
-  renderSummary: (summary: TSummary) => void;
-  renderApprovalMessage: (message: string) => void;
-  renderAssistantError: (message: string) => void;
+  emitUiEvent: (event: UiEvent) => void;
   persistAssistantTranscript: (message: string) => void | Promise<void>;
   pruneAfterTurn: () => void;
   deriveValidationScope: () => "none" | "targeted" | "standard";
@@ -303,12 +305,13 @@ export async function handleTaskContextOutcome<TResult, TSummary>(deps: {
           }
 
           deps.turn.fail();
-          deps.renderAssistantError(
-            answerState.contextResult.error
+          deps.emitUiEvent({
+            type: "assistant-message",
+            message: answerState.contextResult.error
               ? `Research failed: ${answerState.contextResult.error}`
               : "Research failed before an answer could be produced.",
-          );
-          deps.renderSummary(baseSummary);
+          });
+          deps.emitUiEvent({ type: "summary", summary: baseSummary });
           deps.pruneAfterTurn();
           return deps.buildTurnResult(
             "failed",
@@ -373,7 +376,7 @@ export async function handleTaskContextOutcome<TResult, TSummary>(deps: {
               ? { exploration: answerState.explorationSummary }
               : {}),
           });
-          deps.renderSummary(summary);
+          deps.emitUiEvent({ type: "summary", summary });
           deps.pruneAfterTurn();
           return deps.buildTurnResult("completed", summary, answerState.finalMessage ?? undefined);
         }
@@ -390,7 +393,7 @@ export async function handleTaskContextOutcome<TResult, TSummary>(deps: {
               ? { exploration: answerState.explorationSummary }
               : {}),
           });
-          deps.renderSummary(summary);
+          deps.emitUiEvent({ type: "summary", summary });
           return deps.buildTurnResult(
             "cancelled",
             summary,
@@ -410,7 +413,7 @@ export async function handleTaskContextOutcome<TResult, TSummary>(deps: {
               ? { exploration: answerState.explorationSummary }
               : {}),
           });
-          deps.renderSummary(summary);
+          deps.emitUiEvent({ type: "summary", summary });
           deps.pruneAfterTurn();
           return deps.buildTurnResult(
             "failed",
@@ -450,8 +453,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
     summary?: TSummary,
     message?: string,
   ) => TResult;
-  renderSummary: (summary: TSummary) => void;
-  renderApprovalMessage: (message: string) => void;
+  emitUiEvent: (event: UiEvent) => void;
   pruneAfterTurn: () => void;
   deriveValidationScope: () => "none" | "targeted" | "standard";
   isContextBudgetResult: (result: RuntimePhaseResult) => boolean;
@@ -497,8 +499,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
     onChangeFlowEntered,
     buildSummary,
     buildTurnResult,
-    renderSummary,
-    renderApprovalMessage,
+    emitUiEvent,
     pruneAfterTurn,
     deriveValidationScope,
     shouldAttemptVerification,
@@ -519,7 +520,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
       completionTokens: contextResult.usage?.completionTokens ?? 0,
       estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
     });
-    renderSummary(summary);
+    deps.emitUiEvent({ type: "summary", summary });
     return buildTurnResult("cancelled", summary, contextResult.error);
   }
 
@@ -533,7 +534,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
       completionTokens: contextResult.usage?.completionTokens ?? 0,
       estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
     });
-    renderSummary(summary);
+    deps.emitUiEvent({ type: "summary", summary });
     return buildTurnResult("failed", summary, contextResult.error);
   }
 
@@ -651,7 +652,10 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
           break;
         }
 
-        renderApprovalMessage("Plan prepared. Starting implementation...");
+        deps.emitUiEvent({
+          type: "approval-prompt",
+          prompt: { message: "Plan prepared. Starting implementation..." },
+        });
         changeState = reduceChangeTurnState(changeState, {
           type: "phase.set",
           phase: "implementing",
@@ -748,7 +752,10 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
         onVerificationAttempted();
         turn.beginVerification();
         beginVerificationPhase();
-        renderApprovalMessage("Implementation completed. Running verification...");
+        deps.emitUiEvent({
+          type: "approval-prompt",
+          prompt: { message: "Implementation completed. Running verification..." },
+        });
         let submittedVerificationReport: ReturnType<typeof validateVerificationReport> = null;
         const verificationResult = await runPhase(
           buildVerificationPrompt(
@@ -871,7 +878,10 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
           break;
         }
 
-        renderApprovalMessage("Verification failed. Applying repair plan...");
+        deps.emitUiEvent({
+          type: "approval-prompt",
+          prompt: { message: "Verification failed. Applying repair plan..." },
+        });
         changeState = reduceChangeTurnState(changeState, {
           type: "implementation.addendum.set",
           addendum:
@@ -948,7 +958,10 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
         }
 
         if (shouldRetryAfterCompaction(changeState)) {
-          renderApprovalMessage("Context pressure detected. Retrying with compacted context...");
+          deps.emitUiEvent({
+            type: "approval-prompt",
+            prompt: { message: "Context pressure detected. Retrying with compacted context..." },
+          });
           changeState = reduceChangeTurnState(changeState, {
             type: "implementation.addendum.set",
             addendum: [
@@ -984,7 +997,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
           completionTokens: changeState.totals.completionTokens,
           estimatedCostUsd: changeState.totals.estimatedCostUsd,
         });
-        renderSummary(summary);
+        deps.emitUiEvent({ type: "summary", summary });
         pruneAfterTurn();
         return buildTurnResult("completed", summary);
       }
@@ -998,7 +1011,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
           completionTokens: changeState.totals.completionTokens,
           estimatedCostUsd: changeState.totals.estimatedCostUsd,
         });
-        renderSummary(summary);
+        deps.emitUiEvent({ type: "summary", summary });
         return buildTurnResult("cancelled", summary, changeState.failureMessage ?? undefined);
       }
       case "blocked": {
@@ -1011,7 +1024,7 @@ export async function handleChangeContextOutcome<TResult, TSummary>(deps: {
           completionTokens: changeState.totals.completionTokens,
           estimatedCostUsd: changeState.totals.estimatedCostUsd,
         });
-        renderSummary(summary);
+        deps.emitUiEvent({ type: "summary", summary });
         pruneAfterTurn();
         return buildTurnResult(
           "failed",

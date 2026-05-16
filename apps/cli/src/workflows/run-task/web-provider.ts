@@ -23,9 +23,12 @@ export async function ensureWebProviderConnected(tui: Tui, state: SessionState):
     return true;
   }
 
-  tui.renderApprovalPrompt({
-    message: "Web search is not connected.",
-    options: ["wait"],
+  tui.emit({
+    type: "approval-prompt",
+    prompt: {
+      message: "Web search is not connected.",
+      options: ["wait"],
+    },
   });
   return false;
 }

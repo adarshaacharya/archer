@@ -47,7 +47,7 @@ export async function runTurnWithDeps(
   const trimmedInput = submission.text.trim();
   if (!trimmedInput) {
     const message = "Please enter a task or question.";
-    tui.renderAssistantMessage(message);
+    tui.emit({ type: "assistant-message", message });
     const result: TurnResult = {
       status: "clarify",
       intent: "question",
@@ -74,8 +74,11 @@ export async function runTurnWithDeps(
     deps.resetSessionById(state.sessionId);
   }
   if (preturnPrune.prunedCount > 0 || preturnPrune.modelMessagesPruned > 0) {
-    tui.renderApprovalPrompt({
-      message: `Compacted session context before running the turn (${preturnPrune.prunedCount} transcript${preturnPrune.prunedCount === 1 ? "" : "s"} pruned, ${preturnPrune.modelMessagesPruned} model message${preturnPrune.modelMessagesPruned === 1 ? "" : "s"} trimmed${preturnPrune.artifactCreated ? ", continuation brief saved" : ""}).`,
+    tui.emit({
+      type: "approval-prompt",
+      prompt: {
+        message: `Compacted session context before running the turn (${preturnPrune.prunedCount} transcript${preturnPrune.prunedCount === 1 ? "" : "s"} pruned, ${preturnPrune.modelMessagesPruned} model message${preturnPrune.modelMessagesPruned === 1 ? "" : "s"} trimmed${preturnPrune.artifactCreated ? ", continuation brief saved" : ""}).`,
+      },
     });
   }
 

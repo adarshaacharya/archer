@@ -2,6 +2,7 @@ export type {
   ApprovalDialogChoice,
   ApprovalPromptState,
   SlashCommandItem,
+  UiEvent,
   Tui,
-} from "./opentui-tui.js";
-export { ArcherTui } from "./opentui-tui.js";
+} from "./ink-tui.js";
+export { ArcherTui } from "./ink-tui.js";

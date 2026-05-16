@@ -4,6 +4,7 @@ import {
   buildWebAnswerPrompt,
   buildWebAnswerSystemPrompt,
 } from "@archer/agent-core";
+import type { UiEvent } from "@archer/tui";
 import type { TurnResult } from "../../features/runtime/turn-types.js";
 import type { TaskExecutionRoute } from "./route.js";
 
@@ -42,7 +43,7 @@ type ExecuteEarlyRouteParams = {
   task: string;
   allowedToolNames: string[];
   runPhase: RunPhase;
-  renderApprovalMessage: (message: string) => void;
+  emitUiEvent: (event: UiEvent) => void;
   elapsedMs: () => number;
   buildSummary: (input: {
     success: boolean;
@@ -52,7 +53,6 @@ type ExecuteEarlyRouteParams = {
     completionTokens: number;
     estimatedCostUsd: number;
   }) => any;
-  renderSummary: (summary: any) => void;
   pruneAfterTurn: () => void;
   buildTurnResult: (
     status: TurnResult["status"],
@@ -72,10 +72,9 @@ export async function executeEarlyRoute(
     task,
     allowedToolNames,
     runPhase,
-    renderApprovalMessage,
+    emitUiEvent,
     elapsedMs,
     buildSummary,
-    renderSummary,
     pruneAfterTurn,
     buildTurnResult,
     onCompleted,
@@ -88,9 +87,9 @@ export async function executeEarlyRoute(
   }
 
   if (route === "direct-answer") {
-    renderApprovalMessage("Answering directly...");
+    emitUiEvent({ type: "approval-prompt", prompt: { message: "Answering directly..." } });
   } else {
-    renderApprovalMessage("Inspecting web content...");
+    emitUiEvent({ type: "approval-prompt", prompt: { message: "Inspecting web content..." } });
   }
 
   const phaseResult = await runPhase(
@@ -119,7 +118,7 @@ export async function executeEarlyRoute(
       completionTokens: phaseResult.usage?.completionTokens ?? 0,
       estimatedCostUsd: phaseResult.estimatedCostUsd ?? 0,
     });
-    renderSummary(summary);
+    emitUiEvent({ type: "summary", summary });
     pruneAfterTurn();
     return buildTurnResult("completed", summary, phaseResult.outputText);
   }
