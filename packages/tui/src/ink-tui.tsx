@@ -611,7 +611,7 @@ function ActivityLog({
   ];
 
   return (
-    <Box flexDirection="column" flexGrow={1} paddingX={2} paddingTop={1} paddingBottom={1}>
+    <Box flexDirection="column" paddingX={2} paddingTop={1} paddingBottom={1}>
       {transcript.map((entry, i) => (
         <LogItem key={entry.id ?? String(i)} entry={entry} index={i} />
       ))}
@@ -695,20 +695,42 @@ function Composer({
         <Text color={col.dimmed}>{footerHints}</Text>
       </Box>
 
-      {/* Command palette — below hints, only when in command mode */}
+      {/* Command palette — scrollable window of 6 */}
       {hasCommandMatches ? (
         <Box flexDirection="column" paddingX={2} marginTop={1}>
-          {commandMatches.map((cmd, index) => {
-            const selected = index === state.commandSelectedIndex;
+          {(() => {
+            const WINDOW = 6;
+            const sel = state.commandSelectedIndex;
+            const total = commandMatches.length;
+            const offset = sel < 0
+              ? 0
+              : Math.max(0, Math.min(sel - Math.floor(WINDOW / 2), total - WINDOW));
+            const visible = commandMatches.slice(offset, offset + WINDOW);
+            const moreBelow = offset + WINDOW < total;
+            const moreAbove = offset > 0;
             return (
-              <Box key={cmd.name} gap={3}>
-                <Text color={selected ? col.accent : col.text} bold={selected}>
-                  {cmd.name}
-                </Text>
-                <Text color={selected ? col.text : col.dimmed}>{cmd.description}</Text>
-              </Box>
+              <>
+                {moreAbove ? (
+                  <Text color={col.dimmed}>  ↑ {offset} more</Text>
+                ) : null}
+                {visible.map((cmd, i) => {
+                  const absIdx = offset + i;
+                  const selected = absIdx === sel;
+                  return (
+                    <Box key={cmd.name} gap={3}>
+                      <Text color={selected ? col.accent : col.text} bold={selected}>
+                        {cmd.name}
+                      </Text>
+                      <Text color={selected ? col.text : col.dimmed}>{cmd.description}</Text>
+                    </Box>
+                  );
+                })}
+                {moreBelow ? (
+                  <Text color={col.dimmed}>  ↓ {total - offset - WINDOW} more</Text>
+                ) : null}
+              </>
             );
-          })}
+          })()}
         </Box>
       ) : null}
     </Box>
@@ -788,15 +810,17 @@ function App({ store }: { store: UiStore }): React.ReactNode {
   });
 
   const showBanner = state.logs.length === 0 && !state.pendingAssistantText;
+  const termHeight = stdout?.rows ?? 24;
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={termHeight}>
       <Header state={state} />
       {showBanner ? (
         <WelcomeBanner state={state} />
       ) : (
         <ActivityLog logs={state.logs} pendingText={state.pendingAssistantText} />
       )}
+      <Box flexGrow={1} />
       <Divider width={termWidth} />
       <Composer state={state} commandMatches={commandMatches} />
     </Box>
