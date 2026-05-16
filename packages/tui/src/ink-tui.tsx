@@ -453,12 +453,10 @@ function Header({ state }: { state: UiState }): React.ReactNode {
         : col.user;
 
   return (
-    <Box paddingX={2} paddingTop={1} paddingBottom={1} justifyContent="space-between">
-      <Box gap={2}>
-        <Text color={col.accent} bold>
-          ◈ ARCHER
-        </Text>
-      </Box>
+    <Box paddingX={2} paddingTop={1} paddingBottom={0} justifyContent="space-between">
+      <Text color={col.accent} bold>
+        ◈ ARCHER
+      </Text>
       <Box gap={2}>
         <Text color={col.step}>{state.activeModelLabel}</Text>
         <Text color={statusColor} bold>
@@ -469,23 +467,34 @@ function Header({ state }: { state: UiState }): React.ReactNode {
   );
 }
 
+function SessionBar({ state }: { state: UiState }): React.ReactNode {
+  const model = state.activeModelLabel.replace("model=", "") || "unconfigured";
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+  const cwd = process.cwd().replace(home, "~");
+
+  return (
+    <Box paddingX={2} paddingTop={0} paddingBottom={1}>
+      <Text color={col.dimmed}>
+        {model}
+        <Text color={col.border}> · </Text>
+        {cwd}
+      </Text>
+    </Box>
+  );
+}
+
 function LogItem({ entry, index }: { entry: LogEntry; index: number }): React.ReactNode {
+  const gapTop = index === 0 ? 0 : 1;
+
   if (entry.kind === "user") {
     return (
-      <Box flexDirection="column" marginTop={index === 0 ? 0 : 1}>
-        <Box gap={1}>
+      <Box marginTop={gapTop} paddingX={2}>
+        <Text wrap="wrap">
           <Text color={col.user} bold>
-            ›
+            {"❯ "}
           </Text>
-          <Text color={col.user} bold>
-            you
-          </Text>
-        </Box>
-        <Box paddingLeft={2}>
-          <Text color={col.text} wrap="wrap">
-            {entry.text}
-          </Text>
-        </Box>
+          <Text color={col.text}>{entry.text}</Text>
+        </Text>
       </Box>
     );
   }
@@ -493,29 +502,19 @@ function LogItem({ entry, index }: { entry: LogEntry; index: number }): React.Re
   if (entry.kind === "assistant") {
     const isPending = entry.id === "pending";
     return (
-      <Box flexDirection="column" marginTop={index === 0 ? 0 : 1}>
-        <Box gap={1}>
-          <Text color={col.accent} bold>
-            ✦
-          </Text>
-          <Text color={col.accent} bold>
-            archer
-          </Text>
-        </Box>
-        <Box paddingLeft={2}>
-          <Text color={col.text} wrap="wrap">
-            {entry.text}
-            {isPending ? "▌" : ""}
-          </Text>
-        </Box>
+      <Box marginTop={gapTop} paddingX={2} paddingLeft={3} flexDirection="column">
+        <Text color={col.text} wrap="wrap">
+          {entry.text}
+          {isPending ? <Text color={col.accent}>▌</Text> : null}
+        </Text>
       </Box>
     );
   }
 
   if (entry.kind === "step") {
     return (
-      <Box gap={2}>
-        <Text color={col.step}>⟩</Text>
+      <Box marginTop={gapTop} paddingX={2} paddingLeft={3} gap={1}>
+        <Text color={col.step}>│</Text>
         <Text color={col.step} wrap="wrap">
           {entry.text}
         </Text>
@@ -525,27 +524,20 @@ function LogItem({ entry, index }: { entry: LogEntry; index: number }): React.Re
 
   if (entry.kind === "summary") {
     return (
-      <Box flexDirection="column" marginTop={index === 0 ? 0 : 1}>
-        <Box gap={1}>
-          <Text color={col.summary} bold>
-            ✓
-          </Text>
-          <Text color={col.summary} bold>
-            done
-          </Text>
-        </Box>
-        <Box paddingLeft={2}>
-          <Text color={col.muted} wrap="wrap">
-            {entry.text}
-          </Text>
-        </Box>
+      <Box marginTop={gapTop} paddingX={2} paddingLeft={3} flexDirection="column">
+        <Text color={col.summary} bold>
+          ✓ done
+        </Text>
+        <Text color={col.muted} wrap="wrap">
+          {entry.text}
+        </Text>
       </Box>
     );
   }
 
   if (entry.kind === "event") {
     return (
-      <Box gap={2}>
+      <Box marginTop={gapTop} paddingX={2} paddingLeft={3} gap={1}>
         <Text color={col.event}>◈</Text>
         <Text color={col.muted} wrap="wrap">
           {entry.text}
@@ -554,9 +546,8 @@ function LogItem({ entry, index }: { entry: LogEntry; index: number }): React.Re
     );
   }
 
-  // info
   return (
-    <Box gap={2}>
+    <Box marginTop={gapTop} paddingX={2} paddingLeft={3} gap={1}>
       <Text color={col.dimmed}>·</Text>
       <Text color={col.muted} wrap="wrap">
         {entry.text}
@@ -616,12 +607,12 @@ function ActivityLog({
   pendingText: string;
 }): React.ReactNode {
   const transcript: LogEntry[] = [
-    ...logs.slice(-16),
+    ...logs.slice(-24),
     ...(pendingText ? [{ id: "pending", kind: "assistant" as const, text: pendingText }] : []),
   ];
 
   return (
-    <Box flexDirection="column" paddingX={2} paddingTop={1} paddingBottom={1}>
+    <Box flexDirection="column" flexGrow={1} paddingTop={0} paddingBottom={1}>
       {transcript.map((entry, i) => (
         <LogItem key={entry.id ?? String(i)} entry={entry} index={i} />
       ))}
@@ -817,22 +808,22 @@ function App({ store }: { store: UiStore }): React.ReactNode {
     }
   });
 
-  const showBanner = state.logs.length === 0 && !state.pendingAssistantText;
+  const showWelcome = state.logs.length === 0 && !state.pendingAssistantText;
+  const inConversation = !showWelcome;
+  const hasCommandPalette = isCommandMode && commandMatches.length > 0;
   // Ink only expands Spacer/flexGrow when the parent has an explicit height.
-  // On startup, let content flow naturally so the banner sits above the composer.
-  const pinComposerToBottom = !showBanner;
+  const pinComposerToBottom = inConversation || hasCommandPalette;
 
   return (
     <Box flexDirection="column" {...(pinComposerToBottom ? { height: termHeight } : {})}>
       <Header state={state} />
       <Box flexDirection="column" {...(pinComposerToBottom ? { flexGrow: 1 } : {})}>
-        {showBanner ? (
-          <WelcomeBanner state={state} />
-        ) : (
+        {showWelcome ? <WelcomeBanner state={state} /> : <SessionBar state={state} />}
+        {inConversation ? (
           <ActivityLog logs={state.logs} pendingText={state.pendingAssistantText} />
-        )}
+        ) : null}
         {pinComposerToBottom ? <Spacer /> : null}
-        <Divider width={termWidth} />
+        {showWelcome ? <Divider width={termWidth} /> : null}
         <Composer state={state} commandMatches={commandMatches} />
       </Box>
     </Box>
