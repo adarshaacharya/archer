@@ -138,6 +138,8 @@ jobs:
           rm -rf .publish
           mkdir -p .publish
           cp -R dist .publish/dist
+          cp -R bin .publish/bin
+          chmod +x .publish/bin/archer
           cp README.md .publish/README.md
           cp ../../LICENSE .publish/LICENSE
           cat > .publish/package.json <<'JSON'
@@ -150,9 +152,10 @@ jobs:
               "url": "git+https://github.com/adarshaacharya/archer.git"
             },
             "bin": {
-              "archer": "dist/index.js"
+              "archer": "bin/archer"
             },
             "files": [
+              "bin",
               "dist"
             ],
             "license": "MIT",
@@ -161,7 +164,7 @@ jobs:
               "registry": "https://registry.npmjs.org/"
             },
             "engines": {
-              "node": ">=18"
+              "bun": ">=1.2.0"
             }
           }
           JSON

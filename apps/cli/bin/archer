@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+set -e
+
+# npm global installs do not source login shells, so LANG/LC_ALL are often unset.
+# Ink and the terminal need UTF-8 before the Node process starts.
+if [ -z "${LC_ALL:-}" ] && [ -z "${LC_CTYPE:-}" ] && [ -z "${LANG:-}" ]; then
+  export LANG=en_US.UTF-8
+  export LC_ALL=en_US.UTF-8
+fi
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "archer: bun is required (https://bun.sh). Install bun, then retry." >&2
+  exit 1
+fi
+
+exec bun "$ROOT/dist/index.js" "$@"

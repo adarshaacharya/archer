@@ -1,12 +1,13 @@
 {
   "name": "@adarshaacharya/archer",
   "private": false,
-  "version": "0.1.26",
+  "version": "0.1.27",
   "type": "module",
   "bin": {
-    "archer": "dist/index.js"
+    "archer": "bin/archer"
   },
   "files": [
+    "bin",
     "dist"
   ],
   "license": "MIT",
@@ -19,7 +20,7 @@
   },
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "rm -rf dist && bun build src/index.ts --target=node --format=esm --outdir dist --packages=bundle",
+    "build": "rm -rf dist && bun build src/index.ts --target=bun --format=esm --outdir dist --packages=bundle",
     "build:binary": "rm -rf dist/bin release && bun run scripts/build.ts",
     "build:binary:all": "rm -rf dist/bin release && bun run scripts/build.ts --all",
     "package:binary": "bun run scripts/build.ts",
