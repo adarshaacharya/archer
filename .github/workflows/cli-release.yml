@@ -162,9 +162,6 @@ jobs:
             },
             "engines": {
               "node": ">=18"
-            },
-            "dependencies": {
-              "@opentui/core": "^0.1.103"
             }
           }
           JSON
