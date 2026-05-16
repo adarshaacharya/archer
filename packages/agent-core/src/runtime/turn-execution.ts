@@ -165,10 +165,9 @@ export async function handleAnswerContextOutcome<TResult, TSummary>(deps: {
   turn.fail();
   emitUiEvent({
     type: "assistant-message",
-    message:
-      contextResult.error
-        ? `Research failed: ${contextResult.error}`
-        : "Research failed before an answer could be produced.",
+    message: contextResult.error
+      ? `Research failed: ${contextResult.error}`
+      : "Research failed before an answer could be produced.",
   });
   emitUiEvent({ type: "summary", summary: baseSummary });
   pruneAfterTurn();

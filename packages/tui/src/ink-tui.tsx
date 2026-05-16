@@ -572,10 +572,20 @@ function WelcomeBanner({ state }: { state: UiState }): React.ReactNode {
 
   return (
     <Box flexDirection="column" paddingX={2} paddingTop={1} paddingBottom={0}>
-      <Box flexDirection="column" borderStyle="round" borderColor={col.border} paddingX={2} paddingY={1}>
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor={col.border}
+        paddingX={2}
+        paddingY={1}
+      >
         <Box gap={2}>
-          <Text color={col.accent} bold>{"❯_"}</Text>
-          <Text color={col.text} bold>ARCHER</Text>
+          <Text color={col.accent} bold>
+            {"❯_"}
+          </Text>
+          <Text color={col.text} bold>
+            ARCHER
+          </Text>
         </Box>
         <Box marginTop={1} flexDirection="column">
           <Box>
@@ -677,7 +687,9 @@ function Composer({
         {/* Input line — always first, commands appear below */}
         {state.promptKind ? (
           <Box marginTop={hasTopContent ? 1 : 0}>
-            <Text color={col.accent} bold>{"❯ "}</Text>
+            <Text color={col.accent} bold>
+              {"❯ "}
+            </Text>
             <Text color={col.text}>{state.promptText}</Text>
             <Text color={col.accent}>▌</Text>
           </Box>
@@ -687,7 +699,6 @@ function Composer({
             <Text color={col.dimmed}>type a message or / for commands</Text>
           </Box>
         )}
-
       </Box>
 
       {/* Hints — always right-aligned directly below the box */}
@@ -702,17 +713,14 @@ function Composer({
             const WINDOW = 6;
             const sel = state.commandSelectedIndex;
             const total = commandMatches.length;
-            const offset = sel < 0
-              ? 0
-              : Math.max(0, Math.min(sel - Math.floor(WINDOW / 2), total - WINDOW));
+            const offset =
+              sel < 0 ? 0 : Math.max(0, Math.min(sel - Math.floor(WINDOW / 2), total - WINDOW));
             const visible = commandMatches.slice(offset, offset + WINDOW);
             const moreBelow = offset + WINDOW < total;
             const moreAbove = offset > 0;
             return (
               <>
-                {moreAbove ? (
-                  <Text color={col.dimmed}>  ↑ {offset} more</Text>
-                ) : null}
+                {moreAbove ? <Text color={col.dimmed}> ↑ {offset} more</Text> : null}
                 {visible.map((cmd, i) => {
                   const absIdx = offset + i;
                   const selected = absIdx === sel;
@@ -726,7 +734,7 @@ function Composer({
                   );
                 })}
                 {moreBelow ? (
-                  <Text color={col.dimmed}>  ↓ {total - offset - WINDOW} more</Text>
+                  <Text color={col.dimmed}> ↓ {total - offset - WINDOW} more</Text>
                 ) : null}
               </>
             );
@@ -745,8 +753,7 @@ function App({ store }: { store: UiStore }): React.ReactNode {
   const termHeight = stdout?.rows ?? 24;
 
   const commandMatches = filterSlashCommands(state);
-  const isCommandMode =
-    state.promptKind === "input" && state.promptText.trim().startsWith("/");
+  const isCommandMode = state.promptKind === "input" && state.promptText.trim().startsWith("/");
 
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
