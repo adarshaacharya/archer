@@ -1,7 +1,9 @@
-import { createPlainComposerSubmission, type ComposerSubmission } from "@archer/shared/composer";
+import { type ComposerSubmission, createPlainComposerSubmission } from "@archer/shared/composer";
 import type { AgentStep, RunSummary } from "@archer/shared/runtime";
-import { render, Box, Text, useInput, useApp } from "ink";
-import React, { useSyncExternalStore } from "react";
+import { Box, render, Text, useApp, useInput, useStdout } from "ink";
+import type React from "react";
+import { useSyncExternalStore } from "react";
+import { col } from "./internal/theme.js";
 
 export interface ApprovalPromptState {
   message: string;
@@ -59,12 +61,12 @@ export interface Tui {
 }
 
 type LogEntry =
-  | { kind: "user"; text: string }
-  | { kind: "assistant"; text: string }
-  | { kind: "info"; text: string }
-  | { kind: "event"; text: string }
-  | { kind: "step"; text: string }
-  | { kind: "summary"; text: string };
+  | { id: string; kind: "user"; text: string }
+  | { id: string; kind: "assistant"; text: string }
+  | { id: string; kind: "info"; text: string }
+  | { id: string; kind: "event"; text: string }
+  | { id: string; kind: "step"; text: string }
+  | { id: string; kind: "summary"; text: string };
 
 type PromptKind = "input" | "approval";
 
@@ -76,6 +78,7 @@ type UiState = {
   promptChoices: ApprovalDialogChoice[];
   promptText: string;
   promptSelectedIndex: number;
+  commandSelectedIndex: number;
   logs: LogEntry[];
   slashCommands: SlashCommandItem[];
   pendingAssistantText: string;
@@ -103,6 +106,7 @@ class UiStore {
     promptChoices: [],
     promptText: "",
     promptSelectedIndex: 0,
+    commandSelectedIndex: -1,
     logs: [],
     slashCommands: [],
     pendingAssistantText: "",
@@ -112,6 +116,7 @@ class UiStore {
   private pendingLine: PendingLine | null = null;
   private pendingApproval: PendingApproval | null = null;
   private cancelRunningHandler: (() => void) | null = null;
+  private logSequence = 0;
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -162,14 +167,31 @@ class UiStore {
     if (this.state.promptKind == null) {
       return;
     }
-    this.setState({ promptText: `${this.state.promptText}${text}` });
+    this.setState({ promptText: `${this.state.promptText}${text}`, commandSelectedIndex: -1 });
   }
 
   backspacePromptText(): void {
     if (this.state.promptKind == null) {
       return;
     }
-    this.setState({ promptText: this.state.promptText.slice(0, -1) });
+    this.setState({ promptText: this.state.promptText.slice(0, -1), commandSelectedIndex: -1 });
+  }
+
+  setPromptText(text: string): void {
+    this.setState({ promptText: text, commandSelectedIndex: -1 });
+  }
+
+  moveCommandSelection(delta: number, total: number): void {
+    if (total === 0) return;
+    const current = this.state.commandSelectedIndex;
+    const next = current === -1 ? (delta > 0 ? 0 : total - 1) : (current + delta + total) % total;
+    this.setState({ commandSelectedIndex: next });
+  }
+
+  resetCommandSelection(): void {
+    if (this.state.commandSelectedIndex !== -1) {
+      this.setState({ commandSelectedIndex: -1 });
+    }
   }
 
   submitPromptText(): void {
@@ -178,7 +200,8 @@ class UiStore {
       this.state.promptChoices.length > 0 &&
       !this.state.promptText.trim()
     ) {
-      const selected = this.state.promptChoices[this.state.promptSelectedIndex] ?? this.state.promptChoices[0];
+      const selected =
+        this.state.promptChoices[this.state.promptSelectedIndex] ?? this.state.promptChoices[0];
       if (selected) {
         this.submitText(selected.value);
         return;
@@ -294,6 +317,14 @@ class UiStore {
     this.setState({ logs: [...this.state.logs, entry] });
   }
 
+  private pushLog(kind: LogEntry["kind"], text: string): void {
+    this.appendLog({
+      id: `log_${this.logSequence++}`,
+      kind,
+      text,
+    } as LogEntry);
+  }
+
   setActiveModel(modelId: string): void {
     this.emit({ type: "active-model", modelId });
   }
@@ -317,7 +348,7 @@ class UiStore {
   finalizeAssistantText(text?: string): void {
     const value = text ?? this.state.pendingAssistantText;
     if (value.trim()) {
-      this.appendLog({ kind: "assistant", text: value });
+      this.pushLog("assistant", value);
     }
     this.setState({ pendingAssistantText: "" });
   }
@@ -325,7 +356,6 @@ class UiStore {
   emit(event: UiEvent): void {
     switch (event.type) {
       case "startup-banner":
-        this.appendLog({ kind: "info", text: "Archer ready" });
         break;
       case "active-model":
         this.setState({
@@ -333,30 +363,27 @@ class UiStore {
         });
         break;
       case "user-message":
-        this.appendLog({ kind: "user", text: event.message });
+        this.pushLog("user", event.message);
         break;
       case "assistant-message":
-        this.appendLog({ kind: "assistant", text: event.message });
+        this.pushLog("assistant", event.message);
         break;
       case "info-message":
-        this.appendLog({ kind: "info", text: event.message });
+        this.pushLog("info", event.message);
         break;
       case "event-message":
-        this.appendLog({ kind: "event", text: event.message });
+        this.pushLog("event", event.message);
         break;
       case "info-lines":
         for (const line of event.lines) {
-          this.appendLog({ kind: "info", text: line.text });
+          this.pushLog("info", line.text);
         }
         break;
       case "step": {
         const step = event.step;
         const thought = step.thought ? ` ${step.thought}` : "";
         const observation = step.observation ? ` -> ${step.observation}` : "";
-        this.appendLog({
-          kind: "step",
-          text: `[${step.step}] ${step.action}${thought}${observation}`,
-        });
+        this.pushLog("step", `[${step.step}] ${step.action}${thought}${observation}`);
         break;
       }
       case "assistant-delta":
@@ -369,40 +396,16 @@ class UiStore {
         this.setPrompt(event.prompt);
         break;
       case "summary":
-        this.appendLog({
-          kind: "summary",
-          text: `success=${event.summary.success} steps=${event.summary.steps} duration_ms=${event.summary.durationMs} prompt_tokens=${event.summary.promptTokens} completion_tokens=${event.summary.completionTokens} est_cost_usd=${event.summary.estimatedCostUsd}`,
-        });
+        this.pushLog(
+          "summary",
+          `success=${event.summary.success} steps=${event.summary.steps} duration_ms=${event.summary.durationMs} prompt_tokens=${event.summary.promptTokens} completion_tokens=${event.summary.completionTokens} est_cost_usd=${event.summary.estimatedCostUsd}`,
+        );
         break;
       case "slash-commands":
         this.setState({ slashCommands: event.commands });
         break;
     }
   }
-}
-
-function renderPromptSuffix(state: UiState): string {
-  if (state.promptKind === "approval" && state.promptChoices.length > 0) {
-    return "  " + state.promptChoices.map((choice, index) => `${index + 1}:${choice.label}`).join("  ");
-  }
-  if (state.promptKind === "input") {
-    return "  enter to submit";
-  }
-  return "";
-}
-
-function renderApprovalChoices(state: UiState): string {
-  if (state.promptKind !== "approval" || state.promptChoices.length === 0) {
-    return "";
-  }
-
-  return state.promptChoices
-    .map((choice, index) => `${index === state.promptSelectedIndex ? ">" : " "} ${index + 1}. ${choice.label}`)
-    .join("  ");
-}
-
-function renderSlashCommandStrip(commands: SlashCommandItem[]): string {
-  return commands.slice(0, 5).map((command) => `/${command.name}`).join("  ");
 }
 
 function filterSlashCommands(state: UiState): SlashCommandItem[] {
@@ -422,49 +425,305 @@ function filterSlashCommands(state: UiState): SlashCommandItem[] {
   });
 }
 
-function renderFooter(state: UiState): string {
-  if (state.promptKind === "approval" && state.promptChoices.length > 0) {
-    return "enter accept  •  ↑↓ move  •  ctrl+c quit";
-  }
-  if (state.promptKind === "input" && state.promptText.trim().startsWith("/")) {
-    return "enter submit  •  tab to stay in command mode  •  ctrl+c quit";
-  }
-  if (state.promptKind === "input") {
-    return "enter submit  •  ctrl+c quit";
-  }
-  return "ctrl+c quit";
+function Divider({ width }: { width: number }): React.ReactNode {
+  const len = Math.max(1, width - 4);
+  return (
+    <Box paddingX={2}>
+      <Text color={col.border}>{"─".repeat(len)}</Text>
+    </Box>
+  );
 }
 
-function formatLogEntry(entry: LogEntry): string {
-  switch (entry.kind) {
-    case "user":
-      return `you> ${entry.text}`;
-    case "assistant":
-      return `ai> ${entry.text}`;
-    case "info":
-      return `info> ${entry.text}`;
-    case "event":
-      return `event> ${entry.text}`;
-    case "step":
-      return `step> ${entry.text}`;
-    case "summary":
-      return `done> ${entry.text}`;
-  }
-}
-
-function formatStatusLine(state: UiState): string {
-  const promptState =
-    state.promptKind === "approval"
+function Header({ state }: { state: UiState }): React.ReactNode {
+  const isStreaming = state.pendingAssistantText.length > 0;
+  const dot = isStreaming || state.promptKind ? "●" : "○";
+  const statusLabel = isStreaming
+    ? "running"
+    : state.promptKind === "approval"
       ? "approval"
       : state.promptKind === "input"
         ? "input"
-        : "idle";
-  return `${state.activeModelLabel}  ${promptState}`;
+        : "ready";
+  const statusColor = isStreaming
+    ? col.summary
+    : state.promptKind === "approval"
+      ? col.event
+      : state.promptKind === "input"
+        ? col.accent
+        : col.user;
+
+  return (
+    <Box paddingX={2} paddingTop={1} paddingBottom={1} justifyContent="space-between">
+      <Box gap={2}>
+        <Text color={col.accent} bold>
+          ◈ ARCHER
+        </Text>
+      </Box>
+      <Box gap={2}>
+        <Text color={col.step}>{state.activeModelLabel}</Text>
+        <Text color={statusColor} bold>
+          {dot} {statusLabel}
+        </Text>
+      </Box>
+    </Box>
+  );
+}
+
+function LogItem({ entry, index }: { entry: LogEntry; index: number }): React.ReactNode {
+  if (entry.kind === "user") {
+    return (
+      <Box flexDirection="column" marginTop={index === 0 ? 0 : 1}>
+        <Box gap={1}>
+          <Text color={col.user} bold>
+            ›
+          </Text>
+          <Text color={col.user} bold>
+            you
+          </Text>
+        </Box>
+        <Box paddingLeft={2}>
+          <Text color={col.text} wrap="wrap">
+            {entry.text}
+          </Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (entry.kind === "assistant") {
+    const isPending = entry.id === "pending";
+    return (
+      <Box flexDirection="column" marginTop={index === 0 ? 0 : 1}>
+        <Box gap={1}>
+          <Text color={col.accent} bold>
+            ✦
+          </Text>
+          <Text color={col.accent} bold>
+            archer
+          </Text>
+        </Box>
+        <Box paddingLeft={2}>
+          <Text color={col.text} wrap="wrap">
+            {entry.text}
+            {isPending ? "▌" : ""}
+          </Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (entry.kind === "step") {
+    return (
+      <Box gap={2}>
+        <Text color={col.step}>⟩</Text>
+        <Text color={col.step} wrap="wrap">
+          {entry.text}
+        </Text>
+      </Box>
+    );
+  }
+
+  if (entry.kind === "summary") {
+    return (
+      <Box flexDirection="column" marginTop={index === 0 ? 0 : 1}>
+        <Box gap={1}>
+          <Text color={col.summary} bold>
+            ✓
+          </Text>
+          <Text color={col.summary} bold>
+            done
+          </Text>
+        </Box>
+        <Box paddingLeft={2}>
+          <Text color={col.muted} wrap="wrap">
+            {entry.text}
+          </Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (entry.kind === "event") {
+    return (
+      <Box gap={2}>
+        <Text color={col.event}>◈</Text>
+        <Text color={col.muted} wrap="wrap">
+          {entry.text}
+        </Text>
+      </Box>
+    );
+  }
+
+  // info
+  return (
+    <Box gap={2}>
+      <Text color={col.dimmed}>·</Text>
+      <Text color={col.muted} wrap="wrap">
+        {entry.text}
+      </Text>
+    </Box>
+  );
+}
+
+function WelcomeBanner({ state }: { state: UiState }): React.ReactNode {
+  const model = state.activeModelLabel.replace("model=", "") || "unconfigured";
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+  const cwd = process.cwd().replace(home, "~");
+
+  return (
+    <Box flexDirection="column" paddingX={2} paddingTop={1} paddingBottom={0}>
+      <Box flexDirection="column" borderStyle="round" borderColor={col.border} paddingX={2} paddingY={1}>
+        <Box gap={2}>
+          <Text color={col.accent} bold>{"❯_"}</Text>
+          <Text color={col.text} bold>ARCHER</Text>
+        </Box>
+        <Box marginTop={1} flexDirection="column">
+          <Box>
+            <Text color={col.muted}>{"model     "}</Text>
+            <Text color={col.text}>{model}</Text>
+            <Text color={col.dimmed}>{"  /model to change"}</Text>
+          </Box>
+          <Box>
+            <Text color={col.muted}>{"directory "}</Text>
+            <Text color={col.text}>{cwd}</Text>
+          </Box>
+        </Box>
+      </Box>
+      <Box marginTop={1}>
+        <Text color={col.muted}>{"Tip: Run "}</Text>
+        <Text color={col.accent}>{"/init"}</Text>
+        <Text color={col.muted}>{" to create ARCHER.md with project context"}</Text>
+      </Box>
+    </Box>
+  );
+}
+
+function ActivityLog({
+  logs,
+  pendingText,
+}: {
+  logs: LogEntry[];
+  pendingText: string;
+}): React.ReactNode {
+  const transcript: LogEntry[] = [
+    ...logs.slice(-16),
+    ...(pendingText ? [{ id: "pending", kind: "assistant" as const, text: pendingText }] : []),
+  ];
+
+  return (
+    <Box flexDirection="column" flexGrow={1} paddingX={2} paddingTop={1} paddingBottom={1}>
+      {transcript.map((entry, i) => (
+        <LogItem key={entry.id ?? String(i)} entry={entry} index={i} />
+      ))}
+    </Box>
+  );
+}
+
+function Composer({
+  state,
+  commandMatches,
+}: {
+  state: UiState;
+  commandMatches: SlashCommandItem[];
+}): React.ReactNode {
+  const isApproval = state.promptKind === "approval";
+  const isInput = state.promptKind === "input";
+  const isCommandMode = isInput && state.promptText.trim().startsWith("/");
+  const borderColor = isApproval ? col.event : isInput ? col.accent : col.border;
+
+  const hasChoices = isApproval && state.promptChoices.length > 0;
+  const hasCommandMatches = isCommandMode && commandMatches.length > 0;
+  const hasTopContent = !!state.promptMessage || !!state.promptDetails || hasChoices;
+
+  const footerHints = hasChoices
+    ? "↵ accept  ↑↓ move  ^C quit"
+    : isCommandMode && commandMatches.length > 0
+      ? "↵/tab select  ↑↓ move  ^C quit"
+      : isInput
+        ? "↵ submit  / commands  ^C quit"
+        : "^C quit";
+
+  return (
+    <Box flexDirection="column" paddingX={1} paddingBottom={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor={borderColor} paddingX={1}>
+        {state.promptMessage ? (
+          <Text color={col.text} wrap="wrap">
+            {state.promptMessage}
+          </Text>
+        ) : null}
+        {state.promptDetails ? <Text color={col.muted}>{state.promptDetails}</Text> : null}
+
+        {hasChoices ? (
+          <Box flexDirection="column" marginTop={hasTopContent ? 1 : 0}>
+            {state.promptChoices.map((choice, index) => {
+              const selected = index === state.promptSelectedIndex;
+              return (
+                <Box key={choice.value} gap={1}>
+                  <Text color={selected ? col.accent : col.dimmed} bold>
+                    {selected ? "▶" : " "}
+                  </Text>
+                  <Text color={selected ? col.text : col.muted}>
+                    {index + 1}. {choice.label}
+                  </Text>
+                  {choice.description ? (
+                    <Text color={col.dimmed}> {choice.description}</Text>
+                  ) : null}
+                </Box>
+              );
+            })}
+          </Box>
+        ) : null}
+
+        {/* Input line — always first, commands appear below */}
+        {state.promptKind ? (
+          <Box marginTop={hasTopContent ? 1 : 0}>
+            <Text color={col.accent} bold>{"❯ "}</Text>
+            <Text color={col.text}>{state.promptText}</Text>
+            <Text color={col.accent}>▌</Text>
+          </Box>
+        ) : (
+          <Box>
+            <Text color={col.dimmed}>{"❯ "}</Text>
+            <Text color={col.dimmed}>type a message or / for commands</Text>
+          </Box>
+        )}
+
+      </Box>
+
+      {/* Hints — always right-aligned directly below the box */}
+      <Box justifyContent="flex-end" paddingX={2}>
+        <Text color={col.dimmed}>{footerHints}</Text>
+      </Box>
+
+      {/* Command palette — below hints, only when in command mode */}
+      {hasCommandMatches ? (
+        <Box flexDirection="column" paddingX={2} marginTop={1}>
+          {commandMatches.map((cmd, index) => {
+            const selected = index === state.commandSelectedIndex;
+            return (
+              <Box key={cmd.name} gap={3}>
+                <Text color={selected ? col.accent : col.text} bold={selected}>
+                  {cmd.name}
+                </Text>
+                <Text color={selected ? col.text : col.dimmed}>{cmd.description}</Text>
+              </Box>
+            );
+          })}
+        </Box>
+      ) : null}
+    </Box>
+  );
 }
 
 function App({ store }: { store: UiStore }): React.ReactNode {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const { exit } = useApp();
+  const { stdout } = useStdout();
+  const termWidth = stdout?.columns ?? 80;
+
+  const commandMatches = filterSlashCommands(state);
+  const isCommandMode =
+    state.promptKind === "input" && state.promptText.trim().startsWith("/");
 
   useInput((input, key) => {
     if (key.ctrl && input === "c") {
@@ -475,6 +734,31 @@ function App({ store }: { store: UiStore }): React.ReactNode {
 
     if (state.promptKind == null) {
       return;
+    }
+
+    if (isCommandMode && commandMatches.length > 0) {
+      if (key.downArrow) {
+        store.moveCommandSelection(1, commandMatches.length);
+        return;
+      }
+      if (key.upArrow) {
+        store.moveCommandSelection(-1, commandMatches.length);
+        return;
+      }
+      if (key.tab) {
+        const idx = state.commandSelectedIndex >= 0 ? state.commandSelectedIndex : 0;
+        const cmd = commandMatches[idx];
+        if (cmd) store.setPromptText(cmd.name);
+        return;
+      }
+      if (key.return && state.commandSelectedIndex >= 0) {
+        const cmd = commandMatches[state.commandSelectedIndex];
+        if (cmd) {
+          store.setPromptText(cmd.name);
+          store.submitPromptText();
+        }
+        return;
+      }
     }
 
     if (key.return) {
@@ -503,61 +787,18 @@ function App({ store }: { store: UiStore }): React.ReactNode {
     }
   });
 
-  const transcript = [...state.logs.slice(-22), ...(state.pendingAssistantText ? [{ kind: "assistant", text: state.pendingAssistantText } as const] : [])];
+  const showBanner = state.logs.length === 0 && !state.pendingAssistantText;
 
   return (
-    <Box flexDirection="column" paddingX={1}>
-      <Box justifyContent="space-between">
-        <Text color="green" bold>
-          Archer
-        </Text>
-        <Text dimColor>{formatStatusLine(state)}</Text>
-      </Box>
-      <Text dimColor>
-        {state.slashCommands.length > 0 ? renderSlashCommandStrip(state.slashCommands) : "Ctrl+C"}
-      </Text>
-      <Box flexDirection="column" flexGrow={1} marginTop={1}>
-        {transcript.map((entry, index) => (
-          <Text
-            key={`${index}:${entry.kind}:${entry.text}`}
-            color={
-              entry.kind === "assistant"
-                ? "cyan"
-                : entry.kind === "user"
-                  ? "green"
-                  : entry.kind === "summary"
-                    ? "yellow"
-                    : entry.kind === "event"
-                      ? "magenta"
-                      : "white"
-            }
-            wrap="truncate-end"
-          >
-            {formatLogEntry(entry)}
-          </Text>
-        ))}
-      </Box>
-      <Box flexDirection="column" marginTop={1}>
-        {state.promptKind ? (
-          <>
-            <Text color="cyan">
-              {state.promptMessage}
-              {renderPromptSuffix(state)}
-            </Text>
-            {state.promptDetails ? <Text dimColor>{state.promptDetails}</Text> : null}
-            {state.promptKind === "approval" && state.promptChoices.length > 0 ? (
-              <Text color="yellow">{renderApprovalChoices(state)}</Text>
-            ) : null}
-            {state.promptKind === "input" && state.promptText.trim().startsWith("/") ? (
-              <Text dimColor>{renderSlashCommandStrip(filterSlashCommands(state))}</Text>
-            ) : null}
-            <Text>{`> ${state.promptText}`}</Text>
-            <Text dimColor>{renderFooter(state)}</Text>
-          </>
-        ) : (
-          <Text dimColor>{renderFooter(state)}</Text>
-        )}
-      </Box>
+    <Box flexDirection="column">
+      <Header state={state} />
+      {showBanner ? (
+        <WelcomeBanner state={state} />
+      ) : (
+        <ActivityLog logs={state.logs} pendingText={state.pendingAssistantText} />
+      )}
+      <Divider width={termWidth} />
+      <Composer state={state} commandMatches={commandMatches} />
     </Box>
   );
 }
