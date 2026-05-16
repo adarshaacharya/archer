@@ -1,6 +1,6 @@
 import { type ComposerSubmission, createPlainComposerSubmission } from "@archer/shared/composer";
 import type { AgentStep, RunSummary } from "@archer/shared/runtime";
-import { Box, render, Text, useApp, useInput, useStdout } from "ink";
+import { Box, render, Spacer, Text, useApp, useInput, useStdout } from "ink";
 import type React from "react";
 import { useSyncExternalStore } from "react";
 import { col } from "./internal/theme.js";
@@ -742,6 +742,7 @@ function App({ store }: { store: UiStore }): React.ReactNode {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const termWidth = stdout?.columns ?? 80;
+  const termHeight = stdout?.rows ?? 24;
 
   const commandMatches = filterSlashCommands(state);
   const isCommandMode =
@@ -810,17 +811,23 @@ function App({ store }: { store: UiStore }): React.ReactNode {
   });
 
   const showBanner = state.logs.length === 0 && !state.pendingAssistantText;
+  // Ink only expands Spacer/flexGrow when the parent has an explicit height.
+  // On startup, let content flow naturally so the banner sits above the composer.
+  const pinComposerToBottom = !showBanner;
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" {...(pinComposerToBottom ? { height: termHeight } : {})}>
       <Header state={state} />
-      {showBanner ? (
-        <WelcomeBanner state={state} />
-      ) : (
-        <ActivityLog logs={state.logs} pendingText={state.pendingAssistantText} />
-      )}
-      <Divider width={termWidth} />
-      <Composer state={state} commandMatches={commandMatches} />
+      <Box flexDirection="column" {...(pinComposerToBottom ? { flexGrow: 1 } : {})}>
+        {showBanner ? (
+          <WelcomeBanner state={state} />
+        ) : (
+          <ActivityLog logs={state.logs} pendingText={state.pendingAssistantText} />
+        )}
+        {pinComposerToBottom ? <Spacer /> : null}
+        <Divider width={termWidth} />
+        <Composer state={state} commandMatches={commandMatches} />
+      </Box>
     </Box>
   );
 }
