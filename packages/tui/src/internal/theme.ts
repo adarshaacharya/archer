@@ -3,11 +3,14 @@ export const col = {
   userBg: "#161B22",
   text: "#E6EDF3",
   muted: "#6E7681",
+  dimmed: "#484F58",
   border: "#30363D",
   accent: "#58A6FF",
   user: "#3FB950",
-  step: "#6E7681",
+  step: "#8B949E",
   summary: "#F0883E",
+  event: "#D2A8FF",
+  error: "#F85149",
 };
 
 export const BASE_FOOTER = 7;

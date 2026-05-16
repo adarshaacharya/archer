@@ -75,8 +75,8 @@ function isCasualGreeting(input: string): boolean {
 }
 
 function renderGreetingReply(tui: Tui, greeting: string): void {
-  tui.renderUserMessage(greeting);
-  tui.renderAssistantMessage("What would you like to work on?");
+  tui.emit({ type: "user-message", message: greeting });
+  tui.emit({ type: "assistant-message", message: "What would you like to work on?" });
 }
 
 function newSessionId(): string {
@@ -596,10 +596,13 @@ async function promptForProvider(
 
 async function promptForWebProvider(tui: Tui): Promise<SupportedWebProvider | "skip" | "exit"> {
   while (true) {
-    tui.renderApprovalPrompt({
-      message:
-        "No web search provider configured. Enter provider: archer-scout, tavily, exa, or skip",
-      options: ["archer-scout", "tavily", "exa", "skip", "/exit"],
+    tui.emit({
+      type: "approval-prompt",
+      prompt: {
+        message:
+          "No web search provider configured. Enter provider: archer-scout, tavily, exa, or skip",
+        options: ["archer-scout", "tavily", "exa", "skip", "/exit"],
+      },
     });
     const value = (await tui.readInputLine()).trim();
     if (!value) continue;
@@ -609,9 +612,12 @@ async function promptForWebProvider(tui: Tui): Promise<SupportedWebProvider | "s
     const provider = normalizeWebProvider(value);
     if (provider) return provider;
 
-    tui.renderApprovalPrompt({
-      message: `Unknown web provider: ${value}`,
-      options: ["archer-scout", "tavily", "exa", "skip"],
+    tui.emit({
+      type: "approval-prompt",
+      prompt: {
+        message: `Unknown web provider: ${value}`,
+        options: ["archer-scout", "tavily", "exa", "skip"],
+      },
     });
   }
 }
@@ -629,9 +635,12 @@ async function connectProvider(
   }
 
   while (true) {
-    tui.renderApprovalPrompt({
-      message: `Enter API key for ${selectedProvider}`,
-      options: ["/exit"],
+    tui.emit({
+      type: "approval-prompt",
+      prompt: {
+        message: `Enter API key for ${selectedProvider}`,
+        options: ["/exit"],
+      },
     });
     const key = (await tui.readInputLine()).trim();
     if (!key) continue;
@@ -710,9 +719,12 @@ async function connectWebProvider(
   }
 
   while (true) {
-    tui.renderApprovalPrompt({
-      message: `Enter API key for ${selectedProvider}`,
-      options: ["/exit"],
+    tui.emit({
+      type: "approval-prompt",
+      prompt: {
+        message: `Enter API key for ${selectedProvider}`,
+        options: ["/exit"],
+      },
     });
     const key = (await tui.readInputLine()).trim();
     if (!key) continue;
@@ -753,18 +765,19 @@ async function replaySessionTranscript(tui: Tui, sessionId: string): Promise<voi
     getTurnResults(sessionId, 10),
   ]);
   if (messages.length === 0) {
-    tui.renderInfoMessage(`No stored messages for ${sessionId}.`);
+    tui.emit({ type: "info-message", message: `No stored messages for ${sessionId}.` });
     return;
   }
 
-  tui.renderInfoMessage(
-    `Restored ${messages.length} stored message${messages.length === 1 ? "" : "s"} from ${sessionId}.`,
-  );
+  tui.emit({
+    type: "info-message",
+    message: `Restored ${messages.length} stored message${messages.length === 1 ? "" : "s"} from ${sessionId}.`,
+  });
 
   if (turnResults.length > 0) {
-    tui.renderInfoMessage("Recent turn results:");
+    tui.emit({ type: "info-message", message: "Recent turn results:" });
     for (const turn of turnResults.slice(-5)) {
-      tui.renderInfoMessage(formatTurnResultLine(turn));
+      tui.emit({ type: "info-message", message: formatTurnResultLine(turn) });
     }
   }
 
@@ -775,21 +788,21 @@ async function replaySessionTranscript(tui: Tui, sessionId: string): Promise<voi
     }
 
     if (message.kind === "event") {
-      tui.renderEventMessage(content);
+      tui.emit({ type: "event-message", message: content });
       continue;
     }
 
     if (message.role === "user") {
-      tui.renderUserMessage(content);
+      tui.emit({ type: "user-message", message: content });
       continue;
     }
 
     if (message.role === "assistant") {
-      tui.finalizeAssistantStream(content);
+      tui.emit({ type: "finalize-assistant", text: content });
       continue;
     }
 
-    tui.renderInfoMessage(`[${message.role}] ${content}`);
+    tui.emit({ type: "info-message", message: `[${message.role}] ${content}` });
   }
 }
 
@@ -1102,28 +1115,29 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
 
     const slash = await handleSlashCommand(line, tui, state);
     if (slash.type === "exit") {
-      tui.renderApprovalPrompt(null);
+      tui.emit({ type: "approval-prompt", prompt: null });
       break;
     }
     if (slash.type === "continue") {
-      tui.renderApprovalPrompt(null);
+      tui.emit({ type: "approval-prompt", prompt: null });
       if (slash.restoreSessionId) {
         await replaySessionTranscript(tui, slash.restoreSessionId);
       }
       if (slash.lines && slash.lines.length > 0) {
-        tui.renderInfoLines(slash.lines);
+        tui.emit({ type: "info-lines", lines: slash.lines });
       } else if (slash.message.includes("\n")) {
-        tui.renderInfoMessage(slash.message);
+        tui.emit({ type: "info-message", message: slash.message });
       } else {
-        tui.renderApprovalPrompt({
-          message: slash.message,
+        tui.emit({
+          type: "approval-prompt",
+          prompt: { message: slash.message },
         });
       }
       continue;
     }
 
     if (line === "exit" || line === "quit") {
-      tui.renderApprovalPrompt(null);
+      tui.emit({ type: "approval-prompt", prompt: null });
       break;
     }
 
@@ -1137,9 +1151,12 @@ async function runInteractive(tui: Tui, state: SessionState): Promise<void> {
       await persistPromptHistory(state.projectRoot, state.sessionId, submission.text);
       await runTurn(submission, tui, state);
     } catch (error) {
-      tui.renderApprovalPrompt({
-        message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,
-        options: ["continue", "exit"],
+      tui.emit({
+        type: "approval-prompt",
+        prompt: {
+          message: `Run failed: ${error instanceof Error ? error.message : String(error)}`,
+          options: ["continue", "exit"],
+        },
       });
     }
   }
@@ -1210,7 +1227,7 @@ async function main(): Promise<void> {
   const { ArcherTui } = await import("@archer/tui");
   const tui: Tui = new ArcherTui();
   await tui.start();
-  tui.setSlashCommands(slashCommandOptions);
+  tui.emit({ type: "slash-commands", commands: slashCommandOptions });
   tui.loadPersistentPromptHistory(await listPromptHistory(projectRoot));
 
   const handleSigint = () => {
@@ -1222,10 +1239,10 @@ async function main(): Promise<void> {
   try {
     const ready = await ensureProviderConnected(tui, state);
     if (!ready) return;
-    tui.setActiveModel(state.modelId);
-    tui.renderStartupBanner();
+    tui.emit({ type: "active-model", modelId: state.modelId });
+    tui.emit({ type: "startup-banner" });
     if (shouldShowInitHint(projectRoot)) {
-      tui.renderInfoMessage(renderInitHintMessage());
+      tui.emit({ type: "info-message", message: renderInitHintMessage() });
     }
     const existing = await getSession(state.sessionId);
     if (!existing) {
@@ -1242,10 +1259,10 @@ async function main(): Promise<void> {
       state.sessionTitle = existing.title ?? null;
     }
 
-    tui.renderApprovalPrompt(null);
+    tui.emit({ type: "approval-prompt", prompt: null });
     const updateNotice = await getArcherUpdateNotice();
     if (updateNotice) {
-      tui.renderInfoMessage(updateNotice);
+      tui.emit({ type: "info-message", message: updateNotice });
     }
 
     if (initialTask) {

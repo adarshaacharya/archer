@@ -11,6 +11,7 @@ import {
   summarizeQuestionExploration,
   validateTurnDecision,
 } from "@archer/agent-core";
+import type { UiEvent } from "@archer/tui";
 import { prependExplicitFileContext } from "../../features/context/explicit-context.js";
 
 type ContextDeps = {
@@ -45,9 +46,7 @@ type ContextDeps = {
   };
   buildSummary: any;
   buildTurnResult: any;
-  renderSummary: any;
-  renderApprovalMessage: (message: string) => void;
-  renderAssistantError: (message: string) => void;
+  emitUiEvent: (event: UiEvent) => void;
   persistAssistantTranscript: any;
   pruneAfterTurn: () => void;
   deriveCurrentValidationScope: any;
@@ -70,7 +69,10 @@ export async function executeContextFlow(deps: ContextDeps): Promise<{
   let isChangeTurn = deps.isChangeTurn;
   deps.turn.beginResearch();
   if (deps.questionStrategy) {
-    deps.renderApprovalMessage("Researching repository context...");
+    deps.emitUiEvent({
+      type: "approval-prompt",
+      prompt: { message: "Researching repository context..." },
+    });
   }
   const researchPrompt = prependContinuationBrief(
     prependExplicitFileContext(
@@ -158,7 +160,7 @@ export async function executeContextFlow(deps: ContextDeps): Promise<{
       completionTokens: contextResult.usage?.completionTokens ?? 0,
       estimatedCostUsd: contextResult.estimatedCostUsd ?? 0,
     });
-    deps.renderSummary(summary);
+    deps.emitUiEvent({ type: "summary", summary });
     void deps.pruneSessionAfterTurn(deps.stateSessionId);
     return {
       result: deps.buildTurnResult(
@@ -201,9 +203,7 @@ export async function executeContextFlow(deps: ContextDeps): Promise<{
     },
     buildSummary: deps.buildSummary,
     buildTurnResult: deps.buildTurnResult,
-    renderSummary: deps.renderSummary,
-    renderApprovalMessage: deps.renderApprovalMessage,
-    renderAssistantError: deps.renderAssistantError,
+    emitUiEvent: deps.emitUiEvent,
     persistAssistantTranscript: deps.persistAssistantTranscript,
     pruneAfterTurn: deps.pruneAfterTurn,
     deriveValidationScope: deps.deriveCurrentValidationScope,

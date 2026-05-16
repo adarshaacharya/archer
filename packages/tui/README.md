@@ -1,6 +1,6 @@
 # @archer/tui
 
-Terminal UI package built on OpenTUI with Solid-driven state.
+Terminal UI package built on Ink with a state-driven render loop.
 
 ## Responsibility
 
@@ -16,5 +16,5 @@ Terminal UI package built on OpenTUI with Solid-driven state.
 ## Depends On
 
 - `@archer/shared`
-- `@opentui/core`
-- `solid-js`
+- `ink`
+- `react`

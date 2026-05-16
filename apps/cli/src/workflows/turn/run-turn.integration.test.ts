@@ -46,11 +46,9 @@ function createState(): SessionState {
 
 function createTui() {
   return {
-    renderApprovalPrompt: mock(() => {}),
-    renderAssistantMessage: mock(() => {}),
+    emit: mock(() => {}),
   } as unknown as {
-    renderApprovalPrompt: ReturnType<typeof mock>;
-    renderAssistantMessage: ReturnType<typeof mock>;
+    emit: ReturnType<typeof mock>;
   };
 }
 
@@ -125,7 +123,6 @@ describe("runTurn integration", () => {
     });
     expect(runTaskCalls[0]?.[4]).toBeUndefined();
     expect(result.status).toBe("completed");
-    expect(tui.renderAssistantMessage).not.toHaveBeenCalled();
     expect(appendTurnResultMock).toHaveBeenCalledTimes(1);
   });
 
@@ -153,7 +150,11 @@ describe("runTurn integration", () => {
 
     expect(resetSessionByIdMock).toHaveBeenCalledTimes(1);
     expect(resetSessionByIdMock).toHaveBeenCalledWith("session_test");
-    expect(tui.renderApprovalPrompt).toHaveBeenCalled();
+    expect(tui.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "approval-prompt",
+      }),
+    );
   });
 
   it("persists turn results with the original task text", async () => {
@@ -201,7 +202,10 @@ describe("runTurn integration", () => {
 
     expect(runTaskMock).not.toHaveBeenCalled();
     expect(result.status).toBe("clarify");
-    expect(tui.renderAssistantMessage).toHaveBeenCalledTimes(1);
+    expect(tui.emit).toHaveBeenCalledWith({
+      type: "assistant-message",
+      message: "Please enter a task or question.",
+    });
     const appendTurnResultCalls = appendTurnResultMock.mock.calls as unknown[][];
     expect(appendTurnResultCalls[0]?.[0]).toMatchObject({
       sessionId: "session_test",

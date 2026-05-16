@@ -32,15 +32,15 @@ describe("insertFileMention", () => {
         replaceEnd: 11,
       },
       [],
-      "packages/tui/src/opentui-tui.ts",
+      "packages/tui/src/ink-tui.tsx",
     );
 
-    expect(result.text).toBe("check @packages/tui/src/opentui-tui.ts ");
+    expect(result.text).toBe("check @packages/tui/src/ink-tui.tsx ");
     expect(result.mentions).toHaveLength(1);
-    expect(result.mentions[0]?.label).toBe("@packages/tui/src/opentui-tui.ts");
+    expect(result.mentions[0]?.label).toBe("@packages/tui/src/ink-tui.tsx");
     expect(result.mentions[0]?.target).toEqual({
       type: "file",
-      path: "packages/tui/src/opentui-tui.ts",
+      path: "packages/tui/src/ink-tui.tsx",
     });
   });
 });

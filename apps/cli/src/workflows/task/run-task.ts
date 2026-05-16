@@ -39,7 +39,7 @@ import {
   saveCompactionEvent,
   updateSessionTitle,
 } from "@archer/storage";
-import type { Tui } from "@archer/tui";
+import type { Tui, UiEvent } from "@archer/tui";
 import { createWebCapability } from "../../../../../packages/web-capability/src/index.js";
 import { requestApproval, withApprovalQueue } from "../../features/approvals/approvals.js";
 import { resolveActiveWebProvider } from "../../features/auth/auth-store.js";
@@ -105,9 +105,12 @@ export async function runTask(
     });
   }
 
-  tui.renderApprovalPrompt({
-    message: taskOptions?.displayTask ?? request.task,
-    options: ["running"],
+  tui.emit({
+    type: "approval-prompt",
+    prompt: {
+      message: taskOptions?.displayTask ?? request.task,
+      options: ["running"],
+    },
   });
 
   const started = performance.now();
@@ -150,9 +153,12 @@ export async function runTask(
 
     const frame = spinnerFrames[frameIndex % spinnerFrames.length];
     frameIndex += 1;
-    tui.renderApprovalPrompt({
-      message: `${frame} ${turnStatusLabel(turn.state)}...`,
-      options: ["esc=abort"],
+    tui.emit({
+      type: "approval-prompt",
+      prompt: {
+        message: `${frame} ${turnStatusLabel(turn.state)}...`,
+        options: ["esc=abort"],
+      },
     });
   }, 120);
 
@@ -174,7 +180,7 @@ export async function runTask(
     },
   });
 
-  tui.renderUserMessage(taskOptions?.displayTask ?? request.task);
+  tui.emit({ type: "user-message", message: taskOptions?.displayTask ?? request.task });
   await appendMessage({
     id: newMessageId(state.sessionId, "user"),
     session_id: state.sessionId,
@@ -290,17 +296,9 @@ export async function runTask(
   });
 
   const elapsedMs = () => Math.round(performance.now() - started);
-  const renderSummary = (summary: TurnSummary) => {
-    tui.renderSummary(summary);
-  };
-  const renderApprovalMessage = (message: string) => {
-    tui.renderApprovalPrompt({
-      message,
-      options: ["running"],
-    });
-  };
+  const emitUiEvent = (event: UiEvent) => tui.emit(event);
   const persistAssistantTranscript = (message: string) => {
-    tui.finalizeAssistantStream(message);
+    emitUiEvent({ type: "finalize-assistant", text: message });
     void appendMessage({
       id: newMessageId(state.sessionId, "assistant"),
       session_id: state.sessionId,
@@ -313,7 +311,7 @@ export async function runTask(
     if (!message.trim()) {
       return;
     }
-    tui.renderEventMessage(message);
+    emitUiEvent({ type: "event-message", message });
     void appendMessage({
       id: newMessageId(state.sessionId, "event"),
       session_id: state.sessionId,
@@ -482,9 +480,12 @@ export async function runTask(
       const decision = evaluateQuestionAnswerReadiness(questionStrategy, questionExploration);
       if (decision.ready) {
         questionAnswerReadyReason ??= decision.reason;
-        tui.renderApprovalPrompt({
-          message: `Answer-ready: ${questionAnswerReadyReason}. Synthesizing...`,
-          options: ["esc=abort"],
+        tui.emit({
+          type: "approval-prompt",
+          prompt: {
+            message: `Answer-ready: ${questionAnswerReadyReason}. Synthesizing...`,
+            options: ["esc=abort"],
+          },
         });
         return false;
       }
@@ -535,7 +536,7 @@ export async function runTask(
           if (step.action === "model.final") {
             evalMetrics.recordFinalMessage(step.observation ?? "");
             if (persistTranscript) {
-              tui.finalizeAssistantStream(step.observation);
+              tui.emit({ type: "finalize-assistant", text: step.observation });
               if (step.observation?.trim()) {
                 void appendMessage({
                   id: newMessageId(state.sessionId, "assistant"),
@@ -549,11 +550,14 @@ export async function runTask(
             return;
           }
 
-          tui.renderStep({
-            step: step.step,
-            action: step.action,
-            thought: step.thought,
-            observation: step.observation,
+          tui.emit({
+            type: "step",
+            step: {
+              step: step.step,
+              action: step.action,
+              thought: step.thought,
+              observation: step.observation,
+            },
           });
         },
         onToolEvent: (event) => {
@@ -575,7 +579,7 @@ export async function runTask(
         },
         onTextDelta: persistTranscript
           ? (delta) => {
-              tui.renderAssistantDelta(delta);
+              tui.emit({ type: "assistant-delta", delta });
             }
           : undefined,
       },
@@ -667,10 +671,9 @@ export async function runTask(
       task: request.task,
       allowedToolNames,
       runPhase,
-      renderApprovalMessage,
+      emitUiEvent,
       elapsedMs,
       buildSummary,
-      renderSummary,
       pruneAfterTurn,
       buildTurnResult,
       onCompleted: () => turn.finish(),
@@ -709,11 +712,7 @@ export async function runTask(
       observedFacts,
       buildSummary,
       buildTurnResult,
-      renderSummary,
-      renderApprovalMessage,
-      renderAssistantError: (message) => {
-        tui.renderAssistantMessage(message);
-      },
+      emitUiEvent,
       persistAssistantTranscript,
       pruneAfterTurn,
       deriveCurrentValidationScope,
@@ -732,6 +731,6 @@ export async function runTask(
   } finally {
     clearInterval(spinner);
     tui.onCancelRunning(null);
-    tui.renderApprovalPrompt(null);
+    tui.emit({ type: "approval-prompt", prompt: null });
   }
 }
