@@ -1,4 +1,4 @@
-import { deriveCompactionPolicy, resetSessionById } from "@archer/agent-core";
+import { deriveCompactionPolicy, resetSessionById } from "@archer/harness";
 import { type ComposerSubmission, createPlainComposerSubmission } from "@archer/shared/composer";
 import { appendTurnResult, getTurnResults } from "@archer/storage";
 import type { Tui } from "@archer/tui";

@@ -12,12 +12,12 @@
     },
     "apps/cli": {
       "name": "@adarshaacharya/archer",
-      "version": "0.1.25",
+      "version": "0.1.28",
       "bin": {
-        "archer": "dist/index.js",
+        "archer": "bin/archer",
       },
       "dependencies": {
-        "@archer/agent-core": "workspace:*",
+        "@archer/harness": "workspace:*",
         "@archer/model-providers": "workspace:*",
         "@archer/sandbox": "workspace:*",
         "@archer/shared": "workspace:*",
@@ -48,14 +48,6 @@
     "packages/agent-core": {
       "name": "@archer/agent-core",
       "version": "0.0.1",
-      "dependencies": {
-        "@archer/model-providers": "workspace:*",
-        "@archer/sandbox": "workspace:*",
-        "@archer/shared": "workspace:*",
-        "@archer/storage": "workspace:*",
-        "@archer/tools": "workspace:*",
-        "@openharness/core": "^0.6.2",
-      },
     },
     "packages/eslint-config": {
       "name": "@repo/eslint-config",
@@ -80,6 +72,18 @@
       "dependencies": {
         "@archer/storage": "workspace:*",
         "zod": "^4.3.6",
+      },
+    },
+    "packages/harness": {
+      "name": "@archer/harness",
+      "version": "0.0.1",
+      "dependencies": {
+        "@archer/model-providers": "workspace:*",
+        "@archer/sandbox": "workspace:*",
+        "@archer/shared": "workspace:*",
+        "@archer/storage": "workspace:*",
+        "@archer/tools": "workspace:*",
+        "@openharness/core": "^0.6.2",
       },
     },
     "packages/model-providers": {
@@ -187,6 +191,8 @@
     "@archer/agent-core": ["@archer/agent-core@workspace:packages/agent-core"],
 
     "@archer/evals": ["@archer/evals@workspace:packages/evals"],
+
+    "@archer/harness": ["@archer/harness@workspace:packages/harness"],
 
     "@archer/model-providers": ["@archer/model-providers@workspace:packages/model-providers"],
 

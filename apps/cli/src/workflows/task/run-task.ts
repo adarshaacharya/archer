@@ -27,7 +27,7 @@ import {
   shouldAttemptVerification,
   type TurnObservedFacts,
   validateTurnDecision,
-} from "@archer/agent-core";
+} from "@archer/harness";
 import { createSandboxEnvironment } from "@archer/sandbox";
 import { autoApproveEditsInApprovalMode } from "@archer/shared/approval";
 import type { ComposerSubmission } from "@archer/shared/composer";
@@ -59,7 +59,7 @@ import { webFetchRuleForUrl } from "../../features/settings/settings-store.js";
 import { formatSubagentRuntimeEvent } from "../../features/subagents/subagent-events.js";
 import { executeContextFlow } from "../run-task/context.js";
 import { executeEarlyRoute } from "../run-task/execution.js";
-import { executeHarnessRoute, shouldUseHarnessPath } from "../run-task/harness-route.js";
+import { executeHarnessRoute } from "../run-task/harness-route.js";
 import { isSuccessfulGitCommitOutput, shellOutputText } from "../run-task/output.js";
 import { resolveTaskExecutionRoute } from "../run-task/route.js";
 import { turnStatusLabel } from "../run-task/status.js";
@@ -649,127 +649,45 @@ export async function runTask(
   };
 
   try {
-    if (shouldUseHarnessPath({ declaredIntent, workflowKind: taskOptions?.workflowKind })) {
-      const harnessMode = declaredIntent === "change" ? "change" : "answer";
-      if (harnessMode === "change") {
-        observedFacts.changeFlowEntered = true;
-      }
-      return executeHarnessRoute({
-        mode: harnessMode,
-        task: request.task,
-        repoRoot: request.repoRoot,
-        modelId: state.modelId,
-        sessionId: state.sessionId,
-        maxSteps: request.maxSteps,
-        maxDurationMs: request.maxDurationMs,
-        env,
-        harnessConfig: state.harnessConfig,
-        requestApprovalForTool: async (approvalRequest) => {
-          if (approvalRequest.permission === "read") {
-            return true;
-          }
-          const approval = await requestApprovalForTool({
-            kind: approvalRequest.permission === "bash" ? "command" : "file-write",
-            target: approvalRequest.toolName,
-            details: approvalRequest.reason,
-          });
-          return approval !== "reject";
-        },
-        elapsedMs,
-        buildSummary,
-        buildTurnResult,
-        onCompleted: (message) => {
-          evalMetrics.recordFinalMessage(message);
-          persistAssistantTranscript(message);
-          pruneAfterTurn();
-          turn.finish();
-        },
-        onFailed: () => {
-          turn.fail();
-        },
-      });
-    }
-
-    const resolvedPreRoute =
-      preRoutePlan?.status === "resolved"
-        ? preRoutePlan.result
-        : preRoutePlan?.status === "needs-classification"
-          ? declaredIntent === "change" || taskOptions?.workflowKind === "commit"
-            ? null
-            : await classifyPreRouteDecision()
-          : null;
-
-    const executionRoute = resolveTaskExecutionRoute(resolvedPreRoute ?? null, declaredIntent);
-    const allowedToolNames = resolvedPreRoute?.allowedToolNames ?? [];
-
-    if (executionRoute === "change") {
-      isChangeTurn = true;
-      isAnswerTurn = false;
+    const harnessMode = declaredIntent === "change" ? "change" : "answer";
+    if (harnessMode === "change") {
       observedFacts.changeFlowEntered = true;
     }
-
-    const earlyRouteResult = await executeEarlyRoute({
-      route: executionRoute,
+    return executeHarnessRoute({
+      mode: harnessMode,
       task: request.task,
-      allowedToolNames,
-      runPhase,
-      emitUiEvent,
+      repoRoot: request.repoRoot,
+      modelId: state.modelId,
+      sessionId: state.sessionId,
+      maxSteps: request.maxSteps,
+      maxDurationMs: request.maxDurationMs,
+      env,
+      harnessConfig: state.harnessConfig,
+      requestApprovalForTool: async (approvalRequest) => {
+        if (approvalRequest.permission === "read") {
+          return true;
+        }
+        const approval = await requestApprovalForTool({
+          kind: approvalRequest.permission === "bash" ? "command" : "file-write",
+          target: approvalRequest.toolName,
+          details: approvalRequest.reason,
+        });
+        return approval !== "reject";
+      },
       elapsedMs,
       buildSummary,
-      pruneAfterTurn,
       buildTurnResult,
-      onCompleted: () => turn.finish(),
-      onCancelled: () => turn.cancel(),
-      onFailed: () => turn.fail(),
+      onCompleted: (message) => {
+        evalMetrics.recordFinalMessage(message);
+        persistAssistantTranscript(message);
+        pruneAfterTurn();
+        turn.finish();
+      },
+      onFailed: () => {
+        turn.fail();
+      },
     });
-    if (earlyRouteResult) {
-      return earlyRouteResult as TurnResult;
-    }
 
-    const contextFlow = await executeContextFlow({
-      request,
-      declaredIntent,
-      unifiedTurn,
-      isAnswerTurn,
-      isChangeTurn,
-      questionStrategy,
-      explicitFileContext,
-      continuationArtifact,
-      contextMaxSteps,
-      answerMaxSteps,
-      planningMaxSteps,
-      verificationMaxSteps,
-      compactionMaxSteps,
-      taskWorkflowKind: taskOptions?.workflowKind,
-      commitWorkflowCompleted,
-      commitWorkflowOutput,
-      stateSessionId: state.sessionId,
-      started,
-      priorTurnGuidance: priorTurnGuidance ?? undefined,
-      questionAnswerReadyReason,
-      questionExploration,
-      runPhase,
-      turn,
-      phase,
-      observedFacts,
-      buildSummary,
-      buildTurnResult,
-      emitUiEvent,
-      persistAssistantTranscript,
-      pruneAfterTurn,
-      deriveCurrentValidationScope,
-      isContextBudgetResult,
-      shouldAttemptVerification,
-      saveCompactionStarted,
-      saveCompactionCompleted,
-      updateCompactionMetadata,
-      parseCompactionReport,
-      isContextPressureFailure,
-      pruneSessionAfterTurn,
-    });
-    isAnswerTurn = contextFlow.isAnswerTurn;
-    isChangeTurn = contextFlow.isChangeTurn;
-    return contextFlow.result;
   } finally {
     clearInterval(spinner);
     tui.onCancelRunning(null);

@@ -736,7 +736,7 @@ The harness should support a first-party review flow that can inspect:
 
 Recommended target:
 
-- rename `@archer/agent-core` to `@archer/harness`
+- rename `@archer/harness` to `@archer/harness`
 
 Possible source tree:
 
@@ -870,7 +870,7 @@ Even if the full replacement happens fast, these renames reduce conceptual drag.
 
 If you want to make the tree align with the target architecture early:
 
-1. rename `@archer/agent-core` to `@archer/harness`
+1. rename `@archer/harness` to `@archer/harness`
 2. rename `openharness-runtime.ts` to `harness-runtime.ts` only once native execution exists
 3. rename `openharness-types.ts` to `harness-types.ts` as soon as the exported types become Archer-owned
 4. rename `openharness-config.ts` to `harness-config.ts`

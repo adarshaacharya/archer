@@ -7,7 +7,7 @@ import {
   registerDefaultHarnessTools,
   type HarnessModelDecision,
   type HarnessModelLoop,
-} from "@archer/agent-core";
+} from "@archer/harness";
 import type { HarnessRuntimeConfig } from "@archer/shared/runtime";
 import { generateText } from "ai";
 

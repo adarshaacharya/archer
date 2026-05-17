@@ -1,4 +1,4 @@
-import type { HarnessToolEvent } from "@archer/agent-core";
+import type { HarnessToolEvent } from "@archer/harness";
 
 type SubagentStatusLike = {
   subagentId?: string;

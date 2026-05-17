@@ -3,7 +3,7 @@ import {
   buildDirectAnswerSystemPrompt,
   buildWebAnswerPrompt,
   buildWebAnswerSystemPrompt,
-} from "@archer/agent-core";
+} from "@archer/harness";
 import type { UiEvent } from "@archer/tui";
 import type { TurnResult } from "../../features/runtime/turn-types.js";
 import type { TaskExecutionRoute } from "./route.js";

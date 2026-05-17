@@ -5,7 +5,7 @@ import {
   createQuestionExplorationState,
   evaluateQuestionAnswerReadiness,
   type QuestionExplorationState,
-} from "@archer/agent-core";
+} from "@archer/harness";
 import { prerouteInput } from "../../features/routing/intent-router.js";
 import { resolveTaskExecutionRoute } from "../run-task/route.js";
 

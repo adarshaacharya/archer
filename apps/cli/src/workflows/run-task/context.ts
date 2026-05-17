@@ -10,7 +10,7 @@ import {
   shouldStopCommitWorkflowAfterContext,
   summarizeQuestionExploration,
   validateTurnDecision,
-} from "@archer/agent-core";
+} from "@archer/harness";
 import type { UiEvent } from "@archer/tui";
 import { prependExplicitFileContext } from "../../features/context/explicit-context.js";
 

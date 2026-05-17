@@ -1,5 +1,5 @@
 {
-  "name": "@archer/agent-core",
+  "name": "@archer/harness",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -17,9 +17,17 @@
     "format": "biome check . --write",
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@openharness/core": "^0.6.2",
+    "@archer/model-providers": "workspace:*",
+    "@archer/sandbox": "workspace:*",
+    "@archer/shared": "workspace:*",
+    "@archer/storage": "workspace:*",
+    "@archer/tools": "workspace:*"
+  },
   "turbo": {
     "tags": [
-      "pkg:agent-core"
+      "pkg:harness"
     ]
   }
 }

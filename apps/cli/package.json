@@ -29,7 +29,7 @@
     "check-types": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@archer/agent-core": "workspace:*",
+    "@archer/harness": "workspace:*",
     "@archer/model-providers": "workspace:*",
     "@archer/sandbox": "workspace:*",
     "@archer/storage": "workspace:*",

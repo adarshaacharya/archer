@@ -1,4 +1,4 @@
-import type { HarnessToolEvent, WebRuntimeEvent } from "@archer/agent-core";
+import type { HarnessToolEvent, WebRuntimeEvent } from "@archer/harness";
 
 export interface EvalMetricsSummary {
   approvalCount: number;

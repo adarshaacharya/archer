@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { deriveCompactionPolicy } from "@archer/agent-core";
+import { deriveCompactionPolicy } from "@archer/harness";
 
 describe("deriveCompactionPolicy", () => {
   it("tightens thresholds after repeated failed or cancelled turns", () => {

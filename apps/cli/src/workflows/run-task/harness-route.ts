@@ -6,11 +6,8 @@ export function shouldUseHarnessPath(input: {
   declaredIntent: TurnResult["intent"];
   workflowKind?: "default" | "commit" | "compact";
 }): boolean {
-  return (
-    process.env.ARCHER_USE_HARNESS_PATH === "1" &&
-    input.workflowKind !== "commit" &&
-    input.workflowKind !== "compact"
-  );
+  void input;
+  return true;
 }
 
 export async function executeHarnessRoute(input: {
