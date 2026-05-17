@@ -43,7 +43,7 @@ import {
   renderInitHintMessage,
   shouldShowInitHint,
 } from "./features/onboarding/onboarding-hint.js";
-import { loadOpenHarnessConfig } from "./features/runtime/openharness-config.js";
+import { loadHarnessConfig } from "./features/runtime/harness-config.js";
 import { titleFromTask } from "./features/runtime/task-title.js";
 import type { TurnResult } from "./features/runtime/turn-types.js";
 import type { SessionState } from "./features/sessions/session-state.js";
@@ -1181,7 +1181,7 @@ async function main(): Promise<void> {
   const sessionId = newSessionId();
   const cwd = process.cwd();
   const projectRoot = resolveProjectRoot(cwd);
-  const openHarnessConfig = await loadOpenHarnessConfig();
+  const harnessConfig = await loadHarnessConfig();
   const state: SessionState = {
     sessionId,
     sessionTitle: null,
@@ -1192,7 +1192,7 @@ async function main(): Promise<void> {
     authSource: null,
     webProvider: null,
     webAuthSource: null,
-    openHarnessConfig,
+    harnessConfig,
   };
 
   const tuiConfig = await loadTuiConfig(cwd);

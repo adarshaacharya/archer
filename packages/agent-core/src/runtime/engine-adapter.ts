@@ -1,13 +1,13 @@
 import { runOpenHarnessRuntime } from "../openharness-runtime.js";
 import type { RunOptions } from "../types.js";
-import type { OpenHarnessRuntimeDeps } from "./openharness-types.js";
+import type { HarnessRuntimeDeps } from "./harness-types.js";
 import type { RuntimePhaseResult } from "./phase-runner.js";
 
 export type EngineRunOptions = RunOptions;
 
 export type EngineAdapter = {
   run(
-    deps: OpenHarnessRuntimeDeps,
+    deps: HarnessRuntimeDeps,
     prompt: string,
     options: EngineRunOptions,
   ): Promise<RuntimePhaseResult>;

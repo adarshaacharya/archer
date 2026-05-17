@@ -2,7 +2,7 @@ import { estimateUsageCost } from "@archer/model-providers";
 import type { SessionEvent } from "@openharness/core";
 import { mapEvent } from "./runtime/events.js";
 import { newRunId, sanitizeId } from "./runtime/ids.js";
-import type { OpenHarnessRuntimeDeps } from "./runtime/openharness-types.js";
+import type { HarnessRuntimeDeps } from "./runtime/harness-types.js";
 import { getOrCreateSession } from "./runtime/session.js";
 import { withTimeout } from "./runtime/timeout.js";
 import { DEFAULT_MAX_STEPS, DEFAULT_TIMEOUT_MS, type RunOptions, type RunResult } from "./types.js";
@@ -44,7 +44,7 @@ function isBudgetedStep(event: SessionEvent): boolean {
 }
 
 export async function runOpenHarnessRuntime(
-  deps: OpenHarnessRuntimeDeps,
+  deps: HarnessRuntimeDeps,
   prompt: string,
   options: RunOptions,
 ): Promise<RunResult> {

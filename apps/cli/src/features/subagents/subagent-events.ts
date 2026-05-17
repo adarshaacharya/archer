@@ -1,4 +1,4 @@
-import type { OpenHarnessToolEvent } from "@archer/agent-core";
+import type { HarnessToolEvent } from "@archer/agent-core";
 
 type SubagentStatusLike = {
   subagentId?: string;
@@ -86,7 +86,7 @@ function formatAwaitResult(value: unknown): string | null {
   return `subagent await mode=${mode} count=${parts.length}${parts.length > 0 ? `\n${parts.join("\n")}` : ""}`;
 }
 
-export function formatSubagentRuntimeEvent(event: OpenHarnessToolEvent): string | null {
+export function formatSubagentRuntimeEvent(event: HarnessToolEvent): string | null {
   if (event.phase === "start") {
     if (
       event.toolName === "spawnSubagent" ||

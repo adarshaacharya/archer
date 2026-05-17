@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import type { OpenHarnessRuntimeConfig } from "@archer/shared/runtime";
+import type { HarnessRuntimeConfig } from "@archer/shared/runtime";
 import type { SpawnSubagentInput, SpawnSubagentResult } from "@archer/shared/subagents";
 import { loadEffectiveModelMessages, replaceMessages } from "@archer/storage";
 import {
@@ -21,16 +21,16 @@ import { DEFAULT_MAX_STEPS } from "../types.js";
 import { createTrackedFsProvider } from "./file-tracker.js";
 import { sanitizeId } from "./ids.js";
 import { resolveModel } from "./model.js";
-import type { OpenHarnessRuntimeDeps, RuntimeProviders } from "./openharness-types.js";
+import type { HarnessRuntimeDeps, RuntimeProviders } from "./harness-types.js";
 
 type SpawnSubagentExecutorOptions = {
   cwd: string;
   parentSessionId: string;
   providers: RuntimeProviders;
-  runtimeConfig?: OpenHarnessRuntimeConfig;
+  runtimeConfig?: HarnessRuntimeConfig;
   modelId?: string;
   approveToolCall?: ApproveFn;
-  approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
+  approvePatchApply?: HarnessRuntimeDeps["approvePatchApply"];
   backgroundRegistry?: AgentRegistry;
 };
 

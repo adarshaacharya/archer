@@ -1,4 +1,4 @@
-import type { OpenHarnessToolEvent, WebRuntimeEvent } from "@archer/agent-core";
+import type { HarnessToolEvent, WebRuntimeEvent } from "@archer/agent-core";
 
 export interface EvalMetricsSummary {
   approvalCount: number;
@@ -72,7 +72,7 @@ export function createEvalMetricsCollector() {
         finalMessage = message;
       }
     },
-    onToolEvent(event: OpenHarnessToolEvent) {
+    onToolEvent(event: HarnessToolEvent) {
       if (event.phase === "start") {
         toolNames.add(event.toolName);
         if (event.toolName === "readFile") {

@@ -14,10 +14,10 @@ import {
   deriveValidationScope,
   evaluateQuestionAnswerReadiness,
   formatWebRuntimeEvent,
+  type HarnessRuntimeDeps,
+  type HarnessToolEvent,
   isContextBudgetResult,
   isContextPressureFailure,
-  type OpenHarnessRuntimeDeps,
-  type OpenHarnessToolEvent,
   parseCompactionReport,
   parseTurnDecision,
   type RuntimePhaseRunner,
@@ -59,6 +59,7 @@ import { webFetchRuleForUrl } from "../../features/settings/settings-store.js";
 import { formatSubagentRuntimeEvent } from "../../features/subagents/subagent-events.js";
 import { executeContextFlow } from "../run-task/context.js";
 import { executeEarlyRoute } from "../run-task/execution.js";
+import { executeHarnessRoute, shouldUseHarnessPath } from "../run-task/harness-route.js";
 import { isSuccessfulGitCommitOutput, shellOutputText } from "../run-task/output.js";
 import { resolveTaskExecutionRoute } from "../run-task/route.js";
 import { turnStatusLabel } from "../run-task/status.js";
@@ -68,13 +69,13 @@ function newMessageId(sessionId: string, role: string): string {
   return `${sessionId}_${role}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-type PatchPreview = NonNullable<OpenHarnessRuntimeDeps["approvePatchApply"]> extends (
+type PatchPreview = NonNullable<HarnessRuntimeDeps["approvePatchApply"]> extends (
   preview: infer T,
 ) => unknown
   ? T
   : never;
 
-type RuntimeToolCall = Parameters<NonNullable<OpenHarnessRuntimeDeps["approveToolCall"]>>[0];
+type RuntimeToolCall = Parameters<NonNullable<HarnessRuntimeDeps["approveToolCall"]>>[0];
 
 export async function runTask(
   submission: ComposerSubmission,
@@ -502,7 +503,7 @@ export async function runTask(
       allowTools?: boolean;
       allowedToolNames?: string[];
       instructions?: string;
-      onToolEvent?: (event: OpenHarnessToolEvent) => void;
+      onToolEvent?: (event: HarnessToolEvent) => void;
     } = {},
   ) =>
     engine.run(
@@ -510,7 +511,7 @@ export async function runTask(
         modelId: state.modelId,
         sessionId: state.sessionId,
         instructions: options.instructions,
-        runtimeConfig: state.openHarnessConfig,
+        runtimeConfig: state.harnessConfig,
         providers: {
           ...env,
           web,
@@ -648,6 +649,47 @@ export async function runTask(
   };
 
   try {
+    if (shouldUseHarnessPath({ declaredIntent, workflowKind: taskOptions?.workflowKind })) {
+      const harnessMode = declaredIntent === "change" ? "change" : "answer";
+      if (harnessMode === "change") {
+        observedFacts.changeFlowEntered = true;
+      }
+      return executeHarnessRoute({
+        mode: harnessMode,
+        task: request.task,
+        repoRoot: request.repoRoot,
+        modelId: state.modelId,
+        sessionId: state.sessionId,
+        maxSteps: request.maxSteps,
+        maxDurationMs: request.maxDurationMs,
+        env,
+        harnessConfig: state.harnessConfig,
+        requestApprovalForTool: async (approvalRequest) => {
+          if (approvalRequest.permission === "read") {
+            return true;
+          }
+          const approval = await requestApprovalForTool({
+            kind: approvalRequest.permission === "bash" ? "command" : "file-write",
+            target: approvalRequest.toolName,
+            details: approvalRequest.reason,
+          });
+          return approval !== "reject";
+        },
+        elapsedMs,
+        buildSummary,
+        buildTurnResult,
+        onCompleted: (message) => {
+          evalMetrics.recordFinalMessage(message);
+          persistAssistantTranscript(message);
+          pruneAfterTurn();
+          turn.finish();
+        },
+        onFailed: () => {
+          turn.fail();
+        },
+      });
+    }
+
     const resolvedPreRoute =
       preRoutePlan?.status === "resolved"
         ? preRoutePlan.result

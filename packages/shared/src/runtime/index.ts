@@ -68,7 +68,7 @@ export const TuiConfigSchema = z.object({
 });
 export type TuiConfig = z.infer<typeof TuiConfigSchema>;
 
-export const OpenHarnessMCPServerSchema = z.discriminatedUnion("type", [
+export const HarnessMCPServerSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("stdio"),
     command: z.string().min(1),
@@ -87,23 +87,47 @@ export const OpenHarnessMCPServerSchema = z.discriminatedUnion("type", [
     headers: z.record(z.string()).optional(),
   }),
 ]);
-export type OpenHarnessMCPServer = z.infer<typeof OpenHarnessMCPServerSchema>;
+export type HarnessMCPServer = z.infer<typeof HarnessMCPServerSchema>;
 
-export const OpenHarnessRuntimeConfigSchema = z.object({
+export const HarnessRuntimeConfigSchema = z.object({
   projectInstructions: z.boolean().default(true),
   skills: z
     .object({
       paths: z.array(z.string().min(1)).default([]),
     })
     .optional(),
-  mcpServers: z.record(OpenHarnessMCPServerSchema).optional(),
+  mcpServers: z.record(HarnessMCPServerSchema).optional(),
   subagents: z
     .object({
       enabled: z.boolean().default(true),
     })
     .optional(),
+  policy: z
+    .object({
+      rules: z
+        .array(
+          z.object({
+            id: z.string().min(1),
+            priority: z.number().int(),
+            permission: z.enum(["read", "edit", "bash", "web", "unknown"]),
+            action: z.enum(["allow", "ask", "deny"]),
+            reason: z.string().min(1),
+            tool: z.union([z.string().min(1), z.array(z.string().min(1)).min(1)]),
+            mode: z.enum(["answer", "change", "any"]).optional(),
+            subagent: z.union([z.boolean(), z.literal("any")]).optional(),
+            when: z
+              .object({
+                bashPrefixes: z.array(z.string().min(1)).optional(),
+                argsPattern: z.unknown().optional(),
+              })
+              .optional(),
+          }),
+        )
+        .default([]),
+    })
+    .optional(),
 });
-export type OpenHarnessRuntimeConfig = z.infer<typeof OpenHarnessRuntimeConfigSchema>;
+export type HarnessRuntimeConfig = z.infer<typeof HarnessRuntimeConfigSchema>;
 
 export class PolicyError extends Error {
   readonly kind = "PolicyError";

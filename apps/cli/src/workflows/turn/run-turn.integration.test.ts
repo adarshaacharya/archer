@@ -36,7 +36,7 @@ function createState(): SessionState {
     authSource: null,
     webProvider: null,
     webAuthSource: null,
-    openHarnessConfig: {
+    harnessConfig: {
       projectInstructions: true,
       skills: { paths: [] },
       subagents: { enabled: true },

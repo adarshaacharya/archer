@@ -1,6 +1,6 @@
 import type { SupportedProvider } from "@archer/model-providers";
 import type { ApprovalMode } from "@archer/shared/approval";
-import type { OpenHarnessRuntimeConfig } from "@archer/shared/runtime";
+import type { HarnessRuntimeConfig } from "@archer/shared/runtime";
 import type { SupportedWebProvider } from "../../../../../packages/web-capability/src/index.js";
 
 export type SessionState = {
@@ -13,5 +13,5 @@ export type SessionState = {
   authSource: "env" | "saved" | null;
   webProvider: SupportedWebProvider | null;
   webAuthSource: "env" | "saved" | null;
-  openHarnessConfig: OpenHarnessRuntimeConfig;
+  harnessConfig: HarnessRuntimeConfig;
 };

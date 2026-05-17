@@ -1,15 +1,15 @@
-import type { OpenHarnessRuntimeConfig } from "@archer/shared/runtime";
+import type { HarnessRuntimeConfig } from "@archer/shared/runtime";
 import type { WebCapability } from "@archer/tools";
 import type { FsProvider, ShellProvider, ToolCallInfo } from "@openharness/core";
 
-export interface OpenHarnessRuntimeStepEvent {
+export interface HarnessRuntimeStepEvent {
   step: number;
   action: string;
   thought?: string;
   observation?: string;
 }
 
-export type OpenHarnessToolEvent =
+export type HarnessToolEvent =
   | {
       phase: "start";
       step: number;
@@ -28,7 +28,7 @@ export type OpenHarnessToolEvent =
       error: string;
     };
 
-export type OpenHarnessUsageEvent = {
+export type HarnessUsageEvent = {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
@@ -54,16 +54,16 @@ export type PatchPreview = {
   }>;
 };
 
-export interface OpenHarnessRuntimeDeps {
+export interface HarnessRuntimeDeps {
   modelId?: string;
   instructions?: string;
-  runtimeConfig?: OpenHarnessRuntimeConfig;
-  onStep?: (event: OpenHarnessRuntimeStepEvent) => void;
-  onToolEvent?: (event: OpenHarnessToolEvent) => void;
+  runtimeConfig?: HarnessRuntimeConfig;
+  onStep?: (event: HarnessRuntimeStepEvent) => void;
+  onToolEvent?: (event: HarnessToolEvent) => void;
   onTextDelta?: (delta: string) => void;
   approveToolCall?: (toolCall: ToolCallInfo) => Promise<boolean> | boolean;
   approvePatchApply?: (preview: PatchPreview) => Promise<boolean> | boolean;
-  onUsage?: (usage: OpenHarnessUsageEvent, replace?: boolean) => void;
+  onUsage?: (usage: HarnessUsageEvent, replace?: boolean) => void;
   sessionId?: string;
   providers: RuntimeProviders;
 }

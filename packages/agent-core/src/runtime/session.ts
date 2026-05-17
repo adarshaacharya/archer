@@ -22,7 +22,7 @@ import { DEFAULT_MAX_STEPS } from "../types.js";
 import { createTrackedFsProvider } from "./file-tracker.js";
 import { sanitizeId } from "./ids.js";
 import { resolveModel } from "./model.js";
-import type { OpenHarnessRuntimeDeps, RuntimeProviders } from "./openharness-types.js";
+import type { HarnessRuntimeDeps, RuntimeProviders } from "./harness-types.js";
 import { createSpawnSubagentExecutor } from "./subagent-execution.js";
 import { buildSystemPrompt } from "./task-flow.js";
 
@@ -34,8 +34,8 @@ type RuntimeSession = {
   pricing?: ReturnType<typeof resolveModel>["pricing"];
   loaded: boolean;
   approvalState: {
-    approveToolCall?: OpenHarnessRuntimeDeps["approveToolCall"];
-    approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
+    approveToolCall?: HarnessRuntimeDeps["approveToolCall"];
+    approvePatchApply?: HarnessRuntimeDeps["approvePatchApply"];
   };
 };
 
@@ -76,9 +76,9 @@ function createSession({
   providers: RuntimeProviders;
   modelId?: string;
   instructions?: string;
-  runtimeConfig?: OpenHarnessRuntimeDeps["runtimeConfig"];
-  approveToolCall?: OpenHarnessRuntimeDeps["approveToolCall"];
-  approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
+  runtimeConfig?: HarnessRuntimeDeps["runtimeConfig"];
+  approveToolCall?: HarnessRuntimeDeps["approveToolCall"];
+  approvePatchApply?: HarnessRuntimeDeps["approvePatchApply"];
   sessionId?: string;
 }): RuntimeSession {
   const model = resolveModel(modelId);
@@ -323,8 +323,8 @@ export function getOrCreateSession({
   providers: RuntimeProviders;
   modelId?: string;
   instructions?: string;
-  approveToolCall?: OpenHarnessRuntimeDeps["approveToolCall"];
-  approvePatchApply?: OpenHarnessRuntimeDeps["approvePatchApply"];
+  approveToolCall?: HarnessRuntimeDeps["approveToolCall"];
+  approvePatchApply?: HarnessRuntimeDeps["approvePatchApply"];
   sessionId?: string;
 }): RuntimeSession {
   const resolved = resolveModelConfig({ modelId });

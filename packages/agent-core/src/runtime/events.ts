@@ -1,5 +1,5 @@
 import type { SessionEvent } from "@openharness/core";
-import type { OpenHarnessRuntimeDeps } from "./openharness-types.js";
+import type { HarnessRuntimeDeps } from "./harness-types.js";
 
 function isShellResult(output: unknown): output is {
   stdout?: unknown;
@@ -43,10 +43,10 @@ function formatToolOutput(output: unknown): string {
 
 export function mapEvent(
   event: SessionEvent,
-  onStep: OpenHarnessRuntimeDeps["onStep"],
-  onToolEvent: OpenHarnessRuntimeDeps["onToolEvent"],
-  onTextDelta: OpenHarnessRuntimeDeps["onTextDelta"],
-  onUsage: OpenHarnessRuntimeDeps["onUsage"],
+  onStep: HarnessRuntimeDeps["onStep"],
+  onToolEvent: HarnessRuntimeDeps["onToolEvent"],
+  onTextDelta: HarnessRuntimeDeps["onTextDelta"],
+  onUsage: HarnessRuntimeDeps["onUsage"],
   step: number,
   onText: (delta: string) => void,
 ): void {

@@ -1,21 +1,18 @@
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import { resolve } from "node:path";
-import {
-  type OpenHarnessRuntimeConfig,
-  OpenHarnessRuntimeConfigSchema,
-} from "@archer/shared/runtime";
+import { type HarnessRuntimeConfig, HarnessRuntimeConfigSchema } from "@archer/shared/runtime";
 
-export async function loadOpenHarnessConfig(): Promise<OpenHarnessRuntimeConfig> {
+export async function loadHarnessConfig(): Promise<HarnessRuntimeConfig> {
   const [globalProjectConfig, globalMcpConfig] = await Promise.all([
-    readOpenHarnessConfig(resolveGlobalOpenHarnessProjectConfigPath()),
-    readOpenHarnessConfig(resolveGlobalOpenHarnessMcpConfigPath()),
+    readHarnessConfig(resolveGlobalHarnessProjectConfigPath()),
+    readHarnessConfig(resolveGlobalHarnessMcpConfigPath()),
   ]);
 
-  return mergeOpenHarnessConfigs(globalProjectConfig, globalMcpConfig);
+  return mergeHarnessConfigs(globalProjectConfig, globalMcpConfig);
 }
 
-async function readOpenHarnessConfig(path: string): Promise<OpenHarnessRuntimeConfig | null> {
+async function readHarnessConfig(path: string): Promise<HarnessRuntimeConfig | null> {
   let raw: string;
   try {
     raw = await readFile(path, "utf8");
@@ -24,7 +21,7 @@ async function readOpenHarnessConfig(path: string): Promise<OpenHarnessRuntimeCo
       return null;
     }
 
-    console.warn(`[archer] Failed reading OpenHarness config at ${path}. Ignoring that file.`);
+    console.warn(`[archer] Failed reading harness config at ${path}. Ignoring that file.`);
     return null;
   }
 
@@ -36,39 +33,37 @@ async function readOpenHarnessConfig(path: string): Promise<OpenHarnessRuntimeCo
     return null;
   }
 
-  const parsedConfig = OpenHarnessRuntimeConfigSchema.safeParse(parsedJson);
+  const parsedConfig = HarnessRuntimeConfigSchema.safeParse(parsedJson);
   if (!parsedConfig.success) {
     const firstIssue = parsedConfig.error.issues[0];
     const message = firstIssue
       ? `${firstIssue.path.join(".")}: ${firstIssue.message}`
       : "invalid config";
-    console.warn(
-      `[archer] Invalid OpenHarness config in ${path} (${message}). Ignoring that file.`,
-    );
+    console.warn(`[archer] Invalid harness config in ${path} (${message}). Ignoring that file.`);
     return null;
   }
 
   return parsedConfig.data;
 }
 
-function resolveGlobalOpenHarnessProjectConfigPath(): string {
+function resolveGlobalHarnessProjectConfigPath(): string {
   const xdgConfigHome = process.env.XDG_CONFIG_HOME?.trim();
   const baseDir =
     xdgConfigHome && xdgConfigHome.length > 0 ? xdgConfigHome : resolve(os.homedir(), ".config");
   return resolve(baseDir, "archer", "settings.json");
 }
 
-function resolveGlobalOpenHarnessMcpConfigPath(): string {
+function resolveGlobalHarnessMcpConfigPath(): string {
   const xdgConfigHome = process.env.XDG_CONFIG_HOME?.trim();
   const baseDir =
     xdgConfigHome && xdgConfigHome.length > 0 ? xdgConfigHome : resolve(os.homedir(), ".config");
   return resolve(baseDir, "archer", "mcp.json");
 }
 
-function mergeOpenHarnessConfigs(
-  globalProjectConfig: OpenHarnessRuntimeConfig | null,
-  globalMcpConfig: OpenHarnessRuntimeConfig | null,
-): OpenHarnessRuntimeConfig {
+function mergeHarnessConfigs(
+  globalProjectConfig: HarnessRuntimeConfig | null,
+  globalMcpConfig: HarnessRuntimeConfig | null,
+): HarnessRuntimeConfig {
   const mergedSkillPaths = new Set<string>();
   for (const path of globalProjectConfig?.skills?.paths ?? []) {
     mergedSkillPaths.add(path);
@@ -87,6 +82,9 @@ function mergeOpenHarnessConfigs(
     },
     subagents: {
       enabled: globalProjectConfig?.subagents?.enabled ?? true,
+    },
+    policy: {
+      rules: globalProjectConfig?.policy?.rules ?? [],
     },
   };
 }
