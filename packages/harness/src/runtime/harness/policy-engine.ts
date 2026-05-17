@@ -23,6 +23,7 @@ export type HarnessPolicyApprovalResolver = (request: {
 export type HarnessPolicyRule = {
   id: string;
   priority: number;
+  source?: "default" | "user" | "project" | "local" | "session";
   permission: HarnessPermission;
   action: HarnessPolicyAction;
   reason: string;
@@ -103,9 +104,23 @@ const DEFAULT_RULES: HarnessPolicyRule[] = [
 export class HarnessPolicyEngine {
   private readonly rules: HarnessPolicyRule[];
 
-  constructor(options?: { rules?: HarnessPolicyRule[] }) {
-    const rules = options?.rules ?? DEFAULT_RULES;
-    this.rules = [...rules].sort((a, b) => b.priority - a.priority);
+  constructor(options?: { rules?: HarnessPolicyRule[]; layers?: Partial<Record<"user" | "project" | "local" | "session", HarnessPolicyRule[]>> }) {
+    const baseRules = (options?.rules ?? DEFAULT_RULES).map((rule) => ({
+      ...rule,
+      source: rule.source ?? "default",
+    }));
+    const layeredRules: HarnessPolicyRule[] = [
+      ...baseRules,
+      ...(options?.layers?.user ?? []).map((rule) => ({ ...rule, source: rule.source ?? "user" })),
+      ...(options?.layers?.project ?? []).map((rule) => ({ ...rule, source: rule.source ?? "project" })),
+      ...(options?.layers?.local ?? []).map((rule) => ({ ...rule, source: rule.source ?? "local" })),
+      ...(options?.layers?.session ?? []).map((rule) => ({ ...rule, source: rule.source ?? "session" })),
+    ];
+    this.rules = [...layeredRules].sort((a, b) => {
+      const priorityDelta = b.priority - a.priority;
+      if (priorityDelta !== 0) return priorityDelta;
+      return this.sourceRank(b.source) - this.sourceRank(a.source);
+    });
   }
 
   classify(input: HarnessPolicyInput): HarnessPolicyDecision {
@@ -229,5 +244,20 @@ export class HarnessPolicyEngine {
     const command = (args as { command?: unknown }).command;
     if (typeof command !== "string") return "";
     return command.trim();
+  }
+
+  private sourceRank(source: HarnessPolicyRule["source"]): number {
+    switch (source) {
+      case "session":
+        return 4;
+      case "local":
+        return 3;
+      case "project":
+        return 2;
+      case "user":
+        return 1;
+      default:
+        return 0;
+    }
   }
 }

@@ -87,4 +87,38 @@ describe("HarnessTurnRunner", () => {
     expect(result.status).toBe("failed");
     expect(result.error).toBe("boom");
   });
+
+  it("recovers once from tool failure and still completes", async () => {
+    const router = new HarnessToolRouter(new HarnessPolicyEngine());
+    router.registerTool("readFile", async () => {
+      throw new Error("transient");
+    });
+
+    let decisionCount = 0;
+    const runner = new HarnessTurnRunner(
+      {
+        async decide(params) {
+          decisionCount += 1;
+          if (decisionCount === 1) {
+            return { type: "tool_call", toolName: "readFile", args: { filePath: "a.ts" } };
+          }
+          expect(params.state.observations.length).toBeGreaterThan(0);
+          return { type: "final", text: "recovered" };
+        },
+      },
+      router,
+    );
+    const result = await runner.run({
+      turnId: "t1",
+      sessionId: "s1",
+      mode: "answer",
+      prompt: "recover",
+      cwd: "/tmp",
+      maxSteps: 8,
+      timeoutMs: 60_000,
+      maxRecoveryAttempts: 1,
+    });
+    expect(result.status).toBe("completed");
+    expect(result.outputText).toBe("recovered");
+  });
 });

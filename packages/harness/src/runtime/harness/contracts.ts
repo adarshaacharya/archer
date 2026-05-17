@@ -24,6 +24,7 @@ export type HarnessTurnRequest = {
   cwd: string;
   maxSteps: number;
   timeoutMs: number;
+  maxRecoveryAttempts?: number;
 };
 
 export type HarnessTurnResult = {

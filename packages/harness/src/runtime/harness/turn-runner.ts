@@ -25,6 +25,8 @@ export class HarnessTurnRunner {
       }> = [];
       let finalText = "";
       let completedSteps = 0;
+      const maxRecoveryAttempts = Math.max(0, request.maxRecoveryAttempts ?? 1);
+      let recoveryAttempts = 0;
 
       for (let step = 1; step <= request.maxSteps; step += 1) {
         const decision = await this.modelLoop.decide({
@@ -50,7 +52,24 @@ export class HarnessTurnRunner {
           eventBus,
         });
         if (!toolResult.ok) {
-          throw new Error(toolResult.error);
+          if (recoveryAttempts >= maxRecoveryAttempts) {
+            throw new Error(toolResult.error);
+          }
+          recoveryAttempts += 1;
+          observations.push({
+            step,
+            kind: "tool_result",
+            toolName: decision.toolName,
+            output: { error: toolResult.error, recoverable: true, recoveryAttempt: recoveryAttempts },
+          });
+          eventBus.emit({
+            type: "turn.progress",
+            turnId: request.turnId,
+            step,
+            action: "turn.recovery",
+            detail: `retry ${recoveryAttempts}/${maxRecoveryAttempts}`,
+          });
+          continue;
         }
         observations.push({
           step,

@@ -136,4 +136,44 @@ describe("HarnessPolicyEngine", () => {
     expect(allowed.action).toBe("allow");
     expect(asked.action).toBe("ask");
   });
+
+  it("supports layered policy precedence for same priority", () => {
+    const policy = new HarnessPolicyEngine({
+      rules: [
+        {
+          id: "default-edit",
+          priority: 100,
+          permission: "edit",
+          action: "ask",
+          reason: "default ask",
+          tool: "editFile",
+        },
+      ],
+      layers: {
+        project: [
+          {
+            id: "project-deny",
+            priority: 100,
+            permission: "edit",
+            action: "deny",
+            reason: "project deny",
+            tool: "editFile",
+          },
+        ],
+        session: [
+          {
+            id: "session-allow",
+            priority: 100,
+            permission: "edit",
+            action: "allow",
+            reason: "session allow",
+            tool: "editFile",
+          },
+        ],
+      },
+    });
+    const decision = policy.classify({ toolName: "editFile", args: {} });
+    expect(decision.action).toBe("allow");
+    expect(decision.reason).toContain("session allow");
+  });
 });
