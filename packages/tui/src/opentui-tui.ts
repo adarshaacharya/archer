@@ -10,6 +10,7 @@ import {
   type CliRenderer,
   createCliRenderer,
   fg,
+  type PasteEvent,
   SelectRenderable,
   SelectRenderableEvents,
   StyledText,
@@ -40,6 +41,7 @@ import {
   clamp,
   normalizeText,
   padRight,
+  sanitizeSingleLinePaste,
   truncateMiddle,
   wrappedLineCount,
 } from "./internal/ui-helpers.js";
@@ -187,7 +189,6 @@ export class ArcherTui implements Tui {
   private setApprovalRows: ((value: number) => void) | null = null;
   private skipNextSubmitAfterPaste = false;
   private pastedContentStore = new Map<string, string>();
-  private prePasteSnapshot: { text: string; cursor: number } | null = null;
 
   private setStatus(
     primary: string,
@@ -505,6 +506,9 @@ export class ArcherTui implements Tui {
         this.syncComposerLayout();
       },
     });
+    this.input.onPaste = (event) => {
+      this.handlePaste(event);
+    };
 
     inputRow.add(promptGlyph);
     inputRow.add(this.input);
@@ -549,30 +553,17 @@ export class ArcherTui implements Tui {
       return false;
     });
 
-    this.renderer.keyInput.on("paste", () => {
-      // Some terminals emit an immediate trailing enter after paste.
-      this.skipNextSubmitAfterPaste = true;
-      if (this.input) {
-        this.prePasteSnapshot = {
-          text: this.input.plainText,
-          cursor: this.input.cursorOffset,
-        };
-      }
-    });
-    this.renderer.keyInput.on("paste", (event: { bytes: Uint8Array }) => {
-      const pastedText = new TextDecoder().decode(event.bytes ?? new Uint8Array());
-      if (!pastedText) return;
-      if (pastedText.length < LARGE_PASTE_THRESHOLD) return;
-      if (!this.input) return;
-
-      const token = `${PASTED_TOKEN_PREFIX}${pastedText.length} chars]`;
-      // Strict placeholder mode: never render large pasted body in composer.
-      // Keep only the placeholder token visible.
-      this.input.setText(token);
-      this.prePasteSnapshot = null;
-      this.pastedContentStore.set(token, pastedText);
-      this.setStatus("Stored large paste as token. Full content will be submitted.", col.accent);
-    });
+    const keyInput = this.renderer.keyInput as typeof this.renderer.keyInput & {
+      onInternal?: (event: "paste", handler: (event: PasteEvent) => void) => void;
+    };
+    const pasteHandler = (event: PasteEvent) => {
+      this.handlePaste(event);
+    };
+    if (typeof keyInput.onInternal === "function") {
+      keyInput.onInternal("paste", pasteHandler);
+    } else {
+      keyInput.on("paste", pasteHandler);
+    }
 
     this.input.focus();
   }
@@ -1164,6 +1155,39 @@ export class ArcherTui implements Tui {
     return input.replace(PASTED_TOKEN_REGEX, (full) => {
       return this.pastedContentStore.get(full) ?? full;
     });
+  }
+
+  /**
+   * Handle paste in JS and prevent OpenTUI's native textarea paste path, which can
+   * segfault Bun on some terminals when bracketed paste delivers large buffers.
+   */
+  private handlePaste(event: PasteEvent): void {
+    if (event.defaultPrevented) return;
+
+    const pastedText = new TextDecoder().decode(event.bytes ?? new Uint8Array());
+    if (!pastedText || !this.input) return;
+
+    // Some terminals emit an immediate trailing enter after paste.
+    this.skipNextSubmitAfterPaste = true;
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (this.pendingReadResolve) {
+      const sanitized = sanitizeSingleLinePaste(pastedText);
+      if (!sanitized) return;
+      this.insertTextAtCursor(sanitized);
+      return;
+    }
+
+    if (pastedText.length >= LARGE_PASTE_THRESHOLD) {
+      const token = `${PASTED_TOKEN_PREFIX}${pastedText.length} chars]`;
+      this.input.setText(token);
+      this.pastedContentStore.set(token, pastedText);
+      this.setStatus("Stored large paste as token. Full content will be submitted.", col.accent);
+      return;
+    }
+
+    this.insertTextAtCursor(pastedText);
   }
 
   private insertTextAtCursor(text: string): void {

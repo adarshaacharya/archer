@@ -21,6 +21,12 @@ export function normalizeText(value: string): string {
   return value.trim().replace(/\r\n/g, "\n");
 }
 
+/** Collapse pasted secrets (API keys, tokens) to a single line for readInputLine prompts. */
+export function sanitizeSingleLinePaste(value: string, maxLength = 8192): string {
+  const collapsed = value.replace(/\0/g, "").replace(/[\r\n\u2028\u2029]+/g, "");
+  return collapsed.length > maxLength ? collapsed.slice(0, maxLength) : collapsed;
+}
+
 export function truncateMiddle(value: string, max: number): string {
   if (value.length <= max) return value;
   if (max <= 3) return value.slice(0, max);
