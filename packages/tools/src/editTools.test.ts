@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import type { DirEntry, FileStat, FsProvider } from "@openharness/core";
+import type { HarnessDirEntry, HarnessFileStat, HarnessFsProvider } from "@archer/shared/runtime";
 import { createEditTools } from "./editTools.js";
 
-class MemoryFsProvider implements FsProvider {
+class MemoryFsProvider implements HarnessFsProvider {
   private readonly files = new Map<string, string>();
   private readonly directories = new Set<string>(["/repo"]);
 
@@ -34,19 +34,29 @@ class MemoryFsProvider implements FsProvider {
     return this.files.has(resolved) || this.directories.has(resolved);
   }
 
-  async stat(path: string): Promise<FileStat> {
+  async stat(path: string): Promise<HarnessFileStat> {
     const resolved = this.resolvePath(path);
     if (this.files.has(resolved)) {
       const content = this.files.get(resolved) ?? "";
-      return { size: Buffer.byteLength(content) } as FileStat;
+      return {
+        size: Buffer.byteLength(content),
+        mtimeMs: Date.now(),
+        isDirectory: false,
+        isFile: true,
+      };
     }
     if (this.directories.has(resolved)) {
-      return { size: 0 } as FileStat;
+      return {
+        size: 0,
+        mtimeMs: Date.now(),
+        isDirectory: true,
+        isFile: false,
+      };
     }
     throw new Error(`ENOENT: no such file or directory, stat '${resolved}'`);
   }
 
-  async readdir(path: string): Promise<DirEntry[]> {
+  async readdir(path: string): Promise<HarnessDirEntry[]> {
     const resolved = this.resolvePath(path);
     if (!this.directories.has(resolved)) {
       throw new Error(`ENOENT: no such file or directory, scandir '${resolved}'`);

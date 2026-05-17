@@ -1,6 +1,10 @@
-import type { HarnessRuntimeConfig } from "@archer/shared/runtime";
+import type {
+  HarnessFsProvider,
+  HarnessRuntimeConfig,
+  HarnessShellProvider,
+  HarnessToolCallInfo,
+} from "@archer/shared/runtime";
 import type { WebCapability } from "@archer/tools";
-import type { FsProvider, ShellProvider, ToolCallInfo } from "@openharness/core";
 
 export interface HarnessRuntimeStepEvent {
   step: number;
@@ -35,8 +39,8 @@ export type HarnessUsageEvent = {
 };
 
 export type RuntimeProviders = {
-  fs: FsProvider;
-  shell: ShellProvider;
+  fs: HarnessFsProvider;
+  shell: HarnessShellProvider;
   web?: WebCapability;
 };
 
@@ -61,7 +65,7 @@ export interface HarnessRuntimeDeps {
   onStep?: (event: HarnessRuntimeStepEvent) => void;
   onToolEvent?: (event: HarnessToolEvent) => void;
   onTextDelta?: (delta: string) => void;
-  approveToolCall?: (toolCall: ToolCallInfo) => Promise<boolean> | boolean;
+  approveToolCall?: (toolCall: HarnessToolCallInfo) => Promise<boolean> | boolean;
   approvePatchApply?: (preview: PatchPreview) => Promise<boolean> | boolean;
   onUsage?: (usage: HarnessUsageEvent, replace?: boolean) => void;
   sessionId?: string;

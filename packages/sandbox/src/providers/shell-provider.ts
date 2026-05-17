@@ -1,11 +1,11 @@
-import type { ShellProvider, ShellResult } from "@openharness/core";
+import type { HarnessShellProvider, HarnessShellResult } from "@archer/shared/runtime";
 import type { ApprovalHandler } from "../approvals.js";
 import type { SandboxPolicy } from "../policy.js";
 import { getSandboxRunner } from "../runners/index.js";
 import type { SandboxRunner } from "../runners/types.js";
 import { PolicyError } from "./fs-provider.js";
 
-export class SandboxShellProvider implements ShellProvider {
+export class SandboxShellProvider implements HarnessShellProvider {
   private readonly runner: SandboxRunner;
 
   constructor(
@@ -22,7 +22,7 @@ export class SandboxShellProvider implements ShellProvider {
       cwd?: string;
       env?: Record<string, string>;
     },
-  ): Promise<ShellResult> {
+  ): Promise<HarnessShellResult> {
     const decision = this.policy.decideCommand(command);
 
     if (decision === "ask" && this.approvals) {
@@ -31,7 +31,14 @@ export class SandboxShellProvider implements ShellProvider {
         target: command,
       });
       if (approval === "once" || approval === "always") {
-        return this.runner(command, options);
+        const result = await this.runner(command, options);
+        return {
+          ok: result.exitCode === 0,
+          code: result.exitCode,
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        };
       }
     }
 
@@ -39,6 +46,13 @@ export class SandboxShellProvider implements ShellProvider {
       throw new PolicyError(`Sandbox blocked command: ${command} (${decision})`);
     }
 
-    return this.runner(command, options);
+    const result = await this.runner(command, options);
+    return {
+      ok: result.exitCode === 0,
+      code: result.exitCode,
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
   }
 }

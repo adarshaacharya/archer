@@ -1,14 +1,12 @@
-export * from "./openharness-runtime.js";
 export * from "./runtime/compaction-policy.js";
 export * from "./runtime/continuation-policy.js";
-export * from "./runtime/engine-adapter.js";
 export * from "./runtime/execution-policy.js";
 export * from "./runtime/implementation-policy.js";
 export type { HarnessRuntimeDeps, HarnessToolEvent } from "./runtime/harness-types.js";
 export * from "./runtime/phase-runner.js";
 export * from "./runtime/planning-artifacts.js";
 export * from "./runtime/question-exploration.js";
-export { resetSessionById } from "./runtime/session.js";
+export { resetSessionById } from "./runtime/session-reset.js";
 export * from "./runtime/harness/contracts.js";
 export * from "./runtime/harness/event-bus.js";
 export * from "./runtime/harness/model-loop.js";

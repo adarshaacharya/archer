@@ -129,6 +129,51 @@ export const HarnessRuntimeConfigSchema = z.object({
 });
 export type HarnessRuntimeConfig = z.infer<typeof HarnessRuntimeConfigSchema>;
 
+export type HarnessDirEntry = {
+  name: string;
+  isDirectory: boolean;
+  isFile?: boolean;
+};
+
+export type HarnessFileStat = {
+  size: number;
+  mtimeMs: number;
+  isDirectory: boolean;
+  isFile: boolean;
+};
+
+export type HarnessFsProvider = {
+  readFile(path: string): Promise<string>;
+  writeFile(path: string, content: string): Promise<void>;
+  exists(path: string): Promise<boolean>;
+  stat(path: string): Promise<HarnessFileStat>;
+  readdir(path: string): Promise<HarnessDirEntry[]>;
+  mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
+  remove(path: string, options?: { recursive?: boolean }): Promise<void>;
+  rename(oldPath: string, newPath: string): Promise<void>;
+  resolvePath(path: string): string;
+};
+
+export type HarnessShellResult = {
+  ok?: boolean;
+  code?: number;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+};
+
+export type HarnessShellProvider = {
+  exec(
+    command: string,
+    options?: { timeout?: number; cwd?: string; env?: Record<string, string> },
+  ): Promise<HarnessShellResult>;
+};
+
+export type HarnessToolCallInfo = {
+  toolName: string;
+  args?: unknown;
+};
+
 export class PolicyError extends Error {
   readonly kind = "PolicyError";
 }

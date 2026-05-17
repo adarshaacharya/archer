@@ -1,5 +1,5 @@
 import { dirname } from "node:path";
-import type { FsProvider } from "@openharness/core";
+import type { HarnessFsProvider } from "@archer/shared/runtime";
 import { tool } from "ai";
 import { createTwoFilesPatch } from "diff";
 import { z } from "zod";
@@ -64,7 +64,7 @@ type EditToolsOptions = {
   ) => Promise<boolean> | boolean;
 };
 
-export function createEditTools(fs: FsProvider, options: EditToolsOptions = {}) {
+export function createEditTools(fs: HarnessFsProvider, options: EditToolsOptions = {}) {
   const patches = new Map<string, PreparedPatch>();
   const bundles = new Map<string, PreparedPatchBundle>();
   const appliedPatches = new Map<string, AppliedPatch>();

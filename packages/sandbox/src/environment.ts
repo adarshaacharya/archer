@@ -1,13 +1,14 @@
 import type { ApprovalMode } from "@archer/shared/approval";
-import { type FsProvider, NodeFsProvider, type ShellProvider } from "@openharness/core";
+import type { HarnessFsProvider, HarnessShellProvider } from "@archer/shared/runtime";
 import type { ApprovalHandler } from "./approvals.js";
 import { DefaultSandboxPolicy } from "./policy.js";
 import { SandboxFsProvider } from "./providers/fs-provider.js";
+import { NodeFsProvider } from "./providers/node-fs-provider.js";
 import { SandboxShellProvider } from "./providers/shell-provider.js";
 
 export interface SandboxEnvironment {
-  fs: FsProvider;
-  shell: ShellProvider;
+  fs: HarnessFsProvider;
+  shell: HarnessShellProvider;
 }
 
 export function createSandboxEnvironment(opts: {

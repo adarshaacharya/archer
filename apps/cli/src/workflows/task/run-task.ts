@@ -1,32 +1,20 @@
 import { performance } from "node:perf_hooks";
 import {
   buildPriorTurnPlanningGuidance,
-  buildQuestionStrategy,
   createCompactionMetadata,
-  createOpenHarnessEngineAdapter,
-  createQuestionExplorationState,
   createTaskPhaseController,
   createToolApprovalHandler,
   createWebCompletedEvent,
   createWebFailedEvent,
   createWebStartedEvent,
+  formatWebRuntimeEvent,
   deriveCompactionPolicy,
   deriveValidationScope,
-  evaluateQuestionAnswerReadiness,
-  formatWebRuntimeEvent,
   type HarnessRuntimeDeps,
   type HarnessToolEvent,
-  isContextBudgetResult,
-  isContextPressureFailure,
-  parseCompactionReport,
-  parseTurnDecision,
-  type RuntimePhaseRunner,
   recordCompactionAttempt,
-  recordQuestionStep,
   resolveObservedTurnIntent,
-  shouldAttemptVerification,
   type TurnObservedFacts,
-  validateTurnDecision,
 } from "@archer/harness";
 import { createSandboxEnvironment } from "@archer/sandbox";
 import { autoApproveEditsInApprovalMode } from "@archer/shared/approval";
@@ -44,11 +32,6 @@ import { createWebCapability } from "../../../../../packages/web-capability/src/
 import { requestApproval, withApprovalQueue } from "../../features/approvals/approvals.js";
 import { resolveActiveWebProvider } from "../../features/auth/auth-store.js";
 import { buildExplicitFileContext } from "../../features/context/explicit-context.js";
-import {
-  type PreRouteResult,
-  planPreRoute,
-  preRouteResultFromMode,
-} from "../../features/routing/intent-router.js";
 import { createEvalMetricsCollector } from "../../features/runtime/eval-metrics.js";
 import { pruneSessionAfterTurn } from "../../features/runtime/session-pruning.js";
 import { titleFromTask } from "../../features/runtime/task-title.js";
@@ -57,11 +40,8 @@ import type { TurnContext, TurnResult, TurnSummary } from "../../features/runtim
 import type { SessionState } from "../../features/sessions/session-state.js";
 import { webFetchRuleForUrl } from "../../features/settings/settings-store.js";
 import { formatSubagentRuntimeEvent } from "../../features/subagents/subagent-events.js";
-import { executeContextFlow } from "../run-task/context.js";
-import { executeEarlyRoute } from "../run-task/execution.js";
 import { executeHarnessRoute } from "../run-task/harness-route.js";
 import { isSuccessfulGitCommitOutput, shellOutputText } from "../run-task/output.js";
-import { resolveTaskExecutionRoute } from "../run-task/route.js";
 import { turnStatusLabel } from "../run-task/status.js";
 import { ensureWebProviderConnected, updateWebSessionState } from "../run-task/web-provider.js";
 
@@ -442,211 +422,11 @@ export async function runTask(
     }
   };
 
-  const contextMaxSteps = Math.min(16, Math.max(8, Math.floor(request.maxSteps / 8)));
-  const planningMaxSteps = Math.min(24, Math.max(10, Math.floor(request.maxSteps / 6)));
-  const verificationMaxSteps = Math.min(24, Math.max(8, Math.floor(request.maxSteps / 6)));
-  const compactionMaxSteps = Math.min(18, Math.max(8, Math.floor(request.maxSteps / 10)));
-  const preRoutePlan =
-    taskOptions?.workflowKind == null || taskOptions.workflowKind === "default"
-      ? explicitFileContext.hasFileMentions
-        ? {
-            status: "resolved" as const,
-            result: preRouteResultFromMode(
-              "repo-context",
-              "structured file mentions require local repository context",
-              "fast-path",
-            ),
-          }
-        : planPreRoute(request.task)
-      : null;
-  if (
-    preRoutePlan?.status === "resolved" &&
-    preRoutePlan.result.mode === "change" &&
-    declaredIntent !== "change"
-  ) {
-    isChangeTurn = true;
-    isAnswerTurn = false;
-    observedFacts.changeFlowEntered = true;
-  }
-  const questionStrategy = isAnswerTurn ? buildQuestionStrategy(request.task, "question") : null;
-  const questionExploration = questionStrategy ? createQuestionExplorationState() : null;
-  let questionAnswerReadyReason: string | null = null;
-  const answerMaxSteps = request.maxSteps;
-  const engine = createOpenHarnessEngineAdapter();
-
-  const approveToolCallWithQuestionReadiness = async (
-    toolCall: RuntimeToolCall,
-  ): Promise<boolean> => {
-    if (questionStrategy && questionExploration && isAnswerTurn) {
-      const decision = evaluateQuestionAnswerReadiness(questionStrategy, questionExploration);
-      if (decision.ready) {
-        questionAnswerReadyReason ??= decision.reason;
-        tui.emit({
-          type: "approval-prompt",
-          prompt: {
-            message: `Answer-ready: ${questionAnswerReadyReason}. Synthesizing...`,
-            options: ["esc=abort"],
-          },
-        });
-        return false;
-      }
-    }
-
-    return approveToolCall(toolCall);
-  };
-
-  const runPhase: RuntimePhaseRunner = async (
-    prompt: string,
-    persistTranscript: boolean,
-    maxSteps: number,
-    options: {
-      allowTools?: boolean;
-      allowedToolNames?: string[];
-      instructions?: string;
-      onToolEvent?: (event: HarnessToolEvent) => void;
-    } = {},
-  ) =>
-    engine.run(
-      {
-        modelId: state.modelId,
-        sessionId: state.sessionId,
-        instructions: options.instructions,
-        runtimeConfig: state.harnessConfig,
-        providers: {
-          ...env,
-          web,
-        },
-        approveToolCall: (toolCall) => {
-          if (options.allowTools === false) {
-            return false;
-          }
-          if (options.allowedToolNames && !options.allowedToolNames.includes(toolCall.toolName)) {
-            return false;
-          }
-          return approveToolCallWithQuestionReadiness(toolCall);
-        },
-        approvePatchApply:
-          options.allowTools === false || options.allowedToolNames != null
-            ? () => false
-            : approvePatchApply,
-        onStep: (step) => {
-          if (questionExploration && persistTranscript) {
-            recordQuestionStep(questionExploration, step);
-          }
-
-          if (step.action === "model.final") {
-            evalMetrics.recordFinalMessage(step.observation ?? "");
-            if (persistTranscript) {
-              tui.emit({ type: "finalize-assistant", text: step.observation });
-              if (step.observation?.trim()) {
-                void appendMessage({
-                  id: newMessageId(state.sessionId, "assistant"),
-                  session_id: state.sessionId,
-                  role: "assistant",
-                  kind: "transcript",
-                  content: step.observation,
-                });
-              }
-            }
-            return;
-          }
-
-          tui.emit({
-            type: "step",
-            step: {
-              step: step.step,
-              action: step.action,
-              thought: step.thought,
-              observation: step.observation,
-            },
-          });
-        },
-        onToolEvent: (event) => {
-          evalMetrics.onToolEvent(event);
-          const subagentMessage = formatSubagentRuntimeEvent(event);
-          if (subagentMessage) {
-            persistEventMessage(subagentMessage);
-          }
-          if (
-            taskOptions?.workflowKind === "commit" &&
-            event.phase === "done" &&
-            event.toolName === "bash" &&
-            isSuccessfulGitCommitOutput(event.output)
-          ) {
-            commitWorkflowCompleted = true;
-            commitWorkflowOutput = shellOutputText(event.output).trim();
-          }
-          options.onToolEvent?.(event);
-        },
-        onTextDelta: persistTranscript
-          ? (delta) => {
-              tui.emit({ type: "assistant-delta", delta });
-            }
-          : undefined,
-      },
-      prompt,
-      {
-        cwd: request.repoRoot,
-        maxSteps,
-        timeoutMs: request.maxDurationMs,
-        abortSignal: activeAbortController.signal,
-      },
-    );
-
-  const classifyPreRouteDecision = async (): Promise<PreRouteResult | null> => {
-    let submittedDecision: ReturnType<typeof validateTurnDecision> = null;
-    const decisionResult = await runPhase(
-      [
-        "Route the user's input before any repository inspection.",
-        "Do not inspect files, search the repository, run shell commands, or call any tool other than submitTurnDecision.",
-        "Submit the routing decision with the submitTurnDecision tool.",
-        "Do not return raw JSON when the tool is available.",
-        "The decision shape is:",
-        '{ mode: "direct-answer" | "web-context" | "repo-context" | "change", rationale: string }',
-        "",
-        'Use "direct-answer" for casual conversation or general questions answerable without local repository context.',
-        'Use "web-context" when the user supplied a URL or needs external web content, but not local repository files.',
-        'Use "repo-context" when answering correctly requires inspecting the local repository or files.',
-        'Use "change" when the user is asking for code or file modifications.',
-        "",
-        "Task:",
-        request.task,
-      ].join("\n"),
-      false,
-      8,
-      {
-        allowedToolNames:
-          preRoutePlan?.status === "needs-classification"
-            ? preRoutePlan.allowedToolNames
-            : ["submitTurnDecision"],
-        instructions: [
-          "You are classifying the user's next turn before any repository work begins.",
-          "Do not inspect the repository and do not call any tools except submitTurnDecision.",
-        ].join(" "),
-        onToolEvent: (event) => {
-          if (event.phase !== "done" || event.toolName !== "submitTurnDecision") {
-            return;
-          }
-          const validated = validateTurnDecision(event.output);
-          if (validated) {
-            submittedDecision = validated;
-          }
-        },
-      },
-    );
-
-    const decision = submittedDecision ?? parseTurnDecision(decisionResult.outputText);
-    if (!decision) {
-      return null;
-    }
-    const mode =
-      decision.mode === "answer"
-        ? "repo-context"
-        : decision.mode === "web-context"
-          ? "web-context"
-          : decision.mode;
-    return preRouteResultFromMode(mode, decision.rationale, "classifier");
-  };
+  const approveToolCallWithQuestionReadiness = async (toolCall: RuntimeToolCall): Promise<boolean> =>
+    approveToolCall({
+      toolName: toolCall.toolName,
+      input: toolCall.args,
+    });
 
   try {
     const harnessMode = declaredIntent === "change" ? "change" : "answer";

@@ -1,4 +1,4 @@
-import type { DirEntry, FileStat, FsProvider } from "@openharness/core";
+import type { HarnessDirEntry, HarnessFileStat, HarnessFsProvider } from "@archer/shared/runtime";
 import type { ApprovalHandler } from "../approvals.js";
 import type { SandboxPolicy } from "../policy.js";
 
@@ -9,9 +9,9 @@ export class PolicyError extends Error {
   }
 }
 
-export class SandboxFsProvider implements FsProvider {
+export class SandboxFsProvider implements HarnessFsProvider {
   constructor(
-    private readonly base: FsProvider,
+    private readonly base: HarnessFsProvider,
     private readonly policy: SandboxPolicy,
     private readonly approvals?: ApprovalHandler,
   ) {}
@@ -52,12 +52,12 @@ export class SandboxFsProvider implements FsProvider {
     return this.base.exists(path);
   }
 
-  async stat(path: string): Promise<FileStat> {
+  async stat(path: string): Promise<HarnessFileStat> {
     await this.check(path, "read");
     return this.base.stat(path);
   }
 
-  async readdir(path: string): Promise<DirEntry[]> {
+  async readdir(path: string): Promise<HarnessDirEntry[]> {
     await this.check(path, "read");
     return this.base.readdir(path);
   }
