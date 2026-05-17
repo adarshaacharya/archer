@@ -467,34 +467,28 @@ function Header({ state }: { state: UiState }): React.ReactNode {
   );
 }
 
-function SessionBar({ state }: { state: UiState }): React.ReactNode {
-  const model = state.activeModelLabel.replace("model=", "") || "unconfigured";
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
-  const cwd = process.cwd().replace(home, "~");
-
-  return (
-    <Box paddingX={2} paddingTop={0} paddingBottom={1}>
-      <Text color={col.dimmed}>
-        {model}
-        <Text color={col.border}> · </Text>
-        {cwd}
-      </Text>
-    </Box>
-  );
-}
-
-function LogItem({ entry, index }: { entry: LogEntry; index: number }): React.ReactNode {
+function LogItem({
+  entry,
+  index,
+  width,
+}: {
+  entry: LogEntry;
+  index: number;
+  width: number;
+}): React.ReactNode {
   const gapTop = index === 0 ? 0 : 1;
 
   if (entry.kind === "user") {
     return (
-      <Box marginTop={gapTop} paddingX={2}>
-        <Text wrap="wrap">
-          <Text color={col.user} bold>
-            {"❯ "}
+      <Box marginTop={gapTop} width={width}>
+        <Box backgroundColor={col.userBg} paddingX={2} paddingY={0} width={width}>
+          <Text wrap="wrap">
+            <Text color={col.user} bold>
+              {"> "}
+            </Text>
+            <Text color={col.text}>{entry.text}</Text>
           </Text>
-          <Text color={col.text}>{entry.text}</Text>
-        </Text>
+        </Box>
       </Box>
     );
   }
@@ -502,11 +496,14 @@ function LogItem({ entry, index }: { entry: LogEntry; index: number }): React.Re
   if (entry.kind === "assistant") {
     const isPending = entry.id === "pending";
     return (
-      <Box marginTop={gapTop} paddingX={2} paddingLeft={3} flexDirection="column">
-        <Text color={col.text} wrap="wrap">
-          {entry.text}
-          {isPending ? <Text color={col.accent}>▌</Text> : null}
-        </Text>
+      <Box marginTop={gapTop} paddingX={2} flexDirection="row">
+        <Text color={col.muted}>{"• "}</Text>
+        <Box flexGrow={1}>
+          <Text color={col.text} wrap="wrap">
+            {entry.text}
+            {isPending ? <Text color={col.accent}>▌</Text> : null}
+          </Text>
+        </Box>
       </Box>
     );
   }
@@ -602,19 +599,25 @@ function WelcomeBanner({ state }: { state: UiState }): React.ReactNode {
 function ActivityLog({
   logs,
   pendingText,
+  width,
 }: {
   logs: LogEntry[];
   pendingText: string;
+  width: number;
 }): React.ReactNode {
   const transcript: LogEntry[] = [
     ...logs.slice(-24),
     ...(pendingText ? [{ id: "pending", kind: "assistant" as const, text: pendingText }] : []),
   ];
 
+  if (transcript.length === 0) {
+    return null;
+  }
+
   return (
-    <Box flexDirection="column" flexGrow={1} paddingTop={0} paddingBottom={1}>
+    <Box flexDirection="column" paddingTop={0} paddingBottom={1}>
       {transcript.map((entry, i) => (
-        <LogItem key={entry.id ?? String(i)} entry={entry} index={i} />
+        <LogItem key={entry.id ?? String(i)} entry={entry} index={i} width={width} />
       ))}
     </Box>
   );
@@ -808,22 +811,27 @@ function App({ store }: { store: UiStore }): React.ReactNode {
     }
   });
 
-  const showWelcome = state.logs.length === 0 && !state.pendingAssistantText;
-  const inConversation = !showWelcome;
+  const inConversation =
+    state.logs.length > 0 || state.pendingAssistantText.length > 0;
   const hasCommandPalette = isCommandMode && commandMatches.length > 0;
-  // Ink only expands Spacer/flexGrow when the parent has an explicit height.
-  const pinComposerToBottom = inConversation || hasCommandPalette;
+  // Only pin input to the bottom while the slash palette is open (needs room below).
+  // Chat uses natural top-to-bottom flow so the welcome banner stays and there is no gap.
+  const pinComposerToBottom = hasCommandPalette;
 
   return (
     <Box flexDirection="column" {...(pinComposerToBottom ? { height: termHeight } : {})}>
       <Header state={state} />
       <Box flexDirection="column" {...(pinComposerToBottom ? { flexGrow: 1 } : {})}>
-        {showWelcome ? <WelcomeBanner state={state} /> : <SessionBar state={state} />}
+        <WelcomeBanner state={state} />
         {inConversation ? (
-          <ActivityLog logs={state.logs} pendingText={state.pendingAssistantText} />
+          <ActivityLog
+            logs={state.logs}
+            pendingText={state.pendingAssistantText}
+            width={termWidth}
+          />
         ) : null}
         {pinComposerToBottom ? <Spacer /> : null}
-        {showWelcome ? <Divider width={termWidth} /> : null}
+        {!inConversation ? <Divider width={termWidth} /> : null}
         <Composer state={state} commandMatches={commandMatches} />
       </Box>
     </Box>

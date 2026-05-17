@@ -1,6 +1,6 @@
 export const col = {
   bg: "#0D1117",
-  userBg: "#161B22",
+  userBg: "#222222",
   text: "#E6EDF3",
   muted: "#6E7681",
   dimmed: "#484F58",
