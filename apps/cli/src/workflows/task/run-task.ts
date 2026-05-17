@@ -301,6 +301,28 @@ export async function runTask(
       content: message,
     });
   };
+  const formatHarnessEvent = (event: {
+    type: string;
+    step?: number;
+    action?: string;
+    detail?: string;
+    error?: string;
+    reason?: string;
+  }): string | null => {
+    if (event.type === "turn.progress") {
+      const step = event.step ? `step ${event.step}` : "step";
+      const action = event.action ?? "progress";
+      const detail = event.detail ? ` (${event.detail})` : "";
+      return `Harness ${step}: ${action}${detail}`;
+    }
+    if (event.type === "turn.awaiting_approval") {
+      return `Harness awaiting approval: ${event.reason ?? "approval required"}`;
+    }
+    if (event.type === "turn.failed") {
+      return `Harness failure: ${event.error ?? "unknown error"}`;
+    }
+    return null;
+  };
   const pruneAfterTurn = () => {
     void pruneSessionAfterTurn(state.sessionId);
   };
@@ -463,8 +485,21 @@ export async function runTask(
         pruneAfterTurn();
         turn.finish();
       },
-      onFailed: () => {
+      onFailed: (message) => {
+        const safeMessage = message?.trim() || "Harness run failed.";
+        persistAssistantTranscript(`I couldn't complete that turn: ${safeMessage}`);
         turn.fail();
+      },
+      onEvent: (event) => {
+        const rendered = formatHarnessEvent(event);
+        if (rendered) {
+          persistEventMessage(rendered);
+        }
+      },
+      onAssistantDelta: (delta) => {
+        if (delta) {
+          emitUiEvent({ type: "assistant-delta", delta });
+        }
       },
     });
 

@@ -10,8 +10,14 @@ export class HarnessTurnRunner {
     private readonly toolRouter: HarnessToolRouter,
   ) {}
 
-  async run(request: HarnessTurnRequest): Promise<HarnessTurnResult> {
+  async run(
+    request: HarnessTurnRequest,
+    options?: { onEvent?: (event: import("./contracts.js").HarnessEvent) => void },
+  ): Promise<HarnessTurnResult> {
     const eventBus = new HarnessEventBus();
+    if (options?.onEvent) {
+      eventBus.subscribe(options.onEvent);
+    }
     const turnMachine = new HarnessTurnMachine();
 
     try {
@@ -29,6 +35,13 @@ export class HarnessTurnRunner {
       let recoveryAttempts = 0;
 
       for (let step = 1; step <= request.maxSteps; step += 1) {
+        eventBus.emit({
+          type: "turn.progress",
+          turnId: request.turnId,
+          step,
+          action: "model.decide",
+          detail: "started",
+        });
         const decision = await this.modelLoop.decide({
           request,
           step,
@@ -38,6 +51,13 @@ export class HarnessTurnRunner {
           },
         });
         completedSteps = step;
+        eventBus.emit({
+          type: "turn.progress",
+          turnId: request.turnId,
+          step,
+          action: "model.decide",
+          detail: decision.type,
+        });
 
         if (decision.type === "final") {
           finalText = decision.text.trim();

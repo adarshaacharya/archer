@@ -7,9 +7,10 @@ import {
   registerDefaultHarnessTools,
   type HarnessModelDecision,
   type HarnessModelLoop,
+  type HarnessEvent,
 } from "@archer/harness";
 import type { HarnessRuntimeConfig } from "@archer/shared/runtime";
-import { generateText } from "ai";
+import { streamText } from "ai";
 
 type HarnessAnswerPathInput = {
   mode: "answer" | "change";
@@ -45,6 +46,8 @@ type HarnessAnswerPathInput = {
     permission: "read" | "edit" | "bash" | "web" | "unknown";
     reason: string;
   }) => Promise<boolean>;
+  onEvent?: (event: HarnessEvent) => void;
+  onAssistantDelta?: (delta: string) => void;
 };
 
 function extractJson(text: string): unknown {
@@ -111,13 +114,50 @@ class LlmHarnessModelLoop implements HarnessModelLoop {
       "Emit one decision now.",
     ].join("\n");
 
-    const response = await generateText({
+    const response = streamText({
       model: resolved.model,
       prompt,
       temperature: 0,
     });
-    return parseDecision(response.text);
+    let rawText = "";
+    for await (const delta of response.textStream) {
+      rawText += delta;
+    }
+    return parseDecision(rawText);
   }
+}
+
+async function streamFinalTextToUi(
+  text: string,
+  modelId: string,
+  task: string,
+  mode: "answer" | "change",
+  onAssistantDelta?: (delta: string) => void,
+): Promise<string> {
+  if (!text) return text;
+  if (!onAssistantDelta || !text) return text;
+  const resolved = resolveLanguageModel({ modelId });
+  const prompt = [
+    "You are Archer. Produce the final user-facing response only.",
+    "Do not include JSON, tool logs, or internal reasoning.",
+    mode === "change"
+      ? "Summarize what you changed and any important result briefly."
+      : "Answer the user request directly and briefly.",
+    `Original user task: ${task}`,
+    "Internal draft result to refine:",
+    text,
+  ].join("\n");
+  const response = streamText({
+    model: resolved.model,
+    prompt,
+    temperature: 0.2,
+  });
+  let finalText = "";
+  for await (const delta of response.textStream) {
+    finalText += delta;
+    onAssistantDelta(delta);
+  }
+  return finalText.trim() || text;
 }
 
 export async function runHarnessPath(
@@ -132,15 +172,29 @@ export async function runHarnessPath(
   const modelLoop = new LlmHarnessModelLoop(input.modelId, input.mode);
   const runner = new HarnessTurnRunner(modelLoop, router);
 
-  return runner.run({
-    turnId: input.turnId,
-    sessionId: input.sessionId,
-    mode: input.mode,
-    prompt: input.task,
-    cwd: input.cwd,
-    maxSteps: input.maxSteps,
-    timeoutMs: input.timeoutMs,
-  });
+  const result = await runner.run(
+    {
+      turnId: input.turnId,
+      sessionId: input.sessionId,
+      mode: input.mode,
+      prompt: input.task,
+      cwd: input.cwd,
+      maxSteps: input.maxSteps,
+      timeoutMs: input.timeoutMs,
+    },
+    { onEvent: input.onEvent },
+  );
+  if (result.status === "completed") {
+    const streamed = await streamFinalTextToUi(
+      result.outputText,
+      input.modelId,
+      input.task,
+      input.mode,
+      input.onAssistantDelta,
+    );
+    result.outputText = streamed;
+  }
+  return result;
 }
 
 export async function runHarnessAnswerPath(

@@ -1,5 +1,6 @@
 import type { TurnResult, TurnSummary } from "../../features/runtime/turn-types.js";
 import type { HarnessRuntimeConfig } from "@archer/shared/runtime";
+import type { HarnessEvent } from "@archer/harness";
 import { runHarnessPath } from "../task/harness-answer-path.js";
 
 export function shouldUseHarnessPath(input: {
@@ -36,7 +37,9 @@ export async function executeHarnessRoute(input: {
     message?: string,
   ) => TurnResult;
   onCompleted: (message: string) => void;
-  onFailed: () => void;
+  onFailed: (message: string) => void;
+  onEvent?: (event: HarnessEvent) => void;
+  onAssistantDelta?: (delta: string) => void;
 }): Promise<TurnResult> {
   const harnessResult = await runHarnessPath({
     mode: input.mode,
@@ -50,6 +53,8 @@ export async function executeHarnessRoute(input: {
     providers: input.env as never,
     runtimeConfig: input.harnessConfig,
     requestApproval: input.requestApprovalForTool,
+    onEvent: input.onEvent,
+    onAssistantDelta: input.onAssistantDelta,
   });
 
   if (harnessResult.status === "completed") {
@@ -68,7 +73,8 @@ export async function executeHarnessRoute(input: {
     );
   }
 
-  input.onFailed();
+  const failureMessage = harnessResult.error?.trim() || "Harness answer path failed";
+  input.onFailed(failureMessage);
   return input.buildTurnResult(
     harnessResult.status === "cancelled" ? "cancelled" : "failed",
     input.buildSummary({
@@ -79,6 +85,6 @@ export async function executeHarnessRoute(input: {
       completionTokens: 0,
       estimatedCostUsd: 0,
     }),
-    harnessResult.error ?? "Harness answer path failed",
+    failureMessage,
   );
 }
